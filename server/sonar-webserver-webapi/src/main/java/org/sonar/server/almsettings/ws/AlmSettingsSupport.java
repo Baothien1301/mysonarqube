@@ -39,7 +39,7 @@ import static org.sonar.api.web.UserRole.ADMIN;
 @ServerSide
 public class AlmSettingsSupport {
 
-  private static final Pattern WORKSPACE_ID_PATTERN = Pattern.compile("^[a-z0-9\\-_]+$");
+  private static final Pattern WORKSPACE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9\\-_]+$");
 
   private final DbClient dbClient;
   private final UserSession userSession;

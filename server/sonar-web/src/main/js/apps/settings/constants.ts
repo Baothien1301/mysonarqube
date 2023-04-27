@@ -64,4 +64,4 @@ export const CATEGORY_OVERRIDES: Dict<string> = {
 
 // As per Bitbucket Cloud's documentation, Workspace ID's can only contain lowercase letters,
 // numbers, dashes, and underscores.
-export const BITBUCKET_CLOUD_WORKSPACE_ID_FORMAT = /^[a-z0-9\-_]+$/;
+export const BITBUCKET_CLOUD_WORKSPACE_ID_FORMAT = /^[A-Za-z0-9\-_]+$/;

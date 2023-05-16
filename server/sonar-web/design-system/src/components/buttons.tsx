@@ -38,7 +38,7 @@ export interface ButtonProps extends AllowedButtonAttributes {
   disabled?: boolean;
   icon?: React.ReactNode;
   innerRef?: React.Ref<HTMLButtonElement>;
-  onClick?: VoidFunction;
+  onClick?: (event?: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => void;
 
   preventDefault?: boolean;
   reloadDocument?: LinkProps['reloadDocument'];
@@ -61,7 +61,7 @@ class Button extends React.PureComponent<ButtonProps> {
     }
 
     if (onClick && !disabled) {
-      onClick();
+      onClick(event);
     }
   };
 
@@ -188,6 +188,14 @@ export const DangerButtonSecondary: React.FC<ButtonProps> = styled(Button)`
   --color: ${themeContrast('dangerButtonSecondary')};
   --focus: ${themeColor('dangerButtonSecondaryFocus', OPACITY_20_PERCENT)};
   --border: ${themeBorder('default', 'dangerButtonSecondaryBorder')};
+`;
+
+export const WrapperButton: React.FC<ButtonProps> = styled(Button)`
+  --background: none;
+  --backgroundHover: none;
+  --color: none;
+  --focus: ${themeColor('button', OPACITY_20_PERCENT)};
+  --border: none;
 `;
 
 interface ThirdPartyProps extends Omit<ButtonProps, 'Icon'> {

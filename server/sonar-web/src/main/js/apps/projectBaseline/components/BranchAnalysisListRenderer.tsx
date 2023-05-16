@@ -26,7 +26,7 @@ import Tooltip from '../../../components/controls/Tooltip';
 import DateFormatter, { longFormatterOption } from '../../../components/intl/DateFormatter';
 import TimeFormatter from '../../../components/intl/TimeFormatter';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
-import { parseDate, toShortNotSoISOString } from '../../../helpers/dates';
+import { parseDate, toShortISO8601String } from '../../../helpers/dates';
 import { translate, translateWithParameters } from '../../../helpers/l10n';
 import { ParsedAnalysis } from '../../../types/project-activity';
 import Events from '../../projectActivity/components/Events';
@@ -40,7 +40,6 @@ export interface BranchAnalysisListRendererProps {
   onSelectAnalysis: (analysis: ParsedAnalysis) => void;
   range: number;
   registerBadgeNode: (version: string) => (el: HTMLDivElement) => void;
-  registerScrollableNode: (el: HTMLDivElement) => void;
   selectedAnalysisKey: string;
   shouldStick: (version: string) => boolean;
 }
@@ -138,11 +137,7 @@ function BranchAnalysisListRenderer(
         />
       </div>
       <div className="branch-analysis-list-wrapper">
-        <div
-          className="bordered branch-analysis-list"
-          onScroll={props.handleScroll}
-          ref={props.registerScrollableNode}
-        >
+        <div className="bordered branch-analysis-list" onScroll={props.handleScroll}>
           <DeferredSpinner className="big-spacer-top" loading={loading} />
 
           {!loading && !hasFilteredData ? (
@@ -178,7 +173,7 @@ function BranchAnalysisListRenderer(
                       {days.map((day) => (
                         <li
                           className="branch-analysis-day"
-                          data-day={toShortNotSoISOString(Number(day))}
+                          data-day={toShortISO8601String(Number(day))}
                           key={day}
                         >
                           <div className="branch-analysis-date">

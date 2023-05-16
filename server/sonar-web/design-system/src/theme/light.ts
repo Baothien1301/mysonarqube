@@ -349,6 +349,7 @@ export const lightTheme = {
 
     // facets
     facetHeader: COLORS.blueGrey[600],
+    facetHeaderDisabled: COLORS.blueGrey[400],
     facetItemSelected: COLORS.indigo[50],
     facetItemSelectedHover: COLORS.indigo[100],
     facetItemSelectedBorder: primary.light,
@@ -384,7 +385,9 @@ export const lightTheme = {
     'graphLineColor.0': COLORS.blue[700],
     'graphLineColor.1': COLORS.blue[500],
     'graphLineColor.2': COLORS.blue[300],
-    'graphLineColor.3': COLORS.blue[800],
+    'graphLineColor.3': COLORS.blue[700],
+    'graphLineColor.4': COLORS.blue[500],
+    'graphLineColor.5': COLORS.blue[300],
     graphGridColor: COLORS.grey[50],
     graphCursorLineColor: COLORS.blueGrey[400],
     newCodeHighlight: COLORS.indigo[300],
@@ -445,8 +448,9 @@ export const lightTheme = {
     newCodeLegend: [...COLORS.indigo[300], 0.15],
     newCodeLegendBorder: COLORS.indigo[200],
 
-    // hotspot
-    hotspotStatus: COLORS.blueGrey[25],
+    // highlighted section
+    highlightedSection: COLORS.blueGrey[25],
+    highlightedSectionBorder: COLORS.blueGrey[100],
 
     // activity comments
     activityCommentPipe: COLORS.tangerine[200],
@@ -468,6 +472,9 @@ export const lightTheme = {
 
     // project analyse page
     almCardBorder: COLORS.grey[100],
+
+    // Keyboard hint
+    keyboardHintKey: COLORS.blueGrey[100],
   },
 
   // contrast colors to be used for text when using a color background with the same name
@@ -489,6 +496,9 @@ export const lightTheme = {
 
     // flag message
     flagMessageBackground: secondary.darker,
+
+    // info message
+    infoBackground: COLORS.blue[900],
 
     // banner message
     bannerMessage: COLORS.red[900],
@@ -650,6 +660,9 @@ export const lightTheme = {
     newsTag: COLORS.blueGrey[500],
     roadmap: COLORS.blueGrey[600],
     roadmapContent: COLORS.blueGrey[500],
+
+    // Keyboard hint
+    keyboardHintKey: COLORS.blueGrey[500],
   },
 
   // predefined shadows

@@ -55,7 +55,6 @@ public class DefaultIssue implements Issue, Trackable, org.sonar.api.ce.measure.
 
   private String key = null;
   private RuleType type = null;
-  private CodeCharacteristic characteristic = null;
   private String componentUuid = null;
   private String componentKey = null;
 
@@ -146,19 +145,14 @@ public class DefaultIssue implements Issue, Trackable, org.sonar.api.ce.measure.
     return type;
   }
 
-  public DefaultIssue setType(RuleType type) {
-    this.type = type;
-    return this;
-  }
-
   @CheckForNull
   @Override
   public CodeCharacteristic characteristic() {
-    return characteristic;
+    return null;
   }
 
-  public DefaultIssue setCharacteristic(CodeCharacteristic characteristic) {
-    this.characteristic = characteristic;
+  public DefaultIssue setType(RuleType type) {
+    this.type = type;
     return this;
   }
 
@@ -422,6 +416,7 @@ public class DefaultIssue implements Issue, Trackable, org.sonar.api.ce.measure.
     this.locationsChanged = locationsChanged;
     return this;
   }
+
 
   public DefaultIssue setNew(boolean b) {
     isNew = b;

@@ -30,10 +30,10 @@ import { mockIssue, mockLoggedInUser, mockRawIssue } from '../../../helpers/test
 import { findTooltipWithContent, renderApp } from '../../../helpers/testReactTestingUtils';
 import {
   IssueActions,
-  IssueCharacteristic,
   IssueSeverity,
   IssueStatus,
   IssueTransition,
+  IssueType,
 } from '../../../types/issues';
 import { RuleStatus } from '../../../types/rules';
 import { IssueComment } from '../../../types/types';
@@ -54,14 +54,6 @@ beforeEach(() => {
 });
 
 describe('rendering', () => {
-  it('should render correctly with Clean Code characteristic label', () => {
-    const { ui } = getPageObject();
-    renderIssue({ issue: mockIssue(false) });
-
-    expect(ui.cleanCodeCharacteristic(IssueCharacteristic.Robust).get()).toBeInTheDocument();
-    expect(ui.fitForProduction.get()).toBeInTheDocument();
-  });
-
   it('should render correctly with comments', () => {
     const { ui } = getPageObject();
     renderIssue({ issue: mockIssue(false, { comments: [mockIssueCommentPosted4YearsAgo()] }) });
@@ -133,6 +125,19 @@ describe('rendering', () => {
 });
 
 describe('updating', () => {
+  it('should allow updating the type', async () => {
+    const { ui } = getPageObject();
+    const issue = mockRawIssue(false, {
+      type: IssueType.Bug,
+      actions: [IssueActions.SetType],
+    });
+    issuesHandler.setIssueList([{ issue, snippets: {} }]);
+    renderIssue({ issue: mockIssue(false, { ...pick(issue, 'actions', 'key', 'type') }) });
+
+    await ui.updateType(IssueType.Bug, IssueType.CodeSmell);
+    expect(ui.updateTypeBtn(IssueType.CodeSmell).get()).toBeInTheDocument();
+  });
+
   it('should allow updating the severity', async () => {
     const { ui } = getPageObject();
     const issue = mockRawIssue(false, {
@@ -324,9 +329,6 @@ function getPageObject() {
 
   const selectors = {
     // Issue
-    cleanCodeCharacteristic: (characteristic: IssueCharacteristic) =>
-      byText(`issue.characteristic.${characteristic}`),
-    fitForProduction: byText('issue.characteristic.fit.PRODUCTION'),
     ruleStatusBadge: (status: RuleStatus) => byText(`issue.resolution.badge.${status}`),
     locationsBadge: (count: number) => byText(count),
     lineInfo: (line: number) => byText(`L${line}`),
@@ -376,6 +378,11 @@ function getPageObject() {
     commentUpdateBtn: byRole('button', { name: 'save' }),
     commentDeleteBtn: byRole('button', { name: 'issue.comment.delete' }),
     commentConfirmDeleteBtn: byRole('button', { name: 'delete' }),
+
+    // Type
+    updateTypeBtn: (currentType: IssueType) =>
+      byRole('button', { name: `issue.type.type_x_click_to_change.issue.type.${currentType}` }),
+    setTypeBtn: (type: IssueType) => byRole('button', { name: `issue.type.${type}` }),
 
     // Severity
     updateSeverityBtn: (currentSeverity: IssueSeverity) =>
@@ -429,6 +436,12 @@ function getPageObject() {
       await user.click(selectors.commentDeleteBtn.get());
       await act(async () => {
         await user.click(selectors.commentConfirmDeleteBtn.get());
+      });
+    },
+    async updateType(currentType: IssueType, newType: IssueType) {
+      await user.click(selectors.updateTypeBtn(currentType).get());
+      await act(async () => {
+        await user.click(selectors.setTypeBtn(newType).get());
       });
     },
     async updateSeverity(currentSeverity: IssueSeverity, newSeverity: IssueSeverity) {

@@ -43,8 +43,7 @@ public class DefaultAdHocRuleTest {
       .name("name")
       .description("desc")
       .severity(Severity.BLOCKER)
-      .type(RuleType.CODE_SMELL)
-      .characteristic(CodeCharacteristic.COMPLIANT);
+      .type(RuleType.CODE_SMELL);
     rule.save();
 
     assertThat(rule.engineId()).isEqualTo("engine");
@@ -53,7 +52,7 @@ public class DefaultAdHocRuleTest {
     assertThat(rule.description()).isEqualTo("desc");
     assertThat(rule.severity()).isEqualTo(Severity.BLOCKER);
     assertThat(rule.type()).isEqualTo(RuleType.CODE_SMELL);
-    assertThat(rule.characteristic()).isEqualTo(CodeCharacteristic.COMPLIANT);
+
     verify(storage).store(any(DefaultAdHocRule.class));
   }
 
@@ -149,4 +148,11 @@ public class DefaultAdHocRuleTest {
       .hasMessageContaining("Type is mandatory");
   }
 
+  @Test
+  public void characteristic_shouldBeNoOp() {
+    SensorStorage storage = mock(SensorStorage.class);
+    DefaultAdHocRule rule = new DefaultAdHocRule(storage);
+    rule.characteristic(CodeCharacteristic.CLEAR);
+    assertThat(rule.characteristic()).isNull();
+  }
 }

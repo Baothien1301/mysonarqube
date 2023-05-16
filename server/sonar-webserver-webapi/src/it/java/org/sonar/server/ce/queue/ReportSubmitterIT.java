@@ -28,6 +28,7 @@ import org.apache.commons.io.IOUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.sonar.api.config.Configuration;
 import org.sonar.api.utils.System2;
 import org.sonar.ce.queue.CeQueue;
 import org.sonar.ce.queue.CeQueueImpl;
@@ -81,7 +82,7 @@ public class ReportSubmitterIT {
   @Rule
   public final UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public final DbTester db = DbTester.create();
+  public final DbTester db = DbTester.create(true);
 
   private final ProjectDefaultVisibility projectDefaultVisibility = mock(ProjectDefaultVisibility.class);
   private final DefaultBranchNameResolver defaultBranchNameResolver = mock(DefaultBranchNameResolver.class);
@@ -89,8 +90,11 @@ public class ReportSubmitterIT {
   private final CeQueue queue = mock(CeQueueImpl.class);
   private final TestProjectIndexers projectIndexers = new TestProjectIndexers();
   private final PermissionTemplateService permissionTemplateService = mock(PermissionTemplateService.class);
+
+  private final Configuration config = mock(Configuration.class);
+
   private final ComponentUpdater componentUpdater = new ComponentUpdater(db.getDbClient(), mock(I18n.class), mock(System2.class), permissionTemplateService,
-    new FavoriteUpdater(db.getDbClient()), projectIndexers, new SequenceUuidFactory(), defaultBranchNameResolver
+    new FavoriteUpdater(db.getDbClient()), projectIndexers, new SequenceUuidFactory(), defaultBranchNameResolver, true
     );
   private final BranchSupport ossEditionBranchSupport = new BranchSupport(null);
 
@@ -137,7 +141,7 @@ public class ReportSubmitterIT {
 
   @Test
   public void submit_a_report_on_existing_project() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     UserDto user = db.users().insertUser();
     userSession.logIn(user).addProjectPermission(SCAN.getKey(), project);
     mockSuccessfulPrepareSubmitCall();
@@ -206,7 +210,7 @@ public class ReportSubmitterIT {
   @Test
   public void do_no_add_favorite_when_already_100_favorite_projects_and_no_project_creator_permission_on_permission_template() {
     UserDto user = db.users().insertUser();
-    rangeClosed(1, 100).forEach(i -> db.favorites().add(db.components().insertPrivateProject(), user.getUuid(), user.getLogin()));
+    rangeClosed(1, 100).forEach(i -> db.favorites().add(db.components().insertPrivateProject().getMainBranchComponent(), user.getUuid(), user.getLogin()));
     userSession
       .logIn(user)
       .addPermission(GlobalPermission.SCAN)
@@ -237,7 +241,7 @@ public class ReportSubmitterIT {
 
   @Test
   public void user_with_scan_permission_is_allowed_to_submit_a_report_on_existing_project() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     userSession.addPermission(SCAN);
     mockSuccessfulPrepareSubmitCall();
 
@@ -248,7 +252,7 @@ public class ReportSubmitterIT {
 
   @Test
   public void submit_a_report_on_existing_project_with_project_scan_permission() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     userSession.addProjectPermission(SCAN.getKey(), project);
     mockSuccessfulPrepareSubmitCall();
 
@@ -274,7 +278,7 @@ public class ReportSubmitterIT {
 
   @Test
   public void fail_if_project_key_already_exists_as_other_component() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto dir = db.components().insertComponent(newDirectory(project, "path"));
     userSession.logIn().addProjectPermission(SCAN.getKey(), project);
     mockSuccessfulPrepareSubmitCall();
@@ -302,7 +306,7 @@ public class ReportSubmitterIT {
 
   @Test
   public void fail_with_forbidden_exception_on_new_project_when_only_project_scan_permission() {
-    ComponentDto component = db.components().insertPrivateProject(PROJECT_UUID);
+    ComponentDto component = db.components().insertPrivateProject(PROJECT_UUID).getMainBranchComponent();
     userSession.addProjectPermission(SCAN.getKey(), component);
     mockSuccessfulPrepareSubmitCall();
 

@@ -75,11 +75,12 @@ public class ImportGithubProjectActionIT {
   private final DefaultBranchNameResolver defaultBranchNameResolver = mock(DefaultBranchNameResolver.class);
 
   @Rule
-  public DbTester db = DbTester.create(system2);
+  public DbTester db = DbTester.create(system2, true);
+
 
   private final ComponentUpdater componentUpdater = new ComponentUpdater(db.getDbClient(), mock(I18n.class), System2.INSTANCE,
     mock(PermissionTemplateService.class), new FavoriteUpdater(db.getDbClient()), new TestProjectIndexers(), new SequenceUuidFactory(),
-    defaultBranchNameResolver);
+    defaultBranchNameResolver, true);
 
   private final ImportHelper importHelper = new ImportHelper(db.getDbClient(), userSession);
   private final ProjectKeyGenerator projectKeyGenerator = mock(ProjectKeyGenerator.class);
@@ -125,7 +126,7 @@ public class ImportGithubProjectActionIT {
   public void importProject_ifProjectWithSameNameAlreadyExists_importSucceed() {
     AlmSettingDto githubAlmSetting = setupAlm();
     db.almPats().insert(p -> p.setAlmSettingUuid(githubAlmSetting.getUuid()).setUserUuid(userSession.getUuid()));
-    db.components().insertPublicProject(p -> p.setKey("Hello-World"));
+    db.components().insertPublicProject(p -> p.setKey("Hello-World")).getMainBranchComponent();
 
     GithubApplicationClient.Repository repository = new GithubApplicationClient.Repository(1L, "Hello-World", false, "Hello-World",
       "https://github.sonarsource.com/api/v3/repos/octocat/Hello-World", "main");

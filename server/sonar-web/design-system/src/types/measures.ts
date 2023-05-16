@@ -47,3 +47,11 @@ export enum SizeEnum {
   XL = 'XL',
 }
 export type SizeLabel = keyof typeof SizeEnum;
+
+export enum HotspotRatingEnum {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+}
+
+export type HotspotRatingLabel = keyof typeof HotspotRatingEnum;

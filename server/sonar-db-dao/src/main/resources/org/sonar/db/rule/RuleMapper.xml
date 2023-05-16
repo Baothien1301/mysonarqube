@@ -39,8 +39,7 @@
     r.ad_hoc_description as "adHocDescription",
     r.ad_hoc_severity as "adHocSeverity",
     r.ad_hoc_type as "adHocType",
-    r.education_principles as "educationPrinciplesField",
-    r.characteristic as "characteristic"
+    r.education_principles as "educationPrinciplesField"
   </sql>
 
   <sql id="leftOuterJoinRulesDescriptionSections">
@@ -261,7 +260,6 @@
       system_tags,
       security_standards,
       rule_type,
-      characteristic,
       scope,
       note_data,
       note_user_uuid,
@@ -301,7 +299,6 @@
       #{systemTagsField,jdbcType=VARCHAR},
       #{securityStandardsField,jdbcType=VARCHAR},
       #{type,jdbcType=TINYINT},
-      #{characteristic,jdbcType=VARCHAR},
       #{scope,jdbcType=VARCHAR},
       #{noteData,jdbcType=CLOB},
       #{noteUserUuid,jdbcType=VARCHAR},
@@ -344,7 +341,6 @@
       security_standards=#{securityStandardsField,jdbcType=VARCHAR},
       scope=#{scope,jdbcType=VARCHAR},
       rule_type=#{type,jdbcType=TINYINT},
-      characteristic=#{characteristic,jdbcType=VARCHAR},
       note_data=#{noteData,jdbcType=CLOB},
       note_user_uuid=#{noteUserUuid,jdbcType=VARCHAR},
       note_created_at=#{noteCreatedAt,jdbcType=BIGINT},

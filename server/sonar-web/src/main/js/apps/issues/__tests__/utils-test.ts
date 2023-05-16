@@ -25,10 +25,6 @@ import {
   shouldOpenStandardsFacet,
 } from '../utils';
 
-jest.mock('../../../helpers/scrolling', () => ({
-  scrollToElement: jest.fn(),
-}));
-
 beforeEach(() => {
   jest.clearAllMocks();
 });
@@ -40,7 +36,6 @@ describe('serialize/deserialize', () => {
         assigned: true,
         assignees: ['a', 'b'],
         author: ['a', 'b'],
-        characteristics: ['a', 'b'],
         createdAfter: new Date(1000000),
         createdAt: 'a',
         createdBefore: new Date(1000000),
@@ -72,7 +67,6 @@ describe('serialize/deserialize', () => {
     ).toStrictEqual({
       assignees: 'a,b',
       author: ['a', 'b'],
-      characteristics: 'a,b',
       createdAt: 'a',
       createdBefore: '1970-01-01',
       createdAfter: '1970-01-01',

@@ -19,14 +19,15 @@
  */
 package org.sonar.server.newcodeperiod.ws;
 
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.sonar.api.server.ws.WebService;
 import org.sonar.api.utils.System2;
 import org.sonar.api.web.UserRole;
+import org.sonar.core.documentation.DocumentationLinkGenerator;
 import org.sonar.core.util.UuidFactoryFast;
 import org.sonar.db.DbClient;
-import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDbTester;
 import org.sonar.db.component.ComponentDto;
@@ -44,25 +45,35 @@ import org.sonarqube.ws.NewCodePeriods.ShowWSResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class ShowActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
+  public DbTester db = DbTester.create(System2.INSTANCE, true);
 
   private ComponentDbTester componentDb = new ComponentDbTester(db);
   private DbClient dbClient = db.getDbClient();
-  private DbSession dbSession = db.getSession();
   private ComponentFinder componentFinder = TestComponentFinder.from(db);
   private NewCodePeriodDao dao = new NewCodePeriodDao(System2.INSTANCE, UuidFactoryFast.getInstance());
   private NewCodePeriodDbTester tester = new NewCodePeriodDbTester(db);
-  private ShowAction underTest = new ShowAction(dbClient, userSession, componentFinder, dao);
-  private WsActionTester ws = new WsActionTester(underTest);
+  private DocumentationLinkGenerator documentationLinkGenerator = mock(DocumentationLinkGenerator.class);
+  private WsActionTester ws;
+
+  @Before
+  public void setup(){
+    when(documentationLinkGenerator.getDocumentationLink(any())).thenReturn("https://docs.sonarqube.org/latest/project-administration/defining-new-code/");
+    ws = new WsActionTester(new ShowAction(dbClient, userSession, componentFinder, dao, documentationLinkGenerator));
+  }
 
   @Test
   public void test_definition() {
     WebService.Action definition = ws.getDef();
+
+    assertThat(definition.description()).contains("https://docs.sonarqube.org/latest/project-administration/defining-new-code/");
 
     assertThat(definition.key()).isEqualTo("show");
     assertThat(definition.isInternal()).isFalse();
@@ -85,7 +96,7 @@ public class ShowActionIT {
 
   @Test
   public void throw_FE_if_no_project_permission() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
     assertThatThrownBy(() -> ws.newRequest()
       .setParam("project", project.getKey())
@@ -96,7 +107,7 @@ public class ShowActionIT {
 
   @Test
   public void throw_FE_if_project_issue_admin() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectIssueAdmin(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -118,7 +129,7 @@ public class ShowActionIT {
 
   @Test
   public void show_project_setting() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     tester.insert(new NewCodePeriodDto()
@@ -135,7 +146,7 @@ public class ShowActionIT {
 
   @Test
   public void show_branch_setting() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
@@ -156,7 +167,7 @@ public class ShowActionIT {
 
   @Test
   public void show_inherited_project_setting() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
     tester.insert(new NewCodePeriodDto().setType(NewCodePeriodType.PREVIOUS_VERSION));
 
@@ -169,7 +180,7 @@ public class ShowActionIT {
 
   @Test
   public void show_inherited_branch_setting_from_project() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
@@ -189,7 +200,7 @@ public class ShowActionIT {
 
   @Test
   public void show_inherited_branch_setting_from_global() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
     tester.insert(new NewCodePeriodDto().setType(NewCodePeriodType.NUMBER_OF_DAYS).setValue("3"));
@@ -215,7 +226,7 @@ public class ShowActionIT {
 
   @Test
   public void show_inherited_if_branch_not_found() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectScan(project);
 
     tester.insert(project.branchUuid(), NewCodePeriodType.NUMBER_OF_DAYS, "3");

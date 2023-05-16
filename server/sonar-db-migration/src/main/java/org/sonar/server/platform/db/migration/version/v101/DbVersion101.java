@@ -50,6 +50,13 @@ public class DbVersion101 implements DbVersion {
       .add(10_1_006, "Update value of 'is_main' in 'project_branches' table", UpdateIsMainColumnInProjectBranches.class)
       .add(10_1_007, "Alter column 'is_main' in 'project_branches' table - make it not nullable", AlterIsMainColumnInProjectBranches.class)
       .add(10_1_008, "Increase size of 'internal_properties.kee' from 20 to 40 characters", IncreaseKeeColumnSizeInInternalProperties.class)
-      .add(10_1_009, "Add column 'characteristic' to 'rules' table", AddCharacteristicInRules.class);
+      .add(10_1_009, "Create column 'project_uuid' in 'user_tokens", CreateProjectUuidInUserTokens.class)
+      .add(10_1_010, "Remove user tokens linked to unexistent project", RemoveOrphanUserTokens.class)
+      .add(10_1_011, "Populate 'project_key' in 'user_tokens'", PopulateProjectUuidInUserTokens.class)
+      .add(10_1_012, "Drop column 'project_key' in 'user_tokens", DropProjectKeyInUserTokens.class)
+      .add(10_1_013, "Increase size of 'ce_queue.task_type' from 15 to 40 characters", IncreaseTaskTypeColumnSizeInCeQueue.class)
+      .add(10_1_014, "Increase size of 'ce_activity.task_type' from 15 to 40 characters", IncreaseTaskTypeColumnSizeInCeActivity.class)
+      .add(10_1_015, "Add 'external_groups' table.", CreateExternalGroupsTable.class)
+      .add(10_1_016, "Add index on 'external_groups(external_identity_provider, external_id).", CreateIndexOnExternalIdAndIdentityOnExternalGroupsTable.class);
   }
 }

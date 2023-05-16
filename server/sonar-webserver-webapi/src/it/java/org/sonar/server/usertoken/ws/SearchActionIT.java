@@ -68,7 +68,7 @@ public class SearchActionIT {
 
   @Test
   public void search_json_example() {
-    ComponentDto project1 = db.components().insertPublicProject(p -> p.setKey("project-1").setName("Project 1"));
+    ComponentDto project1 = db.components().insertPublicProject(p -> p.setKey("project-1").setName("Project 1")).getMainBranchComponent();
     UserDto user1 = db.users().insertUser(u -> u.setLogin("grace.hopper"));
     UserDto user2 = db.users().insertUser(u -> u.setLogin("ada.lovelace"));
     db.users().insertToken(user1, t -> t.setName("Project scan on Travis").setCreatedAt(1448523067221L));
@@ -76,10 +76,10 @@ public class SearchActionIT {
     db.users().insertProjectAnalysisToken(user1, t -> t.setName("Project scan on Jenkins")
       .setCreatedAt(1428523067221L)
       .setExpirationDate(1563055200000L)
-      .setProjectKey(project1.getKey()));
+      .setProjectUuid(project1.uuid()));
     db.users().insertProjectAnalysisToken(user2, t -> t.setName("Project scan on Travis")
       .setCreatedAt(141456787123L)
-      .setProjectKey(project1.getKey()));
+      .setProjectUuid(project1.uuid()));
 
     logInAsSystemAdministrator();
 

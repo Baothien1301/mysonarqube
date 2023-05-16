@@ -21,11 +21,13 @@ package org.sonar.server.newcodeperiod.ws;
 
 import java.util.Optional;
 import javax.annotation.Nullable;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.sonar.api.server.ws.WebService;
 import org.sonar.api.utils.System2;
 import org.sonar.api.web.UserRole;
+import org.sonar.core.documentation.DocumentationLinkGenerator;
 import org.sonar.core.platform.EditionProvider;
 import org.sonar.core.platform.PlatformEditionProvider;
 import org.sonar.core.util.UuidFactoryFast;
@@ -46,6 +48,7 @@ import org.sonar.server.ws.WsActionTester;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -53,7 +56,7 @@ public class UnsetActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
+  public DbTester db = DbTester.create(System2.INSTANCE, true);
 
   private ComponentDbTester componentDb = new ComponentDbTester(db);
   private DbClient dbClient = db.getDbClient();
@@ -61,13 +64,20 @@ public class UnsetActionIT {
   private ComponentFinder componentFinder = TestComponentFinder.from(db);
   private NewCodePeriodDao dao = new NewCodePeriodDao(System2.INSTANCE, UuidFactoryFast.getInstance());
   private PlatformEditionProvider editionProvider = mock(PlatformEditionProvider.class);
+  private DocumentationLinkGenerator documentationLinkGenerator = mock(DocumentationLinkGenerator.class);
+  private WsActionTester ws;
 
-  private UnsetAction underTest = new UnsetAction(dbClient, userSession, componentFinder, editionProvider, dao);
-  private WsActionTester ws = new WsActionTester(underTest);
+  @Before
+  public void setup(){
+    when(documentationLinkGenerator.getDocumentationLink(any())).thenReturn("https://docs.sonarqube.org/9.9/project-administration/defining-new-code/");
+    ws = new WsActionTester(new UnsetAction(dbClient, userSession, componentFinder, editionProvider, dao, documentationLinkGenerator));
+  }
 
   @Test
   public void test_definition() {
     WebService.Action definition = ws.getDef();
+
+    assertThat(definition.description()).contains("https://docs.sonarqube.org/9.9/project-administration/defining-new-code/");
 
     assertThat(definition.key()).isEqualTo("unset");
     assertThat(definition.isInternal()).isFalse();
@@ -101,7 +111,7 @@ public class UnsetActionIT {
 
   @Test
   public void throw_NFE_if_branch_not_found() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -116,7 +126,7 @@ public class UnsetActionIT {
   // permission
   @Test
   public void throw_NFE_if_no_project_permission() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
     assertThatThrownBy(() -> ws.newRequest()
       .setParam("project", project.getKey())
@@ -147,7 +157,7 @@ public class UnsetActionIT {
 
   @Test
   public void delete_project_period() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
     ws.newRequest()
       .setParam("project", project.getKey())
@@ -158,8 +168,8 @@ public class UnsetActionIT {
 
   @Test
   public void delete_project_period_twice() {
-    ComponentDto project1 = componentDb.insertPublicProject();
-    ComponentDto project2 = componentDb.insertPublicProject();
+    ComponentDto project1 = componentDb.insertPublicProject().getMainBranchComponent();
+    ComponentDto project2 = componentDb.insertPublicProject().getMainBranchComponent();
     db.newCodePeriods().insert(project1.uuid(), null, NewCodePeriodType.SPECIFIC_ANALYSIS, "uuid1");
     db.newCodePeriods().insert(project2.uuid(), null, NewCodePeriodType.SPECIFIC_ANALYSIS, "uuid2");
 
@@ -178,7 +188,7 @@ public class UnsetActionIT {
 
   @Test
   public void delete_branch_period() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
 
     db.newCodePeriods().insert(project.uuid(), null, NewCodePeriodType.SPECIFIC_ANALYSIS, "uuid1");
@@ -196,7 +206,7 @@ public class UnsetActionIT {
 
   @Test
   public void delete_branch_and_project_period_in_community_edition() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
     db.newCodePeriods().insert(project.uuid(), null, NewCodePeriodType.SPECIFIC_ANALYSIS, "uuid1");
     db.newCodePeriods().insert(project.uuid(), project.uuid(), NewCodePeriodType.SPECIFIC_ANALYSIS, "uuid2");

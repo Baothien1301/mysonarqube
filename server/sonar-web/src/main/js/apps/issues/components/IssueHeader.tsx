@@ -24,7 +24,6 @@ import LinkIcon from '../../../components/icons/LinkIcon';
 import { updateIssue } from '../../../components/issue/actions';
 import IssueActionsBar from '../../../components/issue/components/IssueActionsBar';
 import IssueChangelog from '../../../components/issue/components/IssueChangelog';
-import IssueCharacteristicHeader from '../../../components/issue/components/IssueCharacteristicHeader';
 import IssueMessageTags from '../../../components/issue/components/IssueMessageTags';
 import { IssueMessageHighlighting } from '../../../components/issue/IssueMessageHighlighting';
 import { getBranchLikeQuery } from '../../../helpers/branch-like';
@@ -34,6 +33,7 @@ import { translate } from '../../../helpers/l10n';
 import { getKeyboardShortcutEnabled } from '../../../helpers/preferences';
 import { getComponentIssuesUrl, getRuleUrl } from '../../../helpers/urls';
 import { BranchLike } from '../../../types/branch-like';
+import { IssueType } from '../../../types/issues';
 import { RuleStatus } from '../../../types/rules';
 import { Issue, RuleDetails } from '../../../types/types';
 
@@ -121,7 +121,7 @@ export default class IssueHeader extends React.PureComponent<Props, State> {
   render() {
     const {
       issue,
-      ruleDetails: { key, name },
+      ruleDetails: { key, name, isExternal },
       branchLike,
     } = this.props;
     const { issuePopupName } = this.state;
@@ -129,18 +129,14 @@ export default class IssueHeader extends React.PureComponent<Props, State> {
       ...getBranchLikeQuery(branchLike),
       issues: issue.key,
       open: issue.key,
-      types: issue.type === 'SECURITY_HOTSPOT' ? issue.type : undefined,
+      types: issue.type === IssueType.SecurityHotspot ? issue.type : undefined,
     });
     const ruleStatus = issue.ruleStatus as RuleStatus | undefined;
     const { quickFixAvailable } = issue;
 
     return (
       <>
-        <IssueCharacteristicHeader
-          characteristic={issue.characteristic}
-          className="big-padded-top"
-        />
-        <div className="display-flex-center display-flex-space-between">
+        <div className="display-flex-center display-flex-space-between big-padded-top">
           <h1 className="text-bold spacer-right">
             <span className="spacer-right issue-header" aria-label={issue.message}>
               <IssueMessageHighlighting
@@ -169,9 +165,13 @@ export default class IssueHeader extends React.PureComponent<Props, State> {
         <div className="display-flex-center display-flex-space-between spacer-top big-spacer-bottom">
           <div>
             <span className="note padded-right">{name}</span>
-            <Link className="small" to={getRuleUrl(key)} target="_blank">
-              {key}
-            </Link>
+            {isExternal ? (
+              <span className="note small">({key})</span>
+            ) : (
+              <Link className="small" to={getRuleUrl(key)} target="_blank">
+                {key}
+              </Link>
+            )}
           </div>
           <div className="issue-meta-list">
             <div className="issue-meta">

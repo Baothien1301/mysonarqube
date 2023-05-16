@@ -27,7 +27,6 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.Rule;
 import org.junit.Test;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.utils.System2;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
@@ -47,7 +46,7 @@ public class IssueIteratorFactoryIT {
   @Test
   public void iterator_over_one_issue() {
     RuleDto rule = dbTester.rules().insert();
-    ComponentDto project = dbTester.components().insertPrivateProject();
+    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto file = dbTester.components().insertComponent(newFileDto(project)
       .setPath("src/main/java/Action.java"));
     IssueDto expected = dbTester.issues().insert(rule, project, file,
@@ -91,13 +90,12 @@ public class IssueIteratorFactoryIT {
     assertThat(issue.getTags()).containsOnly("tag1", "tag2", "tag3");
     assertThat(issue.effort().toMinutes()).isPositive();
     assertThat(issue.type().getDbConstant()).isEqualTo(2);
-    assertThat(issue.characteristic()).isEqualTo(CodeCharacteristic.CLEAR);
   }
 
   @Test
   public void iterator_over_issues() {
     RuleDto rule = dbTester.rules().insert();
-    ComponentDto project = dbTester.components().insertPrivateProject();
+    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto directory = dbTester.components().insertComponent(newDirectory(project, "src/main/java"));
     ComponentDto file = dbTester.components().insertComponent(newFileDto(directory, directory)
       .setPath("src/main/java/Action.java"));
@@ -128,13 +126,13 @@ public class IssueIteratorFactoryIT {
   @Test
   public void iterator_over_issue_from_project() {
     RuleDto rule = dbTester.rules().insert();
-    ComponentDto project1 = dbTester.components().insertPrivateProject();
+    ComponentDto project1 = dbTester.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto dir = dbTester.components().insertComponent(newDirectory(project1, "path"));
     ComponentDto file1 = dbTester.components().insertComponent(newFileDto(project1, dir));
     String[] project1IssueKeys = Stream.of(project1, dir, file1)
       .map(project1Component -> dbTester.issues().insert(rule, project1, project1Component).getKey())
       .toArray(String[]::new);
-    ComponentDto project2 = dbTester.components().insertPrivateProject();
+    ComponentDto project2 = dbTester.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto dir2 = dbTester.components().insertComponent(newDirectory(project2, "path"));
     ComponentDto file2 = dbTester.components().insertComponent(newFileDto(project2, dir2));
     String[] project2IssueKeys = Stream.of(project2, dir2, file2)
@@ -152,7 +150,7 @@ public class IssueIteratorFactoryIT {
   @Test
   public void extract_directory_path() {
     RuleDto rule = dbTester.rules().insert();
-    ComponentDto project = dbTester.components().insertPrivateProject();
+    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto fileInRootDir = dbTester.components().insertComponent(newFileDto(project).setPath("pom.xml"));
     ComponentDto fileInSubDir = dbTester.components().insertComponent(newFileDto(project).setPath("src/main/java/Action.java"));
     IssueDto projectIssue = dbTester.issues().insert(rule, project, project);
@@ -170,7 +168,7 @@ public class IssueIteratorFactoryIT {
   @Test
   public void extract_file_path() {
     RuleDto rule = dbTester.rules().insert();
-    ComponentDto project = dbTester.components().insertPrivateProject();
+    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto fileInRootDir = dbTester.components().insertComponent(newFileDto(project).setPath("pom.xml"));
     ComponentDto fileInSubDir = dbTester.components().insertComponent(newFileDto(project).setPath("src/main/java/Action.java"));
     IssueDto projectIssue = dbTester.issues().insert(rule, project, project);

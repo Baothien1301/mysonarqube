@@ -31,6 +31,7 @@ import org.sonar.api.server.ws.Response;
 import org.sonar.api.server.ws.WebService;
 import org.sonar.api.utils.DateUtils;
 import org.sonar.api.web.UserRole;
+import org.sonar.core.documentation.DocumentationLinkGenerator;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.component.BranchDto;
@@ -46,6 +47,7 @@ import org.sonarqube.ws.NewCodePeriods;
 import org.sonarqube.ws.NewCodePeriods.ListWSResponse;
 
 import static org.sonar.core.util.stream.MoreCollectors.toList;
+import static org.sonar.server.ws.WsUtils.createHtmlExternalLink;
 import static org.sonar.server.ws.WsUtils.writeProtobuf;
 import static org.sonarqube.ws.NewCodePeriods.ShowWSResponse.newBuilder;
 
@@ -56,18 +58,22 @@ public class ListAction implements NewCodePeriodsWsAction {
   private final UserSession userSession;
   private final ComponentFinder componentFinder;
   private final NewCodePeriodDao newCodePeriodDao;
+  private final String newCodeDefinitionDocumentationUrl;
 
-  public ListAction(DbClient dbClient, UserSession userSession, ComponentFinder componentFinder, NewCodePeriodDao newCodePeriodDao) {
+  public ListAction(DbClient dbClient, UserSession userSession, ComponentFinder componentFinder, NewCodePeriodDao newCodePeriodDao,
+    DocumentationLinkGenerator documentationLinkGenerator) {
     this.dbClient = dbClient;
     this.userSession = userSession;
     this.componentFinder = componentFinder;
     this.newCodePeriodDao = newCodePeriodDao;
+    this.newCodeDefinitionDocumentationUrl = documentationLinkGenerator.getDocumentationLink("/project-administration/defining-new-code/");
   }
 
   @Override
   public void define(WebService.NewController context) {
     WebService.NewAction action = context.createAction("list")
-      .setDescription("List the New Code Periods for all branches in a project.<br>" +
+      .setDescription("Lists the "  + createHtmlExternalLink(newCodeDefinitionDocumentationUrl, "new code definition") +
+        " for all branches in a project.<br>" +
         "Requires the permission to browse the project")
       .setSince("8.0")
       .setResponseExample(getClass().getResource("list-example.json"))

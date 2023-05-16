@@ -39,7 +39,6 @@ import org.sonarqube.ws.AlmSettings.GetBindingWsResponse;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
-import static org.sonar.api.web.UserRole.ADMIN;
 import static org.sonar.api.web.UserRole.USER;
 import static org.sonar.test.JsonAssert.assertJson;
 
@@ -48,7 +47,7 @@ public class GetBindingActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create();
+  public DbTester db = DbTester.create(true);
 
   private WsActionTester ws = new WsActionTester(new GetBindingAction(db.getDbClient(), userSession, new ComponentFinder(db.getDbClient(), null)));
 
@@ -58,12 +57,12 @@ public class GetBindingActionIT {
   @Before
   public void before() {
     user = db.users().insertUser();
-    project = db.components().insertPrivateProjectDto();
+    project = db.components().insertPrivateProject().getProjectDto();
   }
 
   @Test
   public void get_github_project_binding() {
-    userSession.logIn(user).addProjectPermission(ADMIN, project);
+    userSession.logIn(user).addProjectPermission(USER, project);
     AlmSettingDto githubAlmSetting = db.almSettings().insertGitHubAlmSetting();
     ProjectAlmSettingDto githubProjectAlmSetting = db.almSettings().insertGitHubProjectAlmSetting(githubAlmSetting, project);
 
@@ -80,7 +79,7 @@ public class GetBindingActionIT {
 
   @Test
   public void get_azure_project_binding() {
-    userSession.logIn(user).addProjectPermission(ADMIN, project);
+    userSession.logIn(user).addProjectPermission(USER, project);
     AlmSettingDto almSetting = db.almSettings().insertAzureAlmSetting();
     ProjectAlmSettingDto projectAlmSettingDto = db.almSettings().insertAzureMonoRepoProjectAlmSetting(almSetting, project);
 
@@ -100,8 +99,8 @@ public class GetBindingActionIT {
   @Test
   public void get_gitlab_project_binding() {
     UserDto user = db.users().insertUser();
-    ProjectDto project = db.components().insertPrivateProjectDto();
-    userSession.logIn(user).addProjectPermission(ADMIN, project);
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
+    userSession.logIn(user).addProjectPermission(USER, project);
     AlmSettingDto almSetting = db.almSettings().insertGitlabAlmSetting();
     db.almSettings().insertGitlabProjectAlmSetting(almSetting, project);
 
@@ -119,7 +118,7 @@ public class GetBindingActionIT {
 
   @Test
   public void get_bitbucket_project_binding() {
-    userSession.logIn(user).addProjectPermission(ADMIN, project);
+    userSession.logIn(user).addProjectPermission(USER, project);
     AlmSettingDto almSetting = db.almSettings().insertBitbucketAlmSetting();
     ProjectAlmSettingDto projectAlmSettingDto = db.almSettings().insertBitbucketProjectAlmSetting(almSetting, project);
 
@@ -137,7 +136,7 @@ public class GetBindingActionIT {
 
   @Test
   public void fail_when_project_does_not_exist() {
-    userSession.logIn(user).addProjectPermission(ADMIN, project);
+    userSession.logIn(user).addProjectPermission(USER, project);
     AlmSettingDto githubAlmSetting = db.almSettings().insertGitHubAlmSetting();
     db.almSettings().insertGitHubProjectAlmSetting(githubAlmSetting, project);
 
@@ -148,8 +147,8 @@ public class GetBindingActionIT {
   }
 
   @Test
-  public void fail_when_missing_administer_permission_on_project() {
-    userSession.logIn(user).addProjectPermission(USER, project);
+  public void fail_when_missing_browse_permission_on_project() {
+    userSession.logIn(user);
     AlmSettingDto githubAlmSetting = db.almSettings().insertGitHubAlmSetting();
     db.almSettings().insertGitHubProjectAlmSetting(githubAlmSetting, project);
 
@@ -161,7 +160,7 @@ public class GetBindingActionIT {
 
   @Test
   public void json_example() {
-    userSession.logIn(user).addProjectPermission(ADMIN, project);
+    userSession.logIn(user).addProjectPermission(USER, project);
     AlmSettingDto githubAlmSetting = db.almSettings().insertGitHubAlmSetting(
       almSettingDto -> almSettingDto
         .setKey("GitHub Server - Dev Team")

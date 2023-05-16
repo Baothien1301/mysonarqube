@@ -75,7 +75,7 @@ public class ImportAzureProjectActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create();
+  public DbTester db = DbTester.create(true);
   @Rule
   public final I18nRule i18n = new I18nRule();
 
@@ -85,7 +85,7 @@ public class ImportAzureProjectActionIT {
 
   private final ComponentUpdater componentUpdater = new ComponentUpdater(db.getDbClient(), i18n, System2.INSTANCE,
     mock(PermissionTemplateService.class), new FavoriteUpdater(db.getDbClient()), new TestProjectIndexers(), new SequenceUuidFactory(),
-    defaultBranchNameResolver);
+    defaultBranchNameResolver, true);
 
   private final Encryption encryption = mock(Encryption.class);
   private final ImportHelper importHelper = new ImportHelper(db.getDbClient(), userSession);
@@ -249,7 +249,7 @@ public class ImportAzureProjectActionIT {
       dto.setUserUuid(user.getUuid());
     });
     GsonAzureRepo repo = getGsonAzureRepo();
-    db.components().insertPublicProject(p -> p.setKey(GENERATED_PROJECT_KEY));
+    db.components().insertPublicProject(p -> p.setKey(GENERATED_PROJECT_KEY)).getMainBranchComponent();
 
     when(azureDevOpsHttpClient.getRepo(almSetting.getUrl(), almSetting.getDecryptedPersonalAccessToken(encryption),
       "project-name", "repo-name")).thenReturn(repo);

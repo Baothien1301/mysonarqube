@@ -43,6 +43,7 @@ import org.sonar.db.audit.AuditPersister;
 import org.sonar.db.audit.NoOpAuditPersister;
 import org.sonar.db.component.BranchDto;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.measure.LiveMeasureDto;
 import org.sonar.db.metric.MetricDto;
 import org.sonar.db.qualityprofile.QProfileDto;
@@ -138,8 +139,8 @@ public class ProjectDaoIT {
     var applications = new ArrayList<ProjectDto>();
 
     for (int i = 0; i < 1500; i++) {
-      ProjectDto project = db.components().insertPrivateProjectDto();
-      ProjectDto app = db.components().insertPrivateApplicationDto();
+      ProjectDto project = db.components().insertPrivateProject().getProjectDto();
+      ProjectDto app = db.components().insertPrivateApplication().getProjectDto();
       db.components().addApplicationProject(app, project);
       applications.add(i, app);
     }
@@ -291,7 +292,7 @@ public class ProjectDaoIT {
 
   @Test
   public void update_ncloc_should_update_project() {
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
 
     projectDao.updateNcloc(db.getSession(), project.uuid(), 10L);
 
@@ -300,30 +301,30 @@ public class ProjectDaoIT {
 
   @Test
   public void getNcloc_sum_compute_correctly_sum_of_projects() {
-    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().uuid(), 1L);
-    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().uuid(), 20L);
-    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().uuid(), 100L);
+    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().getMainBranchComponent().uuid(), 1L);
+    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().getMainBranchComponent().uuid(), 20L);
+    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().getMainBranchComponent().uuid(), 100L);
     Assertions.assertThat(projectDao.getNclocSum(db.getSession())).isEqualTo(121L);
   }
 
   @Test
   public void getNcloc_sum_compute_correctly_sum_of_projects_while_excluding_project() {
-    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().uuid(), 1L);
-    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().uuid(), 20L);
-    ComponentDto project3 = db.components().insertPublicProject();
+    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().getMainBranchComponent().uuid(), 1L);
+    projectDao.updateNcloc(db.getSession(), db.components().insertPublicProject().getMainBranchComponent().uuid(), 20L);
+    ComponentDto project3 = db.components().insertPublicProject().getMainBranchComponent();
     projectDao.updateNcloc(db.getSession(), project3.uuid(), 100L);
     Assertions.assertThat(projectDao.getNclocSum(db.getSession(), project3.uuid())).isEqualTo(21L);
   }
   @Test
   public void selectAllProjectUuids_shouldOnlyReturnProjectWithTRKQualifier() {
-    ComponentDto application = db.components().insertPrivateApplication();
-    ComponentDto project = db.components().insertPrivateProject();
-    ComponentDto project2 = db.components().insertPrivateProject();
+    ProjectData application = db.components().insertPrivateApplication();
+    ProjectData project = db.components().insertPrivateProject();
+    ProjectData project2 = db.components().insertPrivateProject();
     db.components().addApplicationProject(application, project, project2);
 
     List<String> projectUuids = projectDao.selectAllProjectUuids(db.getSession());
 
-    assertThat(projectUuids).containsExactlyInAnyOrder(project.uuid(), project2.uuid());
+    assertThat(projectUuids).containsExactlyInAnyOrder(project.projectUuid(), project2.projectUuid());
   }
 
   private void insertDefaultQualityProfile(String language) {
@@ -341,7 +342,7 @@ public class ProjectDaoIT {
   private Set<ComponentDto> insertProjects(int number) {
     return IntStream
       .rangeClosed(0, number)
-      .mapToObj(x -> db.components().insertPrivateProject())
+      .mapToObj(x -> db.components().insertPrivateProject().getMainBranchComponent())
       .collect(Collectors.toSet());
   }
 

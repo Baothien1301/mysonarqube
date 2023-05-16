@@ -44,6 +44,7 @@ import org.sonar.db.scim.ScimUserDto;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Arrays.stream;
+import static org.apache.commons.lang.RandomStringUtils.randomAlphanumeric;
 import static org.apache.commons.lang.math.RandomUtils.nextLong;
 import static org.sonar.db.permission.GlobalPermission.ADMINISTER;
 import static org.sonar.db.user.GroupTesting.newGroupDto;
@@ -133,8 +134,8 @@ public class UserDbTester {
     return Optional.of(users.get(0));
   }
 
-  public Optional<UserDto> selectUserByExternalLoginAndIdentityProvider(String login, String identityProvider) {
-    return Optional.ofNullable(dbClient.userDao().selectByExternalLoginAndIdentityProvider(db.getSession(), login, identityProvider));
+  public Optional<UserDto> selectUserByExternalIdAndIdentityProvider(String externalId, String identityProvider) {
+    return Optional.ofNullable(dbClient.userDao().selectByExternalIdAndIdentityProvider(db.getSession(), externalId, identityProvider));
   }
 
   // GROUPS
@@ -153,6 +154,17 @@ public class UserDbTester {
 
   public GroupDto insertGroup(GroupDto dto) {
     db.getDbClient().groupDao().insert(db.getSession(), dto);
+    db.commit();
+    return dto;
+  }
+
+  public void markGroupAsGithubManaged(String groupUuid) {
+    db.getDbClient().externalGroupDao().insert(db.getSession(), new ExternalGroupDto(groupUuid, randomAlphanumeric(20), "github"));
+    db.commit();
+  }
+
+  public ExternalGroupDto insertExternalGroup(ExternalGroupDto dto) {
+    db.getDbClient().externalGroupDao().insert(db.getSession(), dto);
     db.commit();
     return dto;
   }
@@ -176,6 +188,14 @@ public class UserDbTester {
 
   public Optional<GroupDto> selectGroup(String name) {
     return db.getDbClient().groupDao().selectByName(db.getSession(), name);
+  }
+
+  public int countAllGroups() {
+    return db.getDbClient().groupDao().countByQuery(db.getSession(), new GroupQuery(null, null));
+  }
+
+  public Optional<ExternalGroupDto> selectExternalGroupByGroupUuid(String groupUuid) {
+    return db.getDbClient().externalGroupDao().selectByGroupUuid(db.getSession(), groupUuid);
   }
 
   // GROUP MEMBERSHIP

@@ -61,7 +61,6 @@ describe('issues app', () => {
     it('should support OWASP Top 10 version 2021', async () => {
       const user = userEvent.setup();
       renderIssueApp();
-      await user.click(ui.showFiltersButton().get());
       await user.click(screen.getByRole('button', { name: 'issues.facet.standards' }));
       const owaspTop102021 = screen.getByRole('button', { name: 'issues.facet.owaspTop10_2021' });
       expect(owaspTop102021).toBeInTheDocument();
@@ -247,6 +246,12 @@ describe('issues app', () => {
       // Check that we bulk change the selected issue
       const issueBoxFixThat = within(screen.getByRole('region', { name: 'Fix that' }));
 
+      expect(
+        issueBoxFixThat.getByRole('button', {
+          name: 'issue.type.type_x_click_to_change.issue.type.CODE_SMELL',
+        })
+      ).toBeInTheDocument();
+
       await user.click(
         screen.getByRole('checkbox', { name: 'issues.action_select.label.Fix that' })
       );
@@ -256,14 +261,14 @@ describe('issues app', () => {
       await user.keyboard('New Comment');
       expect(screen.getByRole('button', { name: 'apply' })).toBeDisabled();
 
-      await selectEvent.select(screen.getByRole('combobox', { name: 'issue.set_severity' }), [
-        'severity.BLOCKER',
+      await selectEvent.select(screen.getByRole('combobox', { name: 'issue.set_type' }), [
+        'issue.type.BUG',
       ]);
       await user.click(screen.getByRole('button', { name: 'apply' }));
 
       expect(
         issueBoxFixThat.getByRole('button', {
-          name: 'issue.severity.severity_x_click_to_change.severity.BLOCKER',
+          name: 'issue.type.type_x_click_to_change.issue.type.BUG',
         })
       ).toBeInTheDocument();
     });
@@ -273,10 +278,8 @@ describe('issues app', () => {
       const user = userEvent.setup();
       renderIssueApp();
       await waitOnDataLoaded();
-      await user.click(ui.showFiltersButton().get());
 
       // Ensure issue type filter is unchecked
-      await user.click(ui.typeFacet.get());
       expect(ui.codeSmellIssueTypeFilter.get()).not.toBeChecked();
       expect(ui.vulnerabilityIssueTypeFilter.get()).not.toBeChecked();
       expect(ui.issueItem1.get()).toBeInTheDocument();
@@ -329,23 +332,8 @@ describe('issues app', () => {
       const user = userEvent.setup();
       renderIssueApp();
       await waitOnDataLoaded();
-      await user.click(ui.showFiltersButton().get());
 
-      // Select a characteristic
-      await user.click(ui.clearCharacteristicFilter.get());
-      expect(ui.issueItem1.query()).not.toBeInTheDocument();
-      expect(ui.issueItem2.get()).toBeInTheDocument();
-
-      // Clicking on same filter should uncheck it
-      await user.click(ui.clearCharacteristicFilter.get());
-      expect(ui.issueItem1.get()).toBeInTheDocument();
-      expect(ui.issueItem2.get()).toBeInTheDocument();
-
-      // Select clarity characteristic (should make the first issue disappear)
-      await user.click(ui.clearCharacteristicFilter.get());
-
-      // Select only code smells
-      await user.click(ui.typeFacet.get());
+      // Select only code smells (should make the first issue disappear)
       await user.click(ui.codeSmellIssueTypeFilter.get());
 
       // Select code smells + major severity
@@ -413,7 +401,6 @@ describe('issues app', () => {
       expect(ui.issueItem7.get()).toBeInTheDocument();
 
       // Clear filters one by one
-      await user.click(ui.clearFitForDevelopmentFacet.get());
       await user.click(ui.clearIssueTypeFacet.get());
       await user.click(ui.clearSeverityFacet.get());
       await user.click(ui.clearScopeFacet.get());
@@ -438,7 +425,6 @@ describe('issues app', () => {
       issuesHandler.setCurrentUser(currentUser);
       renderIssueApp(currentUser);
       await waitOnDataLoaded();
-      await user.click(ui.showFiltersButton().get());
 
       // Select a specific date range such that only one issue matches
       await user.click(ui.creationDateFacet.get());
@@ -484,7 +470,6 @@ describe('issues app', () => {
 
       renderIssueApp();
 
-      await user.click(ui.showFiltersButton().get());
       await user.click(await ui.ruleFacet.find());
       await user.type(ui.ruleFacetSearch.get(), 'rule');
       expect(within(ui.ruleFacetList.get()).getAllByRole('checkbox')).toHaveLength(2);
@@ -499,7 +484,6 @@ describe('issues app', () => {
         })
       ).toBeInTheDocument();
 
-      await user.click(await ui.typeFacet.find());
       await user.click(ui.vulnerabilityIssueTypeFilter.get());
       // after changing the issue type filter, search field is reset, so we type again
       await user.type(ui.ruleFacetSearch.get(), 'rule');
@@ -521,7 +505,6 @@ describe('issues app', () => {
 
       renderIssueApp();
 
-      await user.click(ui.showFiltersButton().get());
       await user.click(await ui.languageFacet.find());
       expect(await ui.languageFacetList.find()).toBeInTheDocument();
       expect(
@@ -533,7 +516,6 @@ describe('issues app', () => {
 
       await user.click(ui.languageFacet.get());
       expect(ui.languageFacetList.query()).not.toBeInTheDocument();
-      await user.click(await ui.typeFacet.find());
       await user.click(ui.vulnerabilityIssueTypeFilter.get());
       await user.click(ui.languageFacet.get());
       expect(await ui.languageFacetList.find()).toBeInTheDocument();
@@ -544,6 +526,16 @@ describe('issues app', () => {
         within(ui.languageFacetList.get()).getByRole('checkbox', { name: 'ts' })
       ).toHaveTextContent('ts674');
     });
+  });
+
+  it('should show the new code issues only', async () => {
+    const user = userEvent.setup();
+
+    renderProjectIssuesApp('project/issues?id=myproject');
+
+    expect(await ui.issueItems.findAll()).toHaveLength(7);
+    await user.click(await ui.inNewCodeFilter.find());
+    expect(await ui.issueItems.findAll()).toHaveLength(6);
   });
 });
 
@@ -630,6 +622,22 @@ describe('issues item', () => {
 
     // Get a specific issue list item
     const listItem = within(await screen.findByRole('region', { name: 'Fix that' }));
+
+    // Change issue type
+    await user.click(
+      listItem.getByRole('button', {
+        name: `issue.type.type_x_click_to_change.issue.type.CODE_SMELL`,
+      })
+    );
+    expect(listItem.getByText('issue.type.BUG')).toBeInTheDocument();
+    expect(listItem.getByText('issue.type.VULNERABILITY')).toBeInTheDocument();
+
+    await user.click(listItem.getByText('issue.type.VULNERABILITY'));
+    expect(
+      listItem.getByRole('button', {
+        name: `issue.type.type_x_click_to_change.issue.type.VULNERABILITY`,
+      })
+    ).toBeInTheDocument();
 
     // Change issue severity
     expect(listItem.getByText('severity.MAJOR')).toBeInTheDocument();
@@ -916,14 +924,11 @@ describe('redirects', () => {
     expect(screen.getByText('/security_hotspots?assignedToMe=false')).toBeInTheDocument();
   });
 
-  it('should filter out hotspots', async () => {
-    const user = userEvent.setup();
+  it('should filter out hotspots', () => {
     renderProjectIssuesApp(
       `project/issues?types=${IssueType.SecurityHotspot},${IssueType.CodeSmell}`
     );
-    await waitOnDataLoaded();
 
-    await user.click(ui.typeFacet.get());
     expect(
       screen.getByRole('checkbox', { name: `issue.type.${IssueType.CodeSmell}` })
     ).toBeInTheDocument();

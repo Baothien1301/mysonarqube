@@ -24,12 +24,14 @@ import com.tngtech.java.junit.dataprovider.DataProviderRunner;
 import com.tngtech.java.junit.dataprovider.UseDataProvider;
 import java.util.Optional;
 import javax.annotation.Nullable;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.sonar.api.server.ws.WebService;
 import org.sonar.api.utils.System2;
 import org.sonar.api.web.UserRole;
+import org.sonar.core.documentation.DocumentationLinkGenerator;
 import org.sonar.core.platform.EditionProvider;
 import org.sonar.core.platform.PlatformEditionProvider;
 import org.sonar.core.util.UuidFactoryFast;
@@ -52,6 +54,7 @@ import org.sonar.server.ws.WsActionTester;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.sonar.db.component.BranchDto.DEFAULT_MAIN_BRANCH_NAME;
@@ -61,7 +64,7 @@ public class SetActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
+  public DbTester db = DbTester.create(System2.INSTANCE, true);
 
   private ComponentDbTester componentDb = new ComponentDbTester(db);
   private DbClient dbClient = db.getDbClient();
@@ -69,13 +72,20 @@ public class SetActionIT {
   private ComponentFinder componentFinder = TestComponentFinder.from(db);
   private PlatformEditionProvider editionProvider = mock(PlatformEditionProvider.class);
   private NewCodePeriodDao dao = new NewCodePeriodDao(System2.INSTANCE, UuidFactoryFast.getInstance());
+  private DocumentationLinkGenerator documentationLinkGenerator = mock(DocumentationLinkGenerator.class);
+  private WsActionTester ws;
 
-  private SetAction underTest = new SetAction(dbClient, userSession, componentFinder, editionProvider, dao);
-  private WsActionTester ws = new WsActionTester(underTest);
+  @Before
+  public void setup(){
+    when(documentationLinkGenerator.getDocumentationLink(any())).thenReturn("https://docs.sonarqube.org/9.9/project-administration/defining-new-code/");
+    ws = new WsActionTester(new SetAction(dbClient, userSession, componentFinder, editionProvider, dao, documentationLinkGenerator));
+  }
 
   @Test
   public void test_definition() {
     WebService.Action definition = ws.getDef();
+
+    assertThat(definition.description()).contains("https://docs.sonarqube.org/9.9/project-administration/defining-new-code/");
 
     assertThat(definition.key()).isEqualTo("set");
     assertThat(definition.isInternal()).isFalse();
@@ -113,7 +123,7 @@ public class SetActionIT {
 
   @Test
   public void throw_IAE_if_type_is_invalid_for_project() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -126,7 +136,7 @@ public class SetActionIT {
 
   @Test
   public void throw_IAE_if_no_value_for_days() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -135,12 +145,12 @@ public class SetActionIT {
       .setParam("type", "number_of_days")
       .execute())
       .isInstanceOf(IllegalArgumentException.class)
-      .hasMessageContaining("New Code Period type 'NUMBER_OF_DAYS' requires a value");
+      .hasMessageContaining("New code definition type 'NUMBER_OF_DAYS' requires a value");
   }
 
   @Test
   public void throw_IAE_if_no_value_for_analysis() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -149,12 +159,12 @@ public class SetActionIT {
       .setParam("branch", DEFAULT_MAIN_BRANCH_NAME)
       .execute())
       .isInstanceOf(IllegalArgumentException.class)
-      .hasMessageContaining("New Code Period type 'SPECIFIC_ANALYSIS' requires a value");
+      .hasMessageContaining("New code definition type 'SPECIFIC_ANALYSIS' requires a value");
   }
 
   @Test
   public void throw_IAE_if_days_is_invalid() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -169,7 +179,7 @@ public class SetActionIT {
 
   @Test
   public void throw_IAE_if_analysis_is_not_found() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -184,7 +194,7 @@ public class SetActionIT {
 
   @Test
   public void throw_IAE_if_analysis_doesnt_belong_to_branch() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
 
     SnapshotDto analysisMaster = db.components().insertSnapshot(project);
@@ -225,7 +235,7 @@ public class SetActionIT {
 
   @Test
   public void throw_NFE_if_branch_not_found() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
     assertThatThrownBy(() -> ws.newRequest()
@@ -240,7 +250,7 @@ public class SetActionIT {
   // permission
   @Test
   public void throw_NFE_if_no_project_permission() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
     assertThatThrownBy(() -> ws.newRequest()
       .setParam("project", project.getKey())
@@ -272,7 +282,7 @@ public class SetActionIT {
 
   @Test
   public void set_project_period_to_number_of_days() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
     ws.newRequest()
       .setParam("project", project.getKey())
@@ -286,7 +296,7 @@ public class SetActionIT {
   @UseDataProvider("provideNewCodePeriodTypeAndValue")
   public void never_set_project_value_in_community_edition(NewCodePeriodType type, @Nullable String value) {
     when(editionProvider.get()).thenReturn(Optional.of(EditionProvider.Edition.COMMUNITY));
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
     if (value != null && NewCodePeriodType.SPECIFIC_ANALYSIS.equals(type)) {
       db.components().insertSnapshot(project, snapshotDto -> snapshotDto.setUuid(value));
@@ -317,7 +327,7 @@ public class SetActionIT {
 
   @Test
   public void set_project_twice_period_to_number_of_days() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
     ws.newRequest()
       .setParam("project", project.getKey())
@@ -335,7 +345,7 @@ public class SetActionIT {
 
   @Test
   public void set_branch_period_to_analysis() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
 
     SnapshotDto analysisMaster = db.components().insertSnapshot(project);
@@ -355,7 +365,7 @@ public class SetActionIT {
 
   @Test
   public void set_branch_period_twice_to_analysis() {
-    ComponentDto project = componentDb.insertPublicProject();
+    ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
     ComponentDto branch = componentDb.insertProjectBranch(project, b -> b.setKey("branch"));
 
     SnapshotDto analysisMaster = db.components().insertSnapshot(project);

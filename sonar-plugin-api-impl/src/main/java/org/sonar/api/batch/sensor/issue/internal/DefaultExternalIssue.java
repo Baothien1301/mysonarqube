@@ -39,7 +39,6 @@ public class DefaultExternalIssue extends AbstractDefaultIssue<DefaultExternalIs
   private Long effort;
   private Severity severity;
   private RuleType type;
-  private CodeCharacteristic characteristic;
   private String engineId;
   private String ruleId;
 
@@ -101,8 +100,9 @@ public class DefaultExternalIssue extends AbstractDefaultIssue<DefaultExternalIs
   }
 
   @CheckForNull
+  @Override
   public CodeCharacteristic characteristic() {
-    return characteristic;
+    return null;
   }
 
   @Override
@@ -133,14 +133,14 @@ public class DefaultExternalIssue extends AbstractDefaultIssue<DefaultExternalIs
   }
 
   @Override
-  public DefaultExternalIssue characteristic(CodeCharacteristic characteristic) {
-    this.characteristic = characteristic;
+  public DefaultExternalIssue type(RuleType type) {
+    this.type = type;
     return this;
   }
 
   @Override
-  public DefaultExternalIssue type(RuleType type) {
-    this.type = type;
+  public NewExternalIssue characteristic(CodeCharacteristic characteristic) {
+    // no op
     return this;
   }
 

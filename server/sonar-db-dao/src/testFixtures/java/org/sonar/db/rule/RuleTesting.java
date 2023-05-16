@@ -23,7 +23,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.rule.RuleKey;
 import org.sonar.api.rule.RuleStatus;
 import org.sonar.api.rule.Severity;
@@ -62,10 +61,10 @@ public class RuleTesting {
     // only static helpers
   }
 
+
   public static RuleDto newRule() {
     return newRule(RuleKey.of(randomAlphanumeric(30), randomAlphanumeric(30)));
   }
-
   public static RuleDto newRule(RuleDescriptionSectionDto... ruleDescriptionSectionDtos) {
     return newRule(randomRuleKey(), ruleDescriptionSectionDtos);
   }
@@ -93,7 +92,6 @@ public class RuleTesting {
       .setName("name_" + randomAlphanumeric(5))
       .setDescriptionFormat(RuleDto.Format.HTML)
       .setType(CODE_SMELL)
-      .setCharacteristic(CodeCharacteristic.CLEAR)
       .setStatus(RuleStatus.READY)
       .setConfigKey("configKey_" + ruleKey.rule())
       .setSeverity(Severity.ALL.get(nextInt(Severity.ALL.size())))
@@ -150,6 +148,7 @@ public class RuleTesting {
   public static RuleDto newXooX2() {
     return newRule(XOO_X2).setLanguage("xoo");
   }
+
 
   public static RuleDto newTemplateRule(RuleKey ruleKey) {
     return newRule(ruleKey)
@@ -211,10 +210,6 @@ public class RuleTesting {
 
   public static Consumer<RuleDto> setType(RuleType type) {
     return rule -> rule.setType(type);
-  }
-
-  public static Consumer<RuleDto> setCharacteristic(CodeCharacteristic characteristic) {
-    return rule -> rule.setCharacteristic(characteristic);
   }
 
   public static Consumer<RuleDto> setIsExternal(boolean isExternal) {

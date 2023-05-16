@@ -69,8 +69,7 @@ public class DefaultExternalIssueTest {
       .forRule(RuleKey.of("repo", "rule"))
       .remediationEffortMinutes(10L)
       .type(RuleType.BUG)
-      .severity(Severity.BLOCKER)
-      .characteristic(CodeCharacteristic.SECURE);
+      .severity(Severity.BLOCKER);
 
     assertThat(issue.primaryLocation().inputComponent()).isEqualTo(inputFile);
     assertThat(issue.ruleKey()).isEqualTo(RuleKey.of("external_repo", "rule"));
@@ -80,7 +79,6 @@ public class DefaultExternalIssueTest {
     assertThat(issue.remediationEffort()).isEqualTo(10L);
     assertThat(issue.type()).isEqualTo(RuleType.BUG);
     assertThat(issue.severity()).isEqualTo(Severity.BLOCKER);
-    assertThat(issue.characteristic()).isEqualTo(CodeCharacteristic.SECURE);
     assertThat(issue.primaryLocation().message()).isEqualTo("Wrong way!");
 
     issue.save();
@@ -166,4 +164,11 @@ public class DefaultExternalIssueTest {
       .hasMessageContaining("Severity is mandatory");
   }
 
+  @Test
+  public void characteristic_shouldBeNoOp() {
+    SensorStorage storage = mock(SensorStorage.class);
+    DefaultExternalIssue issue = new DefaultExternalIssue(project, storage);
+    issue.characteristic(CodeCharacteristic.ROBUST);
+    assertThat(issue.characteristic()).isNull();
+  }
 }

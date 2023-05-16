@@ -35,6 +35,11 @@ export enum BuildTools {
   Other = 'other',
 }
 
+export enum GradleBuildDSL {
+  Groovy = 'build.gradle',
+  Kotlin = 'build.gradle.kts',
+}
+
 export enum OSs {
   Linux = 'linux',
   Windows = 'win',

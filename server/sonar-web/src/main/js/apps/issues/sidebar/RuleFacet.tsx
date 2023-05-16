@@ -36,7 +36,6 @@ interface Props {
   query: Query;
   referencedRules: Dict<ReferencedRule>;
   stats: Dict<number> | undefined;
-  forceShow: boolean;
 }
 
 export default class RuleFacet extends React.PureComponent<Props> {
@@ -53,9 +52,9 @@ export default class RuleFacet extends React.PureComponent<Props> {
         : ISSUE_TYPES.filter((type) => type !== IssueType.SecurityHotspot).join(),
       s: 'name',
       include_external: true,
-    }).then((response) => ({
-      paging: { pageIndex: response.p, pageSize: response.ps, total: response.total },
-      results: response.rules,
+    }).then(({ rules, paging }) => ({
+      results: rules,
+      paging,
     }));
   };
 
@@ -79,11 +78,7 @@ export default class RuleFacet extends React.PureComponent<Props> {
   };
 
   render() {
-    const { forceShow, stats, query, open, fetching } = this.props;
-
-    if (query.rules.length < 1 && !forceShow) {
-      return null;
-    }
+    const { fetching, open, query, stats } = this.props;
 
     return (
       <ListStyleFacet<Rule>

@@ -107,11 +107,21 @@
     pb.project_uuid = #{projectUuid, jdbcType=VARCHAR}
   </select>
 
-  <select id="selectMainBranchByProjectUuid" parameterType="string" resultType="org.sonar.db.component.BranchDto">
+  <select id="selectMainBranchByProjectUuid" resultType="org.sonar.db.component.BranchDto">
     select <include refid="columns"/>
     from project_branches pb
     where
     pb.project_uuid = #{projectUuid, jdbcType=VARCHAR}
+    and is_main = ${_true}
+  </select>
+
+  <select id="selectMainBranchesByProjectUuids" parameterType="string" resultType="org.sonar.db.component.BranchDto">
+    select <include refid="columns"/>
+    from project_branches pb
+    where pb.project_uuid in
+    <foreach collection="projectUuids" open="(" close=")" item="uuid" separator=",">
+      #{uuid,jdbcType=VARCHAR}
+    </foreach>
     and is_main = ${_true}
   </select>
 

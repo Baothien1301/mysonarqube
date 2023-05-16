@@ -31,7 +31,6 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.HashCodeBuilder;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.rule.RuleKey;
 import org.sonar.api.rule.RuleStatus;
 import org.sonar.api.rules.RuleType;
@@ -99,7 +98,6 @@ public class RuleDto {
   private String systemTagsField = null;
   private String securityStandardsField = null;
   private int type = 0;
-  private CodeCharacteristic characteristic = null;
   private Scope scope = null;
 
   private RuleKey key = null;
@@ -243,7 +241,7 @@ public class RuleDto {
     return deserializeStringSet(educationPrinciplesField);
   }
 
-  public RuleDto setEducationPrinciples(Set<String> educationPrinciples) {
+  public RuleDto setEducationPrinciples(Set<String> educationPrinciples){
     this.educationPrinciplesField = serializeStringSet(educationPrinciples);
     return this;
   }
@@ -397,20 +395,6 @@ public class RuleDto {
     return this;
   }
 
-  @CheckForNull
-  public CodeCharacteristic getCharacteristic() {
-    return this.characteristic;
-  }
-
-  public CodeCharacteristic getEffectiveCharacteristic() {
-    return characteristic != null ? characteristic : RuleTypeToCodeCharacteristicConverter.convertToCodeCharacteristic(type);
-  }
-
-  public RuleDto setCharacteristic(@Nullable CodeCharacteristic characteristic) {
-    this.characteristic = characteristic;
-    return this;
-  }
-
   public long getCreatedAt() {
     return createdAt;
   }
@@ -428,6 +412,7 @@ public class RuleDto {
     this.updatedAt = updatedAt;
     return this;
   }
+
 
   @CheckForNull
   public String getDefRemediationFunction() {

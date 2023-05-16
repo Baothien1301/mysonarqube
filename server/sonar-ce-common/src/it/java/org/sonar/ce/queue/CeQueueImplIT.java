@@ -56,6 +56,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.sonar.ce.queue.CeQueue.SubmitOption.UNIQUE_QUEUE_PER_MAIN_COMPONENT;
+import static org.sonar.ce.queue.CeQueue.SubmitOption.UNIQUE_QUEUE_PER_TASK_TYPE;
 
 public class CeQueueImplIT {
 
@@ -209,6 +210,22 @@ public class CeQueueImplIT {
   }
 
   @Test
+  public void submit_with_UNIQUE_QUEUE_PER_TASK_TYPE_does_not_create_task_when_there_is_a_task_with_the_same_type() {
+    String mainComponentUuid = randomAlphabetic(5);
+    CeTaskSubmit taskSubmit = createTaskSubmit("some type", newComponent(mainComponentUuid), null);
+    String[] uuids = IntStream.range(0, 2 + new Random().nextInt(5))
+      .mapToObj(i -> insertPendingInQueue(newComponent(mainComponentUuid)))
+      .map(CeQueueDto::getUuid)
+      .toArray(String[]::new);
+    Optional<CeTask> task = underTest.submit(taskSubmit, UNIQUE_QUEUE_PER_TASK_TYPE);
+
+    assertThat(task).isEmpty();
+    assertThat(db.getDbClient().ceQueueDao().selectAllInAscOrder(db.getSession()))
+      .extracting(CeQueueDto::getUuid)
+      .containsOnly(uuids);
+  }
+
+  @Test
   public void massSubmit_returns_tasks_for_each_CeTaskSubmit_populated_from_CeTaskSubmit_and_creates_CeQueue_row_for_each() {
     String mainComponentUuid = randomAlphabetic(10);
     CeTaskSubmit taskSubmit1 = createTaskSubmit(CeTaskTypes.REPORT, newComponent(mainComponentUuid), "submitter uuid");
@@ -239,7 +256,7 @@ public class CeQueueImplIT {
 
   @Test
   public void massSubmit_populates_component_name_and_key_of_CeTask_if_project_and_branch_exists() {
-    ComponentDto project = insertComponent(ComponentTesting.newPrivateProjectDto("PROJECT_1"));
+    ComponentDto project = db.components().insertPublicProject(p -> p.setUuid("PROJECT_1").setBranchUuid("PROJECT_1")).getMainBranchComponent();
     ComponentDto branch1 = db.components().insertProjectBranch(project);
     ComponentDto branch2 = db.components().insertProjectBranch(project);
     CeTaskSubmit taskSubmit1 = createTaskSubmit(CeTaskTypes.REPORT, Component.fromDto(branch1.uuid(), project.uuid()), null);
@@ -298,7 +315,7 @@ public class CeQueueImplIT {
   public void massSubmit_with_UNIQUE_QUEUE_PER_MAIN_COMPONENT_does_not_create_task_when_there_is_many_pending_task_for_same_main_component() {
     String mainComponentUuid = randomAlphabetic(5);
     CeTaskSubmit taskSubmit = createTaskSubmit("with_component", newComponent(mainComponentUuid), null);
-    String[] uuids = IntStream.range(0, 2 + new Random().nextInt(5))
+    String[] uuids = IntStream.range(0, 7)
       .mapToObj(i -> insertPendingInQueue(newComponent(mainComponentUuid)))
       .map(CeQueueDto::getUuid)
       .toArray(String[]::new);

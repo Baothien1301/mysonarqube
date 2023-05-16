@@ -19,8 +19,10 @@
  */
 import classNames from 'classnames';
 import * as React from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import { useSearchParams } from 'react-router-dom';
+import { getSystemInfo } from '../../../../api/system';
 import withAvailableFeatures, {
   WithAvailableFeaturesProps,
 } from '../../../../app/components/available-features/withAvailableFeatures';
@@ -35,9 +37,11 @@ import { searchParamsToQuery } from '../../../../helpers/urls';
 import { AlmKeys } from '../../../../types/alm-settings';
 import { Feature } from '../../../../types/features';
 import { ExtendedSettingDefinition } from '../../../../types/settings';
+import { SysInfoCluster } from '../../../../types/types';
 import { AUTHENTICATION_CATEGORY } from '../../constants';
 import CategoryDefinitionsList from '../CategoryDefinitionsList';
-import SamlAuthentication, { SAML } from './SamlAuthentication';
+import GithubAuthenticationTab from './GithubAuthenticationTab';
+import SamlAuthenticationTab, { SAML } from './SamlAuthenticationTab';
 
 interface Props {
   definitions: ExtendedSettingDefinition[];
@@ -52,7 +56,7 @@ export type AuthenticationTabs =
   | AlmKeys.GitLab
   | AlmKeys.BitbucketServer;
 
-const DOCUMENTATION_LINK_SUFFIXES = {
+export const DOCUMENTATION_LINK_SUFFIXES = {
   [SAML]: 'saml/overview',
   [AlmKeys.GitHub]: 'github',
   [AlmKeys.GitLab]: 'gitlab',
@@ -74,6 +78,16 @@ export function Authentication(props: Props & WithAvailableFeaturesProps) {
   const { definitions } = props;
 
   const [query, setSearchParams] = useSearchParams();
+  const [provider, setProvider] = useState<string>();
+
+  const loadProvider = useCallback(async () => {
+    const info = (await getSystemInfo()) as SysInfoCluster;
+    setProvider(info.System['External Users and Groups Provisioning']);
+  }, []);
+
+  useEffect(() => {
+    loadProvider();
+  }, []);
 
   const currentTab = (query.get('tab') || SAML) as AuthenticationTabs;
 
@@ -109,7 +123,7 @@ export function Authentication(props: Props & WithAvailableFeaturesProps) {
         </>
       ),
     },
-  ];
+  ] as const;
 
   return (
     <>
@@ -151,7 +165,10 @@ export function Authentication(props: Props & WithAvailableFeaturesProps) {
             {tabs.map((tab) => (
               <div
                 style={{
-                  maxHeight: tab.key !== SAML ? `calc(100vh - ${top + HEIGHT_ADJUSTMENT}px)` : '',
+                  maxHeight:
+                    tab.key !== SAML && tab.key !== AlmKeys.GitHub
+                      ? `calc(100vh - ${top + HEIGHT_ADJUSTMENT}px)`
+                      : '',
                 }}
                 className={classNames('bordered overflow-y-auto tabbed-definitions', {
                   hidden: currentTab !== tab.key,
@@ -162,9 +179,23 @@ export function Authentication(props: Props & WithAvailableFeaturesProps) {
                 id={getTabPanelId(tab.key)}
               >
                 <div className="big-padded-top big-padded-left big-padded-right">
-                  {tab.key === SAML && <SamlAuthentication definitions={definitions} />}
+                  {tab.key === SAML && (
+                    <SamlAuthenticationTab
+                      definitions={definitions.filter((def) => def.subCategory === SAML)}
+                      provider={provider}
+                      onReload={() => loadProvider()}
+                    />
+                  )}
 
-                  {tab.key !== SAML && (
+                  {tab.key === AlmKeys.GitHub && (
+                    <GithubAuthenticationTab
+                      definitions={definitions.filter((def) => def.subCategory === AlmKeys.GitHub)}
+                      provider={provider}
+                      onReload={() => loadProvider()}
+                    />
+                  )}
+
+                  {tab.key !== SAML && tab.key !== AlmKeys.GitHub && (
                     <>
                       <Alert variant="info">
                         <FormattedMessage
@@ -174,7 +205,7 @@ export function Authentication(props: Props & WithAvailableFeaturesProps) {
                             link: (
                               <DocLink
                                 to={`/instance-administration/authentication/${
-                                  DOCUMENTATION_LINK_SUFFIXES[tab.key as AuthenticationTabs]
+                                  DOCUMENTATION_LINK_SUFFIXES[tab.key]
                                 }/`}
                               >
                                 {translate('settings.authentication.help.link')}

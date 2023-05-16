@@ -59,7 +59,7 @@ public class SearchAzureReposActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create();
+  public DbTester db = DbTester.create(true);
 
   private final AzureDevOpsHttpClient azureDevOpsHttpClient = mock(AzureDevOpsHttpClient.class);
   private final Encryption encryption = mock(Encryption.class);
@@ -334,7 +334,7 @@ public class SearchAzureReposActionIT {
   }
 
   private ProjectDto insertProject(AlmSettingDto almSetting, String repoName, String projectName) {
-    ProjectDto projectDto1 = db.components().insertPrivateProjectDto();
+    ProjectDto projectDto1 = db.components().insertPrivateProject().getProjectDto();
     db.almSettings().insertAzureProjectAlmSetting(almSetting, projectDto1, projectAlmSettingDto -> projectAlmSettingDto.setAlmRepo(repoName),
       projectAlmSettingDto -> projectAlmSettingDto.setAlmSlug(projectName));
     return projectDto1;

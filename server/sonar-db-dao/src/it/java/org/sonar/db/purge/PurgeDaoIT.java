@@ -64,6 +64,7 @@ import org.sonar.db.component.BranchType;
 import org.sonar.db.component.ComponentDbTester;
 import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ComponentTesting;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.component.SnapshotDto;
 import org.sonar.db.event.EventComponentChangeDto;
 import org.sonar.db.event.EventDto;
@@ -126,15 +127,15 @@ public class PurgeDaoIT {
 
   @Test
   public void purge_failed_ce_tasks() {
-    ComponentDto project = db.components().insertPrivateProject();
-    SnapshotDto pastAnalysis = db.components().insertSnapshot(project, t -> t.setStatus(STATUS_PROCESSED).setLast(false));
-    db.components().insertSnapshot(project, t -> t.setStatus(STATUS_UNPROCESSED).setLast(false));
-    SnapshotDto lastAnalysis = db.components().insertSnapshot(project, t -> t.setStatus(STATUS_PROCESSED).setLast(true));
+    ProjectData project = db.components().insertPrivateProject();
+    SnapshotDto pastAnalysis = db.components().insertSnapshot(project.getMainBranchComponent(), t -> t.setStatus(STATUS_PROCESSED).setLast(false));
+    db.components().insertSnapshot(project.getMainBranchComponent(), t -> t.setStatus(STATUS_UNPROCESSED).setLast(false));
+    SnapshotDto lastAnalysis = db.components().insertSnapshot(project.getMainBranchComponent(), t -> t.setStatus(STATUS_PROCESSED).setLast(true));
 
-    underTest.purge(dbSession, newConfigurationWith30Days(project.uuid()), PurgeListener.EMPTY, new PurgeProfiler());
+    underTest.purge(dbSession, newConfigurationWith30Days(project.getMainBranchComponent().uuid()), PurgeListener.EMPTY, new PurgeProfiler());
     dbSession.commit();
 
-    assertThat(uuidsOfAnalysesOfRoot(project)).containsOnly(pastAnalysis.getUuid(), lastAnalysis.getUuid());
+    assertThat(uuidsOfAnalysesOfRoot(project.getMainBranchComponent())).containsOnly(pastAnalysis.getUuid(), lastAnalysis.getUuid());
   }
 
   /**
@@ -143,16 +144,16 @@ public class PurgeDaoIT {
   @Test
   public void purge_inactive_branches_should_not_purge_newly_created_branches() {
     when(system2.now()).thenReturn(new Date().getTime());
-    ComponentDto project = db.components().insertPublicProject();
+    ProjectData project = db.components().insertPublicProject();
 
     // new branch without a snapshot (analysis not processed yet)
-    ComponentDto pr1 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST));
-    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, project.uuid(), project.uuid()), PurgeListener.EMPTY, new PurgeProfiler());
+    BranchDto pr1 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST));
+    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, project.getMainBranchComponent().branchUuid(), project.getProjectDto().getUuid()), PurgeListener.EMPTY, new PurgeProfiler());
     dbSession.commit();
 
     // pr not purged
-    assertThat(uuidsIn("components")).containsOnly(project.uuid(), pr1.uuid());
-    assertThat(uuidsIn("project_branches")).containsOnly(project.uuid(), pr1.uuid());
+    assertThat(uuidsIn("components")).containsOnly(project.getMainBranchDto().getUuid(), pr1.getUuid());
+    assertThat(uuidsIn("project_branches")).containsOnly(project.getMainBranchDto().getUuid(), pr1.getUuid());
   }
 
   @Test
@@ -160,42 +161,42 @@ public class PurgeDaoIT {
     Date date31DaysAgo = DateUtils.addDays(new Date(), -31);
     when(system2.now()).thenReturn(new Date().getTime());
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
-    ComponentDto branch1 = db.components().insertProjectBranch(project);
-    ComponentDto branch2 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.BRANCH));
-    ComponentDto pr1 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST));
+    ProjectData project = db.components().insertPublicProject();
+    BranchDto branch1 = db.components().insertProjectBranch(project.getProjectDto());
+    BranchDto branch2 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.BRANCH));
+    BranchDto pr1 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST));
 
     db.components().insertSnapshot(branch1);
     db.components().insertSnapshot(branch2);
     db.components().insertSnapshot(pr1);
 
     // branch with other components and issues, last analysed 31 days ago
-    ComponentDto branch3 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.BRANCH).setExcludeFromPurge(false));
+    BranchDto branch3 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.BRANCH).setExcludeFromPurge(false));
     addComponentsSnapshotsAndIssuesToBranch(branch3, rule, 31);
 
     // branch with no analysis
-    ComponentDto branch4 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.BRANCH));
+    BranchDto branch4 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.BRANCH));
 
     // branch last analysed 31 days ago but protected from purge
-    ComponentDto branch5 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.BRANCH).setExcludeFromPurge(true));
+    BranchDto branch5 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.BRANCH).setExcludeFromPurge(true));
     db.components().insertSnapshot(branch5, dto -> dto.setCreatedAt(date31DaysAgo.getTime()));
 
     // pull request last analysed 100 days ago
-    ComponentDto pr2 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST).setExcludeFromPurge(false));
+    BranchDto pr2 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST).setExcludeFromPurge(false));
     addComponentsSnapshotsAndIssuesToBranch(pr2, rule, 100);
 
     // pull request last analysed 100 days ago but marked as "excluded from purge" which should not work for pull requests
-    ComponentDto pr3 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST).setExcludeFromPurge(true));
+    BranchDto pr3 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST).setExcludeFromPurge(true));
     addComponentsSnapshotsAndIssuesToBranch(pr3, rule, 100);
 
-    updateBranchCreationDate(date31DaysAgo, branch1.uuid(), branch2.uuid(), branch3.uuid(), branch4.uuid(), branch5.uuid(), pr1.uuid(), pr2.uuid(), pr3.uuid());
+    updateBranchCreationDate(date31DaysAgo, branch1.getUuid(), branch2.getUuid(), branch3.getUuid(), branch4.getUuid(), branch5.getUuid(), pr1.getUuid(), pr2.getUuid(), pr3.getUuid());
 
-    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, project.uuid(), project.uuid()), PurgeListener.EMPTY, new PurgeProfiler());
+    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, project.getMainBranchDto().getUuid(), project.getProjectDto().getUuid()), PurgeListener.EMPTY, new PurgeProfiler());
     dbSession.commit();
 
     assertThat(uuidsIn("components")).containsOnly(
-      project.uuid(), branch1.uuid(), branch2.uuid(), branch5.uuid(), pr1.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(project.uuid());
+      project.getMainBranchDto().getUuid(), branch1.getUuid(), branch2.getUuid(), branch5.getUuid(), pr1.getUuid());
+    assertThat(uuidsIn("projects")).containsOnly(project.getProjectDto().getUuid());
   }
 
   private void updateBranchCreationDate(Date date, String... branchUuids) {
@@ -208,63 +209,68 @@ public class PurgeDaoIT {
   @Test
   public void purge_inactive_pull_request() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
-    ComponentDto nonMainBranch = db.components().insertProjectBranch(project);
+    ProjectData project = db.components().insertPublicProject();
+    BranchDto nonMainBranch = db.components().insertProjectBranch(project.getProjectDto());
     db.components().insertSnapshot(nonMainBranch);
-    ComponentDto recentPullRequest = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST));
+    BranchDto recentPullRequest = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST));
     db.components().insertSnapshot(recentPullRequest);
 
     // pull request with other components and issues, updated 31 days ago
-    ComponentDto pullRequest = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST));
+    BranchDto pullRequest = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST));
     db.components().insertSnapshot(pullRequest, dto -> dto.setCreatedAt(DateUtils.addDays(new Date(), -31).getTime()));
-    ComponentDto dir = db.components().insertComponent(newDirectory(pullRequest, "path"));
-    ComponentDto file = db.components().insertComponent(newFileDto(pullRequest, dir));
-    db.issues().insert(rule, pullRequest, file);
+    ComponentDto pullRequestComponent = db.components().getComponentDto(pullRequest);
+    ComponentDto dir = db.components().insertComponent(newDirectory(pullRequestComponent, "path"));
+    ComponentDto file = db.components().insertComponent(newFileDto(pullRequestComponent, dir));
+    db.issues().insert(rule, pullRequestComponent, file);
 
-    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, project.uuid(), project.uuid()), PurgeListener.EMPTY, new PurgeProfiler());
+    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, project.getMainBranchComponent().branchUuid(), project.getProjectDto().getUuid()), PurgeListener.EMPTY, new PurgeProfiler());
     dbSession.commit();
 
-    assertThat(uuidsIn("components")).containsOnly(project.uuid(), nonMainBranch.uuid(), recentPullRequest.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(project.uuid());
+    assertThat(uuidsIn("components")).containsOnly(project.getMainBranchDto().getUuid(), nonMainBranch.getUuid(), recentPullRequest.getUuid());
+    assertThat(uuidsIn("projects")).containsOnly(project.getProjectDto().getUuid());
   }
 
   @Test
   public void purge_inactive_branches_when_analyzing_non_main_branch() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
-    ComponentDto nonMainBranch = db.components().insertProjectBranch(project);
+    ProjectData project = db.components().insertPublicProject();
+    BranchDto nonMainBranch = db.components().insertProjectBranch(project.getProjectDto());
     db.components().insertSnapshot(nonMainBranch);
 
     // branch updated 31 days ago
-    ComponentDto branch1 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.BRANCH));
+    BranchDto branch1 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.BRANCH));
     db.components().insertSnapshot(branch1, dto -> dto.setCreatedAt(DateUtils.addDays(new Date(), -31).getTime()));
 
     // branches with other components and issues, updated 31 days ago
-    ComponentDto branch2 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.PULL_REQUEST));
+    BranchDto branch2 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.PULL_REQUEST));
     db.components().insertSnapshot(branch2, dto -> dto.setCreatedAt(DateUtils.addDays(new Date(), -31).getTime()));
-    ComponentDto file = db.components().insertComponent(newFileDto(branch2));
-    db.issues().insert(rule, branch2, file);
 
-    ComponentDto branch3 = db.components().insertProjectBranch(project, b -> b.setBranchType(BranchType.BRANCH));
+    ComponentDto branch2Component = db.components().getComponentDto(branch2);
+    ComponentDto file = db.components().insertComponent(newFileDto(branch2Component));
+    db.issues().insert(rule, branch2Component, file);
+
+    BranchDto branch3 = db.components().insertProjectBranch(project.getProjectDto(), b -> b.setBranchType(BranchType.BRANCH));
     db.components().insertSnapshot(branch3, dto -> dto.setCreatedAt(DateUtils.addDays(new Date(), -31).getTime()));
 
     // properties exist or active and for inactive branch
-    insertPropertyFor(branch3, branch1);
+    ComponentDto branch1Component = db.components().getComponentDto(branch1);
+    ComponentDto branch3Component = db.components().getComponentDto(branch3);
+    insertPropertyFor(branch3Component, branch1Component);
 
     // analysing branch1
-    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, branch1.uuid(), project.uuid()), PurgeListener.EMPTY, new PurgeProfiler());
+    underTest.purge(dbSession, newConfigurationWith30Days(System2.INSTANCE, branch1.getUuid(), project.getProjectDto().getUuid()), PurgeListener.EMPTY, new PurgeProfiler());
     dbSession.commit();
 
     // branch1 wasn't deleted since it was being analyzed!
-    assertThat(uuidsIn("components")).containsOnly(project.uuid(), nonMainBranch.uuid(), branch1.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(project.uuid());
-    assertThat(componentUuidsIn("properties")).containsOnly(branch1.uuid());
+    assertThat(uuidsIn("components")).containsOnly(project.getMainBranchDto().getUuid(), nonMainBranch.getUuid(), branch1.getUuid());
+    assertThat(uuidsIn("projects")).containsOnly(project.getProjectDto().getUuid());
+    assertThat(componentUuidsIn("properties")).containsOnly(branch1.getUuid());
   }
 
   @Test
   public void close_issues_clean_index_and_file_sources_of_disabled_components_specified_by_uuid_in_configuration() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     db.components().insertSnapshot(project);
     db.components().insertSnapshot(project);
     db.components().insertSnapshot(project, s -> s.setLast(false));
@@ -346,11 +352,11 @@ public class PurgeDaoIT {
 
   @Test
   public void shouldDeleteAnalyses() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     SnapshotDto analysis1 = db.components().insertSnapshot(project);
     SnapshotDto analysis2 = db.components().insertSnapshot(project);
     SnapshotDto analysis3 = db.components().insertSnapshot(project);
-    ComponentDto otherProject = db.components().insertPrivateProject();
+    ComponentDto otherProject = db.components().insertPrivateProject().getMainBranchComponent();
     SnapshotDto otherAnalysis1 = db.components().insertSnapshot(otherProject);
 
     underTest.deleteAnalyses(dbSession, new PurgeProfiler(), singletonList(analysis1.getUuid()));
@@ -374,8 +380,8 @@ public class PurgeDaoIT {
     EventDto projectEvent2 = db.events().insertEvent(projectAnalysis2);
     EventDto projectEvent3 = db.events().insertEvent(projectAnalysis3);
     // note: projectAnalysis4 has no event
-    ComponentDto referencedProjectA = db.components().insertPublicProject();
-    ComponentDto referencedProjectB = db.components().insertPublicProject();
+    ComponentDto referencedProjectA = db.components().insertPublicProject().getMainBranchComponent();
+    ComponentDto referencedProjectB = db.components().insertPublicProject().getMainBranchComponent();
     db.events().insertEventComponentChanges(projectEvent1, projectAnalysis1, randomChangeCategory(), referencedProjectA, null);
     db.events().insertEventComponentChanges(projectEvent1, projectAnalysis1, randomChangeCategory(), referencedProjectB, null);
     BranchDto branchProjectA = newBranchDto(referencedProjectA);
@@ -478,7 +484,7 @@ public class PurgeDaoIT {
 
   @Test
   public void selectPurgeableAnalyses_does_not_return_the_baseline() {
-    ComponentDto project1 = db.components().insertPublicProject("master");
+    ComponentDto project1 = db.components().insertPublicProject("master").getMainBranchComponent();
     SnapshotDto analysis1 = db.components().insertSnapshot(newSnapshot()
       .setComponentUuid(project1.uuid())
       .setStatus(STATUS_PROCESSED)
@@ -489,7 +495,7 @@ public class PurgeDaoIT {
         .setBranchUuid(project1.uuid())
         .setType(NewCodePeriodType.SPECIFIC_ANALYSIS)
         .setValue(analysis1.getUuid()));
-    ComponentDto project2 = db.components().insertPrivateProject();
+    ComponentDto project2 = db.components().insertPrivateProject().getMainBranchComponent();
     SnapshotDto analysis2 = db.components().insertSnapshot(newSnapshot()
       .setComponentUuid(project2.uuid())
       .setStatus(STATUS_PROCESSED)
@@ -504,7 +510,7 @@ public class PurgeDaoIT {
 
   @Test
   public void selectPurgeableAnalyses_does_not_return_the_baseline_of_specific_branch() {
-    ComponentDto project = db.components().insertPublicProject("master");
+    ComponentDto project = db.components().insertPublicProject("master").getMainBranchComponent();
     SnapshotDto analysisProject = db.components().insertSnapshot(newSnapshot()
       .setComponentUuid(project.uuid())
       .setStatus(STATUS_PROCESSED)
@@ -545,31 +551,32 @@ public class PurgeDaoIT {
   @Test
   public void delete_project_and_associated_data() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPrivateProject();
-    ComponentDto directory = db.components().insertComponent(newDirectory(project, "a/b"));
+    ProjectData project = db.components().insertPrivateProject();
+    ComponentDto directory = db.components().insertComponent(newDirectory(project.getMainBranchComponent(), "a/b"));
     ComponentDto file = db.components().insertComponent(newFileDto(directory));
-    SnapshotDto analysis = db.components().insertSnapshot(project);
-    IssueDto issue1 = db.issues().insert(rule, project, file);
+    SnapshotDto analysis = db.components().insertSnapshot(project.getProjectDto());
+    IssueDto issue1 = db.issues().insert(rule, project.getMainBranchComponent(), file);
     IssueChangeDto issueChange1 = db.issues().insertChange(issue1);
-    IssueDto issue2 = db.issues().insert(rule, project, file);
+    IssueDto issue2 = db.issues().insert(rule, project.getMainBranchComponent(), file);
     FileSourceDto fileSource = db.fileSources().insertFileSource(file);
     db.issues().insertNewCodeReferenceIssue(newCodeReferenceIssue(issue1));
 
-    ComponentDto otherProject = db.components().insertPrivateProject();
-    ComponentDto otherDirectory = db.components().insertComponent(newDirectory(otherProject, "a/b"));
+    ProjectData otherProject = db.components().insertPrivateProject();
+    ComponentDto otherDirectory = db.components().insertComponent(newDirectory(otherProject.getMainBranchComponent(), "a/b"));
     ComponentDto otherFile = db.components().insertComponent(newFileDto(otherDirectory));
-    SnapshotDto otherAnalysis = db.components().insertSnapshot(otherProject);
-    IssueDto otherIssue1 = db.issues().insert(rule, otherProject, otherFile);
+    SnapshotDto otherAnalysis = db.components().insertSnapshot(otherProject.getProjectDto());
+    IssueDto otherIssue1 = db.issues().insert(rule, otherProject.getMainBranchComponent(), otherFile);
     IssueChangeDto otherIssueChange1 = db.issues().insertChange(otherIssue1);
-    IssueDto otherIssue2 = db.issues().insert(rule, otherProject, otherFile);
+    IssueDto otherIssue2 = db.issues().insert(rule, otherProject.getMainBranchComponent(), otherFile);
     FileSourceDto otherFileSource = db.fileSources().insertFileSource(otherFile);
     db.issues().insertNewCodeReferenceIssue(newCodeReferenceIssue(otherIssue1));
 
-    underTest.deleteProject(dbSession, project.uuid(), project.qualifier(), project.name(), project.getKey());
+    ProjectDto projectDto = project.getProjectDto();
+    underTest.deleteProject(dbSession, projectDto.getUuid(), projectDto.getQualifier(), projectDto.getName(), projectDto.getKey());
     dbSession.commit();
 
-    assertThat(uuidsIn("components")).containsOnly(otherProject.uuid(), otherDirectory.uuid(), otherFile.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(otherProject.uuid());
+    assertThat(uuidsIn("components")).containsOnly(otherProject.getMainBranchDto().getUuid(), otherDirectory.uuid(), otherFile.uuid());
+    assertThat(uuidsIn("projects")).containsOnly(otherProject.getProjectDto().getUuid());
     assertThat(uuidsIn("snapshots")).containsOnly(otherAnalysis.getUuid());
     assertThat(uuidsIn("issues", "kee")).containsOnly(otherIssue1.getKey(), otherIssue2.getKey());
     assertThat(uuidsIn("issue_changes", "kee")).containsOnly(otherIssueChange1.getKey());
@@ -580,91 +587,96 @@ public class PurgeDaoIT {
   @Test
   public void delete_application() {
     MetricDto metric = db.measures().insertMetric();
-    ComponentDto project = db.components().insertPrivateProject();
-    BranchDto projectBranch = db.getDbClient().branchDao().selectByUuid(db.getSession(), project.uuid()).get();
+    ProjectData project = db.components().insertPrivateProject();
+    BranchDto mainBranch = db.getDbClient().branchDao().selectByUuid(db.getSession(), project.getMainBranchDto().getUuid()).get();
     RuleDto rule = db.rules().insert();
 
-    ComponentDto app = db.components().insertPrivateApplication();
-    ComponentDto appBranch = db.components().insertProjectBranch(app);
-    ComponentDto otherApp = db.components().insertPrivateApplication();
-    ComponentDto otherAppBranch = db.components().insertProjectBranch(otherApp);
+    ProjectData app = db.components().insertPrivateApplication();
+    BranchDto appBranch = db.components().insertProjectBranch(app.getProjectDto());
+    ProjectData otherApp = db.components().insertPrivateApplication();
+    BranchDto otherAppBranch = db.components().insertProjectBranch(otherApp.getProjectDto());
 
-    SnapshotDto appAnalysis = db.components().insertSnapshot(app);
+    SnapshotDto appAnalysis = db.components().insertSnapshot(app.getProjectDto());
     SnapshotDto appBranchAnalysis = db.components().insertSnapshot(appBranch);
-    SnapshotDto otherAppAnalysis = db.components().insertSnapshot(otherApp);
+    SnapshotDto otherAppAnalysis = db.components().insertSnapshot(otherApp.getProjectDto());
     SnapshotDto otherAppBranchAnalysis = db.components().insertSnapshot(otherAppBranch);
 
-    MeasureDto appMeasure = db.measures().insertMeasure(app, appAnalysis, metric);
-    MeasureDto appBranchMeasure = db.measures().insertMeasure(appBranch, appBranchAnalysis, metric);
-    MeasureDto otherAppMeasure = db.measures().insertMeasure(otherApp, otherAppAnalysis, metric);
-    MeasureDto otherAppBranchMeasure = db.measures().insertMeasure(otherAppBranch, otherAppBranchAnalysis, metric);
+    MeasureDto appMeasure = db.measures().insertMeasure(app.getMainBranchComponent(), appAnalysis, metric);
+    ComponentDto appBranchComponent = db.components().getComponentDto(appBranch);
+    MeasureDto appBranchMeasure = db.measures().insertMeasure(appBranchComponent, appBranchAnalysis, metric);
+    MeasureDto otherAppMeasure = db.measures().insertMeasure(otherApp.getMainBranchComponent(), otherAppAnalysis, metric);
+    ComponentDto otherAppBranchComponent = db.components().getComponentDto(otherAppBranch);
+    MeasureDto otherAppBranchMeasure = db.measures().insertMeasure(otherAppBranchComponent, otherAppBranchAnalysis, metric);
 
-    db.components().addApplicationProject(app, project);
-    db.components().addApplicationProject(otherApp, project);
-    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, appBranch.uuid()).get(), projectBranch);
-    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, otherAppBranch.uuid()).get(), projectBranch);
+    db.components().addApplicationProject(app.getProjectDto(), project.getProjectDto());
+    db.components().addApplicationProject(otherApp.getProjectDto(), project.getProjectDto());
+    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, appBranch.getUuid()).get(), mainBranch);
+    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, otherAppBranch.getUuid()).get(), mainBranch);
 
-    underTest.deleteProject(dbSession, app.uuid(), app.qualifier(), project.name(), project.getKey());
+    ProjectDto appDto = app.getProjectDto();
+    underTest.deleteProject(dbSession, appDto.getUuid(), appDto.getQualifier(), appDto.getName(), appDto.getKey());
     dbSession.commit();
 
-    assertThat(uuidsIn("components")).containsOnly(project.uuid(), otherApp.uuid(), otherAppBranch.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(project.uuid(), otherApp.uuid());
+    assertThat(uuidsIn("components")).containsOnly(project.getMainBranchDto().getUuid(), otherApp.getMainBranchDto().getUuid(), otherAppBranch.getUuid());
+    assertThat(uuidsIn("projects")).containsOnly(project.getProjectDto().getUuid(), otherApp.getProjectDto().getUuid());
     assertThat(uuidsIn("snapshots")).containsOnly(otherAppAnalysis.getUuid(), otherAppBranchAnalysis.getUuid());
-    assertThat(uuidsIn("project_branches")).containsOnly(project.uuid(), otherApp.uuid(), otherAppBranch.uuid());
+    assertThat(uuidsIn("project_branches")).containsOnly(project.getMainBranchDto().getUuid(), otherApp.getMainBranchDto().getUuid(), otherAppBranch.getUuid());
     assertThat(uuidsIn("project_measures")).containsOnly(otherAppMeasure.getUuid(), otherAppBranchMeasure.getUuid());
-    assertThat(uuidsIn("app_projects", "application_uuid")).containsOnly(otherApp.uuid());
-    assertThat(uuidsIn("app_branch_project_branch", "application_branch_uuid")).containsOnly(otherAppBranch.uuid());
+    assertThat(uuidsIn("app_projects", "application_uuid")).containsOnly(otherApp.getProjectDto().getUuid());
+    assertThat(uuidsIn("app_branch_project_branch", "application_branch_uuid")).containsOnly(otherAppBranch.getUuid());
   }
 
   @Test
   public void delete_application_branch() {
     MetricDto metric = db.measures().insertMetric();
-    ComponentDto project = db.components().insertPrivateProject();
-    BranchDto projectBranch = db.getDbClient().branchDao().selectByUuid(db.getSession(), project.uuid()).get();
+    ProjectData project = db.components().insertPrivateProject();
+    BranchDto projectBranch = db.getDbClient().branchDao().selectByUuid(db.getSession(), project.getMainBranchDto().getUuid()).get();
     RuleDto rule = db.rules().insert();
 
-    ComponentDto app = db.components().insertPrivateApplication();
-    ComponentDto appBranch = db.components().insertProjectBranch(app);
-    ComponentDto otherApp = db.components().insertPrivateApplication();
-    ComponentDto otherAppBranch = db.components().insertProjectBranch(otherApp);
+    ProjectData app = db.components().insertPrivateApplication();
+    BranchDto appBranch = db.components().insertProjectBranch(app.getProjectDto());
+    ProjectData otherApp = db.components().insertPrivateApplication();
+    BranchDto otherAppBranch = db.components().insertProjectBranch(otherApp.getProjectDto());
 
-    SnapshotDto appAnalysis = db.components().insertSnapshot(app);
+    SnapshotDto appAnalysis = db.components().insertSnapshot(app.getProjectDto());
     SnapshotDto appBranchAnalysis = db.components().insertSnapshot(appBranch);
-    SnapshotDto otherAppAnalysis = db.components().insertSnapshot(otherApp);
+    SnapshotDto otherAppAnalysis = db.components().insertSnapshot(otherApp.getProjectDto());
     SnapshotDto otherAppBranchAnalysis = db.components().insertSnapshot(otherAppBranch);
 
-    MeasureDto appMeasure = db.measures().insertMeasure(app, appAnalysis, metric);
-    MeasureDto appBranchMeasure = db.measures().insertMeasure(appBranch, appBranchAnalysis, metric);
-    MeasureDto otherAppMeasure = db.measures().insertMeasure(otherApp, otherAppAnalysis, metric);
-    MeasureDto otherAppBranchMeasure = db.measures().insertMeasure(otherAppBranch, otherAppBranchAnalysis, metric);
+    MeasureDto appMeasure = db.measures().insertMeasure(app.getMainBranchComponent(), appAnalysis, metric);
+    ComponentDto appBranchComponent = db.components().getComponentDto(appBranch);
+    MeasureDto appBranchMeasure = db.measures().insertMeasure(appBranchComponent, appBranchAnalysis, metric);
+    MeasureDto otherAppMeasure = db.measures().insertMeasure(otherApp.getMainBranchComponent(), otherAppAnalysis, metric);
+    ComponentDto otherAppBranchComponent = db.components().getComponentDto(otherAppBranch);
+    MeasureDto otherAppBranchMeasure = db.measures().insertMeasure(otherAppBranchComponent, otherAppBranchAnalysis, metric);
 
-    db.components().addApplicationProject(app, project);
-    db.components().addApplicationProject(otherApp, project);
-    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, appBranch.uuid()).get(), projectBranch);
-    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, otherAppBranch.uuid()).get(), projectBranch);
+    db.components().addApplicationProject(app.getProjectDto(), project.getProjectDto());
+    db.components().addApplicationProject(otherApp.getProjectDto(), project.getProjectDto());
+    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, appBranch.getUuid()).get(), projectBranch);
+    db.components().addProjectBranchToApplicationBranch(dbClient.branchDao().selectByUuid(dbSession, otherAppBranch.getUuid()).get(), projectBranch);
 
     // properties exist or active and for inactive branch
-    insertPropertyFor(appBranch, otherAppBranch);
+    insertPropertyFor(appBranchComponent, otherAppBranchComponent);
 
-    underTest.deleteBranch(dbSession, appBranch.uuid());
+    underTest.deleteBranch(dbSession, appBranch.getUuid());
     dbSession.commit();
 
-    assertThat(uuidsIn("components")).containsOnly(project.uuid(), app.uuid(), otherApp.uuid(), otherAppBranch.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(project.uuid(), app.uuid(), otherApp.uuid());
+    assertThat(uuidsIn("components")).containsOnly(project.getMainBranchDto().getUuid(), app.getMainBranchDto().getUuid(), otherApp.getMainBranchDto().getUuid(), otherAppBranch.getUuid());
+    assertThat(uuidsIn("projects")).containsOnly(project.getProjectDto().getUuid(), app.getProjectDto().getUuid(), otherApp.getProjectDto().getUuid());
     assertThat(uuidsIn("snapshots")).containsOnly(otherAppAnalysis.getUuid(), appAnalysis.getUuid(), otherAppBranchAnalysis.getUuid());
-    assertThat(uuidsIn("project_branches")).containsOnly(project.uuid(), app.uuid(), otherApp.uuid(), otherAppBranch.uuid());
+    assertThat(uuidsIn("project_branches")).containsOnly(project.getMainBranchDto().getUuid(), app.getMainBranchDto().getUuid(), otherApp.getMainBranchDto().getUuid(), otherAppBranch.getUuid());
     assertThat(uuidsIn("project_measures")).containsOnly(appMeasure.getUuid(), otherAppMeasure.getUuid(), otherAppBranchMeasure.getUuid());
-    assertThat(uuidsIn("app_projects", "application_uuid")).containsOnly(app.uuid(), otherApp.uuid());
-    assertThat(uuidsIn("app_branch_project_branch", "application_branch_uuid")).containsOnly(otherAppBranch.uuid());
-    assertThat(componentUuidsIn("properties")).containsOnly(otherAppBranch.uuid());
+    assertThat(uuidsIn("app_projects", "application_uuid")).containsOnly(app.getProjectDto().getUuid(), otherApp.getProjectDto().getUuid());
+    assertThat(uuidsIn("app_branch_project_branch", "application_branch_uuid")).containsOnly(otherAppBranch.getUuid());
+    assertThat(componentUuidsIn("properties")).containsOnly(otherAppBranch.getUuid());
   }
 
   @Test
   public void delete_webhooks_from_project() {
-    ProjectDto project1 = db.components().insertPrivateProjectDto();
+    ProjectDto project1 = db.components().insertPrivateProject().getProjectDto();
     WebhookDto webhook = db.webhooks().insertWebhook(project1);
     db.webhookDelivery().insert(webhook);
-    ProjectDto projectNotToBeDeleted = db.components().insertPrivateProjectDto();
+    ProjectDto projectNotToBeDeleted = db.components().insertPrivateProject().getProjectDto();
     WebhookDto webhookNotDeleted = db.webhooks().insertWebhook(projectNotToBeDeleted);
     WebhookDeliveryLiteDto webhookDeliveryNotDeleted = db.webhookDelivery().insert(webhookNotDeleted);
 
@@ -834,8 +846,8 @@ public class PurgeDaoIT {
   public void delete_rows_in_user_dismissed_messages_when_deleting_project() {
     UserDto user1 = db.users().insertUser();
     UserDto user2 = db.users().insertUser();
-    ProjectDto project = db.components().insertPrivateProjectDto();
-    ProjectDto anotherProject = db.components().insertPrivateProjectDto();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
+    ProjectDto anotherProject = db.components().insertPrivateProject().getProjectDto();
 
     UserDismissedMessageDto msg1 = db.users().insertUserDismissedMessage(user1, project, CeTaskMessageType.SUGGEST_DEVELOPER_EDITION_UPGRADE);
     UserDismissedMessageDto msg2 = db.users().insertUserDismissedMessage(user2, project, CeTaskMessageType.SUGGEST_DEVELOPER_EDITION_UPGRADE);
@@ -851,8 +863,8 @@ public class PurgeDaoIT {
 
   @Test
   public void delete_tasks_in_ce_queue_when_deleting_project() {
-    ComponentDto projectToBeDeleted = db.components().insertPrivateProject();
-    ComponentDto anotherLivingProject = db.components().insertPrivateProject();
+    ComponentDto projectToBeDeleted = db.components().insertPrivateProject().getMainBranchComponent();
+    ComponentDto anotherLivingProject = db.components().insertPrivateProject().getMainBranchComponent();
 
     // Insert 3 rows in CE_QUEUE: two for the project that will be deleted (in order to check that status
     // is not involved in deletion), and one on another project
@@ -1030,8 +1042,8 @@ public class PurgeDaoIT {
     EventDto anotherBranchEvent = db.events().insertEvent(anotherBranchAnalysis);
     SnapshotDto anotherProjectAnalysis = db.components().insertSnapshot(anotherProject);
     EventDto anotherProjectEvent = db.events().insertEvent(anotherProjectAnalysis);
-    ComponentDto referencedProjectA = db.components().insertPublicProject();
-    ComponentDto referencedProjectB = db.components().insertPublicProject();
+    ComponentDto referencedProjectA = db.components().insertPublicProject().getMainBranchComponent();
+    ComponentDto referencedProjectB = db.components().insertPublicProject().getMainBranchComponent();
     db.events().insertEventComponentChanges(projectEvent1, projectAnalysis1, randomChangeCategory(), referencedProjectA, null);
     db.events().insertEventComponentChanges(projectEvent1, projectAnalysis1, randomChangeCategory(), referencedProjectB, null);
     BranchDto branchProjectA = newBranchDto(referencedProjectA);
@@ -1072,32 +1084,33 @@ public class PurgeDaoIT {
     return EventComponentChangeDto.ChangeCategory.values()[new Random().nextInt(EventComponentChangeDto.ChangeCategory.values().length)];
   }
 
-  private ComponentDto insertProjectWithBranchAndRelatedData() {
+  private ProjectDto insertProjectWithBranchAndRelatedData() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
-    ComponentDto branch = db.components().insertProjectBranch(project);
-    ComponentDto dir = db.components().insertComponent(newDirectory(branch, "path"));
-    ComponentDto file = db.components().insertComponent(newFileDto(branch, dir));
-    db.issues().insert(rule, branch, file);
-    db.issues().insert(rule, branch, dir);
-    return project;
+    ProjectData project = db.components().insertPublicProject();
+    BranchDto branch = db.components().insertProjectBranch(project.getProjectDto());
+    ComponentDto branchComponent = db.components().getComponentDto(branch);
+    ComponentDto dir = db.components().insertComponent(newDirectory(branchComponent, "path"));
+    ComponentDto file = db.components().insertComponent(newFileDto(branchComponent, dir));
+    db.issues().insert(rule, branchComponent, file);
+    db.issues().insert(rule, branchComponent, dir);
+    return project.getProjectDto();
   }
 
   @Test
   public void delete_branch_content_when_deleting_project() {
-    ComponentDto anotherLivingProject = insertProjectWithBranchAndRelatedData();
+    ProjectDto anotherLivingProject = insertProjectWithBranchAndRelatedData();
     int projectEntryCount = db.countRowsOfTable("components");
     int issueCount = db.countRowsOfTable("issues");
     int branchCount = db.countRowsOfTable("project_branches");
     Collection<BranchDto> anotherLivingProjectBranches = db.getDbClient().branchDao()
-      .selectByComponent(db.getSession(), anotherLivingProject);
+      .selectByProject(db.getSession(), anotherLivingProject);
     insertPropertyFor(anotherLivingProjectBranches);
 
     assertThat(db.countRowsOfTable("properties")).isEqualTo(anotherLivingProjectBranches.size());
 
-    ComponentDto projectToDelete = insertProjectWithBranchAndRelatedData();
+    ProjectDto projectToDelete = insertProjectWithBranchAndRelatedData();
     Collection<BranchDto> projectToDeleteBranches = db.getDbClient().branchDao()
-      .selectByComponent(db.getSession(), projectToDelete);
+      .selectByProject(db.getSession(), projectToDelete);
     insertPropertyFor(projectToDeleteBranches);
 
     assertThat(db.countRowsOfTable("properties")).isEqualTo(anotherLivingProjectBranches.size() + projectToDeleteBranches.size());
@@ -1105,7 +1118,7 @@ public class PurgeDaoIT {
     assertThat(db.countRowsOfTable("issues")).isGreaterThan(issueCount);
     assertThat(db.countRowsOfTable("project_branches")).isGreaterThan(branchCount);
 
-    underTest.deleteProject(dbSession, projectToDelete.uuid(), projectToDelete.qualifier(), projectToDelete.name(), projectToDelete.getKey());
+    underTest.deleteProject(dbSession, projectToDelete.getUuid(), projectToDelete.getQualifier(), projectToDelete.getName(), projectToDelete.getKey());
     dbSession.commit();
 
     assertThat(db.countRowsOfTable("components")).isEqualTo(projectEntryCount);
@@ -1116,7 +1129,7 @@ public class PurgeDaoIT {
 
   @Test
   public void delete_view_and_child() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto view = db.components().insertPrivatePortfolio();
     ComponentDto subView = db.components().insertComponent(newSubPortfolio(view));
     ComponentDto projectCopy = db.components().insertComponent(newProjectCopy(project, subView));
@@ -1132,9 +1145,30 @@ public class PurgeDaoIT {
   }
 
   @Test
+  public void purge_shouldDeleteOrphanIssues() {
+    RuleDto rule = db.rules().insert();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
+    ComponentDto otherProject = db.components().insertPublicProject().getMainBranchComponent();
+    ComponentDto dir = db.components().insertComponent(newDirectory(project, "path"));
+    ComponentDto file = db.components().insertComponent(newFileDto(project, dir));
+
+    IssueDto issue1 = db.issues().insert(rule, project, file);
+    IssueDto orphanIssue = db.issues().insert(rule, project, file, issue -> issue.setComponentUuid("nonExisting"));
+    IssueChangeDto orphanIssueChange = db.issues().insertChange(orphanIssue);
+    db.issues().insertNewCodeReferenceIssue(orphanIssue);
+
+    underTest.purge(dbSession, newConfigurationWith30Days(system2, project.uuid(), project.uuid()), PurgeListener.EMPTY, new PurgeProfiler());
+    db.commit();
+
+    assertThat(db.countRowsOfTable("issue_changes")).isZero();
+    assertThat(db.countRowsOfTable("new_code_reference_issues")).isZero();
+    assertThat(db.select("select kee as \"KEE\" from issues")).extracting(i -> i.get("KEE")).containsOnly(issue1.getKey());
+  }
+
+  @Test
   public void should_delete_old_closed_issues() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
 
     ComponentDto dir = db.components().insertComponent(newDirectory(project, "path"));
     ComponentDto file = db.components().insertComponent(newFileDto(project, dir));
@@ -1177,7 +1211,7 @@ public class PurgeDaoIT {
 
   @Test
   public void delete_disabled_components_without_issues() {
-    ComponentDto project = db.components().insertPublicProject(p -> p.setEnabled(true));
+    ComponentDto project = db.components().insertPublicProject(p -> p.setEnabled(true)).getMainBranchComponent();
     ComponentDto enabledFileWithIssues = db.components().insertComponent(newFileDto(project).setEnabled(true));
     ComponentDto disabledFileWithIssues = db.components().insertComponent(newFileDto(project).setEnabled(false));
     ComponentDto enabledFileWithoutIssues = db.components().insertComponent(newFileDto(project).setEnabled(true));
@@ -1211,9 +1245,9 @@ public class PurgeDaoIT {
   @Test
   public void delete_ce_analysis_older_than_180_and_scanner_context_older_than_40_days_of_specified_project_when_purging_project() {
     LocalDateTime now = LocalDateTime.now();
-    ComponentDto project1 = db.components().insertPublicProject();
+    ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
     Consumer<CeQueueDto> belongsToProject1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(project1.uuid());
-    ComponentDto project2 = db.components().insertPublicProject();
+    ComponentDto project2 = db.components().insertPublicProject().getMainBranchComponent();
     Consumer<CeQueueDto> belongsToProject2 = t -> t.setMainComponentUuid(project2.uuid()).setComponentUuid(project2.uuid());
 
     insertCeActivityAndChildDataWithDate("VERY_OLD_1", now.minusDays(180).minusMonths(10), belongsToProject1);
@@ -1269,7 +1303,7 @@ public class PurgeDaoIT {
   @Test
   public void delete_ce_analysis_older_than_180_and_scanner_context_older_than_40_days_of_project_and_branches_when_purging_project() {
     LocalDateTime now = LocalDateTime.now();
-    ComponentDto project1 = db.components().insertPublicProject();
+    ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto branch1 = db.components().insertProjectBranch(project1, b -> b.setExcludeFromPurge(true));
     Consumer<CeQueueDto> belongsToProject1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(project1.uuid());
     Consumer<CeQueueDto> belongsToBranch1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(branch1.uuid());
@@ -1327,7 +1361,7 @@ public class PurgeDaoIT {
   @Test
   public void delete_ce_analysis_of_branch_older_than_180_and_scanner_context_older_than_40_days_when_purging_branch() {
     LocalDateTime now = LocalDateTime.now();
-    ComponentDto project1 = db.components().insertPublicProject();
+    ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto branch1 = db.components().insertProjectBranch(project1);
     Consumer<CeQueueDto> belongsToProject1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(project1.uuid());
     Consumer<CeQueueDto> belongsToBranch1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(branch1.uuid());
@@ -1384,7 +1418,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteProject_deletes_webhook_deliveries() {
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     dbClient.webhookDeliveryDao().insert(dbSession, newDto().setComponentUuid(project.uuid()).setUuid("D1").setDurationMs(1000).setWebhookUuid("webhook-uuid"));
     dbClient.webhookDeliveryDao().insert(dbSession, newDto().setComponentUuid("P2").setUuid("D2").setDurationMs(1000).setWebhookUuid("webhook-uuid"));
 
@@ -1395,7 +1429,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteProject_deletes_project_mappings() {
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     dbClient.projectMappingsDao().put(dbSession, "a.key.type", "a.key", project.uuid());
     dbClient.projectMappingsDao().put(dbSession, "a.key.type", "another.key", "D2");
 
@@ -1407,8 +1441,8 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteProject_deletes_project_alm_settings() {
-    ProjectDto project = db.components().insertPublicProjectDto();
-    ProjectDto otherProject = db.components().insertPublicProjectDto();
+    ProjectDto project = db.components().insertPublicProject().getProjectDto();
+    ProjectDto otherProject = db.components().insertPublicProject().getProjectDto();
     AlmSettingDto almSettingDto = db.almSettings().insertGitlabAlmSetting();
     db.almSettings().insertGitlabProjectAlmSetting(almSettingDto, project);
     db.almSettings().insertGitlabProjectAlmSetting(almSettingDto, otherProject);
@@ -1421,7 +1455,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteBranch_deletes_scanner_cache() throws IOException {
-    ProjectDto project = db.components().insertPublicProjectDto();
+    ProjectDto project = db.components().insertPublicProject().getProjectDto();
     BranchDto branch = db.components().insertProjectBranch(project);
     dbClient.scannerAnalysisCacheDao().insert(dbSession, branch.getUuid(), IOUtils.toInputStream("test1", UTF_8));
     dbClient.scannerAnalysisCacheDao().insert(dbSession, project.getUuid(), IOUtils.toInputStream("test2", UTF_8));
@@ -1436,7 +1470,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteProject_deletes_scanner_cache() throws IOException {
-    ProjectDto project = db.components().insertPublicProjectDto();
+    ProjectDto project = db.components().insertPublicProject().getProjectDto();
     BranchDto branch = db.components().insertProjectBranch(project);
     dbClient.scannerAnalysisCacheDao().insert(dbSession, branch.getUuid(), IOUtils.toInputStream("test1", UTF_8));
     dbClient.scannerAnalysisCacheDao().insert(dbSession, project.getUuid(), IOUtils.toInputStream("test2", UTF_8));
@@ -1449,8 +1483,8 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteProject_deletes_project_badge_tokens() {
-    ProjectDto project = db.components().insertPublicProjectDto();
-    ProjectDto otherProject = db.components().insertPublicProjectDto();
+    ProjectDto project = db.components().insertPublicProject().getProjectDto();
+    ProjectDto otherProject = db.components().insertPublicProject().getProjectDto();
     dbClient.projectBadgeTokenDao().insert(dbSession, "token_to_delete", project, "user-uuid", "user-login");
     dbClient.projectBadgeTokenDao().insert(dbSession, "token_to_not_delete", otherProject, "user-uuid", "user-login");
 
@@ -1465,8 +1499,8 @@ public class PurgeDaoIT {
     ComponentDto portfolio1 = db.components().insertPrivatePortfolio();
     ComponentDto portfolio2 = db.components().insertPrivatePortfolio();
 
-    ProjectDto project = db.components().insertPublicProjectDto();
-    ProjectDto otherProject = db.components().insertPublicProjectDto();
+    ProjectDto project = db.components().insertPublicProject().getProjectDto();
+    ProjectDto otherProject = db.components().insertPublicProject().getProjectDto();
 
     db.components().addPortfolioProject(portfolio1, project.getUuid(), otherProject.getUuid());
     db.components().addPortfolioProject(portfolio2, project.getUuid());
@@ -1480,13 +1514,13 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteProject_deletes_app_projects() {
-    ProjectDto app = db.components().insertPrivateApplicationDto();
+    ProjectDto app = db.components().insertPrivateApplication().getProjectDto();
     BranchDto appBranch = db.components().insertProjectBranch(app);
 
-    ProjectDto project = db.components().insertPublicProjectDto();
+    ProjectDto project = db.components().insertPublicProject().getProjectDto();
     BranchDto projectBranch = db.components().insertProjectBranch(project);
 
-    ProjectDto otherProject = db.components().insertPublicProjectDto();
+    ProjectDto otherProject = db.components().insertPublicProject().getProjectDto();
 
     db.components().addApplicationProject(app, project, otherProject);
     db.components().addProjectBranchToApplicationBranch(appBranch, projectBranch);
@@ -1514,22 +1548,22 @@ public class PurgeDaoIT {
   public void deleteNonRootComponents_has_no_effect_when_parameter_contains_only_projects_and_or_views() {
     ComponentDbTester componentDbTester = db.components();
 
-    verifyNoEffect(componentDbTester.insertPrivateProject());
-    verifyNoEffect(componentDbTester.insertPublicProject());
+    verifyNoEffect(componentDbTester.insertPrivateProject().getMainBranchComponent());
+    verifyNoEffect(componentDbTester.insertPublicProject().getMainBranchComponent());
     verifyNoEffect(componentDbTester.insertPrivatePortfolio());
-    verifyNoEffect(componentDbTester.insertPrivatePortfolio(), componentDbTester.insertPrivateProject(), componentDbTester.insertPublicProject());
+    verifyNoEffect(componentDbTester.insertPrivatePortfolio(), componentDbTester.insertPrivateProject().getMainBranchComponent(), componentDbTester.insertPublicProject().getMainBranchComponent());
   }
 
   @Test
   public void delete_live_measures_when_deleting_project() {
     MetricDto metric = db.measures().insertMetric();
 
-    ComponentDto project1 = db.components().insertPublicProject();
+    ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto dir1 = db.components().insertComponent(newDirectory(project1, "path"));
     db.measures().insertLiveMeasure(project1, metric);
     db.measures().insertLiveMeasure(dir1, metric);
 
-    ComponentDto project2 = db.components().insertPublicProject();
+    ComponentDto project2 = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto dir2 = db.components().insertComponent(newDirectory(project2, "path"));
     db.measures().insertLiveMeasure(project2, metric);
     db.measures().insertLiveMeasure(dir2, metric);
@@ -1552,7 +1586,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteNonRootComponents_deletes_only_non_root_components_of_a_project_from_table_components() {
-    ComponentDto project = new Random().nextBoolean() ? db.components().insertPublicProject() : db.components().insertPrivateProject();
+    ComponentDto project = new Random().nextBoolean() ? db.components().insertPublicProject().getMainBranchComponent() : db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto dir1 = db.components().insertComponent(newDirectory(project, "A/B"));
     ComponentDto file1 = db.components().insertComponent(newFileDto(project, dir1));
 
@@ -1574,9 +1608,9 @@ public class PurgeDaoIT {
   @Test
   public void deleteNonRootComponents_deletes_only_non_root_components_of_a_view_from_table_components() {
     ComponentDto[] projects = {
-      db.components().insertPrivateProject(),
-      db.components().insertPrivateProject(),
-      db.components().insertPrivateProject()
+      db.components().insertPrivateProject().getMainBranchComponent(),
+      db.components().insertPrivateProject().getMainBranchComponent(),
+      db.components().insertPrivateProject().getMainBranchComponent()
     };
 
     ComponentDto view = db.components().insertPrivatePortfolio();
@@ -1599,7 +1633,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteNonRootComponents_deletes_only_specified_non_root_components_of_a_project_from_table_components() {
-    ComponentDto project = new Random().nextBoolean() ? db.components().insertPublicProject() : db.components().insertPrivateProject();
+    ComponentDto project = new Random().nextBoolean() ? db.components().insertPublicProject().getMainBranchComponent() : db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto dir1 = db.components().insertComponent(newDirectory(project, "A/B"));
     ComponentDto dir2 = db.components().insertComponent(newDirectory(project, "A/C"));
     ComponentDto file1 = db.components().insertComponent(newFileDto(project, dir1));
@@ -1617,7 +1651,7 @@ public class PurgeDaoIT {
 
   @Test
   public void deleteNonRootComponents_deletes_only_specified_non_root_components_of_a_view_from_table_components() {
-    ComponentDto[] projects = {
+    ProjectData[] projects = {
       db.components().insertPrivateProject(),
       db.components().insertPrivateProject(),
       db.components().insertPrivateProject()
@@ -1626,26 +1660,26 @@ public class PurgeDaoIT {
     ComponentDto view = db.components().insertPrivatePortfolio();
     ComponentDto subview1 = db.components().insertComponent(newSubPortfolio(view));
     ComponentDto subview2 = db.components().insertComponent(newSubPortfolio(subview1));
-    ComponentDto pc1 = db.components().insertComponent(newProjectCopy("a", projects[0], view));
-    ComponentDto pc2 = db.components().insertComponent(newProjectCopy("b", projects[1], subview1));
-    ComponentDto pc3 = db.components().insertComponent(newProjectCopy("c", projects[2], subview2));
+    ComponentDto pc1 = db.components().insertComponent(newProjectCopy("a", projects[0].getMainBranchComponent(), view));
+    ComponentDto pc2 = db.components().insertComponent(newProjectCopy("b", projects[1].getMainBranchComponent(), subview1));
+    ComponentDto pc3 = db.components().insertComponent(newProjectCopy("c", projects[2].getMainBranchComponent(), subview2));
 
     underTest.deleteNonRootComponentsInView(dbSession, singletonList(pc3));
     assertThat(uuidsIn("components"))
-      .containsOnly(view.uuid(), projects[0].uuid(), projects[1].uuid(), projects[2].uuid(),
+      .containsOnly(view.uuid(), projects[0].getMainBranchComponent().uuid(), projects[1].getMainBranchComponent().uuid(), projects[2].getMainBranchComponent().uuid(),
         subview1.uuid(), subview2.uuid(), pc1.uuid(), pc2.uuid());
 
     underTest.deleteNonRootComponentsInView(dbSession, asList(subview1, pc2));
     assertThat(uuidsIn("components"))
-      .containsOnly(view.uuid(), projects[0].uuid(), projects[1].uuid(), projects[2].uuid(), subview2.uuid(), pc1.uuid());
-    assertThat(uuidsIn("projects")).containsOnly(projects[0].uuid(), projects[1].uuid(), projects[2].uuid());
+      .containsOnly(view.uuid(), projects[0].getMainBranchComponent().uuid(), projects[1].getMainBranchComponent().uuid(), projects[2].getMainBranchComponent().uuid(), subview2.uuid(), pc1.uuid());
+    assertThat(uuidsIn("projects")).containsOnly(projects[0].getProjectDto().getUuid(), projects[1].getProjectDto().getUuid(), projects[2].getProjectDto().getUuid());
   }
 
   @Test
   public void deleteNonRootComponents_deletes_measures_of_any_non_root_component_of_a_view() {
     ComponentDto view = db.components().insertPrivatePortfolio();
     ComponentDto subview = db.components().insertComponent(newSubPortfolio(view));
-    ComponentDto pc = db.components().insertComponent(newProjectCopy("a", db.components().insertPrivateProject(), view));
+    ComponentDto pc = db.components().insertComponent(newProjectCopy("a", db.components().insertPrivateProject().getMainBranchComponent(), view));
     insertMeasureFor(view, subview, pc);
     assertThat(getComponentUuidsOfMeasures()).containsOnly(view.uuid(), subview.uuid(), pc.uuid());
 
@@ -1664,7 +1698,7 @@ public class PurgeDaoIT {
     ComponentDto subview1 = db.components().insertComponent(newSubPortfolio(view));
     ComponentDto subview2 = db.components().insertComponent(newSubPortfolio(subview1));
     ComponentDto subview3 = db.components().insertComponent(newSubPortfolio(view));
-    ComponentDto pc = db.components().insertComponent(newProjectCopy("a", db.components().insertPrivateProject(), view));
+    ComponentDto pc = db.components().insertComponent(newProjectCopy("a", db.components().insertPrivateProject().getMainBranchComponent(), view));
     insertPropertyFor(view, subview1, subview2, subview3, pc);
     assertThat(getResourceIdOfProperties()).containsOnly(view.uuid(), subview1.uuid(), subview2.uuid(), subview3.uuid(), pc.uuid());
 
@@ -1921,6 +1955,11 @@ public class PurgeDaoIT {
     ComponentDto dir = db.components().insertComponent(newDirectory(branch, "path"));
     ComponentDto file = db.components().insertComponent(newFileDto(branch, dir));
     db.issues().insert(rule, branch, file);
+  }
+
+  private void addComponentsSnapshotsAndIssuesToBranch(BranchDto branch, RuleDto rule, int branchAge) {
+    ComponentDto componentDto = db.components().getComponentDto(branch);
+    addComponentsSnapshotsAndIssuesToBranch(componentDto, rule, branchAge);
   }
 
 }

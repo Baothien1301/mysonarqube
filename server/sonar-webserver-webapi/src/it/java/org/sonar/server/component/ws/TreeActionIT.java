@@ -30,11 +30,14 @@ import javax.annotation.Nullable;
 import org.apache.commons.io.IOUtils;
 import org.junit.Rule;
 import org.junit.Test;
+import org.sonar.api.resources.ResourceTypeTree;
+import org.sonar.api.resources.ResourceTypes;
 import org.sonar.api.server.ws.Change;
 import org.sonar.api.server.ws.WebService;
 import org.sonar.api.server.ws.WebService.Param;
 import org.sonar.api.utils.System2;
 import org.sonar.api.web.UserRole;
+import org.sonar.core.component.DefaultResourceTypes;
 import org.sonar.core.i18n.I18n;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbTester;
@@ -59,7 +62,6 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
 import static org.sonar.api.resources.Qualifiers.APP;
 import static org.sonar.api.resources.Qualifiers.FILE;
-import static org.sonar.api.resources.Qualifiers.PROJECT;
 import static org.sonar.api.resources.Qualifiers.UNIT_TEST_FILE;
 import static org.sonar.db.component.BranchDto.DEFAULT_MAIN_BRANCH_NAME;
 import static org.sonar.db.component.BranchType.PULL_REQUEST;
@@ -80,13 +82,13 @@ public class TreeActionIT {
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
   public DbTester db = DbTester.create(System2.INSTANCE);
-
-  private ResourceTypesRule resourceTypes = new ResourceTypesRule()
-    .setRootQualifiers(PROJECT)
+  private final DbClient dbClient = db.getDbClient();
+  private final ResourceTypes defaultResourceTypes = new ResourceTypes(new ResourceTypeTree[]{DefaultResourceTypes.get()});
+  private final ResourceTypesRule resourceTypes = new ResourceTypesRule()
+    .setRootQualifiers(defaultResourceTypes.getRoots())
+    .setAllQualifiers(defaultResourceTypes.getAll())
     .setLeavesQualifiers(FILE, UNIT_TEST_FILE);
-  private DbClient dbClient = db.getDbClient();
-
-  private WsActionTester ws = new WsActionTester(new TreeAction(dbClient, new ComponentFinder(dbClient, resourceTypes), resourceTypes, userSession,
+  private final WsActionTester ws = new WsActionTester(new TreeAction(dbClient, new ComponentFinder(dbClient, resourceTypes), resourceTypes, userSession,
     mock(I18n.class)));
 
   @Test
@@ -97,6 +99,8 @@ public class TreeActionIT {
     assertThat(action.description()).isNotNull();
     assertThat(action.responseExample()).isNotNull();
     assertThat(action.changelog()).extracting(Change::getVersion, Change::getDescription).containsExactlyInAnyOrder(
+      tuple("10.1", "The use of module keys in parameter 'component' is removed"),
+      tuple("10.1", "The use of 'BRC' as value for parameter 'qualifiers' is removed"),
       tuple("7.6", "The use of 'BRC' as value for parameter 'qualifiers' is deprecated"),
       tuple("7.6", "The use of module keys in parameter 'component' is deprecated"));
     assertThat(action.params()).extracting(Param::key).containsExactlyInAnyOrder("component", "branch", "pullRequest", "qualifiers", "strategy",
@@ -294,10 +298,10 @@ public class TreeActionIT {
     String appBranchName = "app-branch";
     String projectBranchName = "project-branch";
 
-    ComponentDto application = db.components().insertPrivateProject(c -> c.setQualifier(APP).setKey("app-key"));
+    ComponentDto application = db.components().insertPrivateProject(c -> c.setQualifier(APP).setKey("app-key")).getMainBranchComponent();
     ComponentDto applicationBranch = db.components().insertProjectBranch(application, a -> a.setKey(appBranchName));
 
-    ComponentDto project = db.components().insertPrivateProject(p -> p.setKey("project-key"));
+    ComponentDto project = db.components().insertPrivateProject(p -> p.setKey("project-key")).getMainBranchComponent();
     ComponentDto projectBranch = db.components().insertProjectBranch(project, b -> b.setKey(projectBranchName));
     ComponentDto techProjectBranch = db.components().insertComponent(newProjectCopy(projectBranch, applicationBranch)
       .setKey(applicationBranch.getKey() + project.getKey()).setMainBranchProjectUuid(application.uuid()));
@@ -320,7 +324,7 @@ public class TreeActionIT {
 
   @Test
   public void response_is_empty_on_provisioned_projects() {
-    ComponentDto project = db.components().insertPrivateProject("project-uuid");
+    ComponentDto project = db.components().insertPrivateProject("project-uuid").getMainBranchComponent();
     logInWithBrowsePermission(project);
 
     TreeWsResponse response = ws.newRequest()
@@ -355,7 +359,7 @@ public class TreeActionIT {
 
   @Test
   public void branch() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     userSession.addProjectPermission(UserRole.USER, project);
     String branchKey = "my_branch";
     ComponentDto branch = db.components().insertProjectBranch(project, b -> b.setKey(branchKey));
@@ -378,7 +382,7 @@ public class TreeActionIT {
 
   @Test
   public void dont_show_branch_if_main_branch() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(ComponentTesting.newFileDto(project));
     userSession.addProjectPermission(UserRole.USER, project);
 
@@ -393,7 +397,7 @@ public class TreeActionIT {
 
   @Test
   public void pull_request() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     userSession.addProjectPermission(UserRole.USER, project);
     String pullRequestId = "pr-123";
     ComponentDto branch = db.components().insertProjectBranch(project, b -> b.setKey(pullRequestId).setBranchType(PULL_REQUEST));
@@ -415,7 +419,7 @@ public class TreeActionIT {
 
   @Test
   public void fail_when_not_enough_privileges() {
-    ComponentDto project = db.components().insertPrivateProject("project-uuid");
+    ComponentDto project = db.components().insertPrivateProject("project-uuid").getMainBranchComponent();
     userSession.logIn()
       .addProjectPermission(UserRole.CODEVIEWER, project);
     db.commit();
@@ -508,7 +512,7 @@ public class TreeActionIT {
 
   @Test
   public void fail_if_branch_does_not_exist() {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     userSession.addProjectPermission(UserRole.USER, project);
     db.components().insertProjectBranch(project, b -> b.setKey("my_branch"));
 
@@ -533,11 +537,11 @@ public class TreeActionIT {
 
   private ComponentDto initJsonExampleComponents() throws IOException {
     ComponentDto project = db.components().insertPrivateProject(c -> c.setUuid("MY_PROJECT_ID")
-      .setDescription("MY_PROJECT_DESCRIPTION")
-      .setKey("MY_PROJECT_KEY")
-      .setName("Project Name")
-      .setBranchUuid("MY_PROJECT_ID"),
-      p -> p.setTagsString("abc,def"));
+        .setDescription("MY_PROJECT_DESCRIPTION")
+        .setKey("MY_PROJECT_KEY")
+        .setName("Project Name")
+        .setBranchUuid("MY_PROJECT_ID"),
+      p -> p.setTagsString("abc,def")).getMainBranchComponent();
     db.components().insertSnapshot(project);
 
     Date now = new Date();
@@ -570,5 +574,20 @@ public class TreeActionIT {
 
   private void logInWithBrowsePermission(ComponentDto project) {
     userSession.logIn().addProjectPermission(UserRole.USER, project);
+  }
+
+  @Test
+  public void doHandle_whenPassingUnsupportedQualifier_ShouldThrowIllegalArgumentException() {
+    ComponentDto project = newPrivateProjectDto("project-uuid");
+    db.components().insertProjectAndSnapshot(project);
+    db.commit();
+    logInWithBrowsePermission(project);
+
+    TestRequest testRequest = ws.newRequest()
+      .setParam(PARAM_QUALIFIERS, "BRC")
+      .setParam(PARAM_COMPONENT, project.getKey());
+
+    assertThatThrownBy(testRequest::execute).isInstanceOf(IllegalArgumentException.class)
+      .hasMessage("Value of parameter 'qualifiers' (BRC) must be one of: [UTS, FIL, DIR, TRK]");
   }
 }

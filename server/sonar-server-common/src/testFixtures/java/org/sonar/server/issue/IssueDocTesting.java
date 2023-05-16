@@ -23,7 +23,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.HashMap;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.resources.Scopes;
 import org.sonar.api.rule.Severity;
 import org.sonar.api.rules.RuleType;
@@ -75,7 +74,6 @@ public class IssueDocTesting {
     doc.setKey(Uuids.createFast());
     doc.setRuleUuid(Uuids.createFast());
     doc.setType(RuleType.CODE_SMELL);
-    doc.setCharacteristic(CodeCharacteristic.COMPLIANT);
     doc.setAssigneeUuid("assignee_uuid_" + randomAlphabetic(26));
     doc.setAuthorLogin("author_" + randomAlphabetic(5));
     doc.setScope(IssueScope.MAIN);

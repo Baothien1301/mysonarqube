@@ -35,8 +35,6 @@ import static org.sonar.api.utils.Preconditions.checkState;
 public class DefaultAdHocRule extends DefaultStorable implements AdHocRule, NewAdHocRule {
   private Severity severity;
   private RuleType type;
-
-  private CodeCharacteristic characteristic;
   private String name;
   private String description;
   private String engineId;
@@ -100,7 +98,7 @@ public class DefaultAdHocRule extends DefaultStorable implements AdHocRule, NewA
   @CheckForNull
   @Override
   public CodeCharacteristic characteristic() {
-    return characteristic;
+    return null;
   }
 
   @Override
@@ -134,8 +132,9 @@ public class DefaultAdHocRule extends DefaultStorable implements AdHocRule, NewA
   }
 
   @Override
-  public DefaultAdHocRule characteristic(CodeCharacteristic characteristic) {
-    this.characteristic = characteristic;
+  public NewAdHocRule characteristic(CodeCharacteristic characteristic) {
+    // no op
     return this;
   }
+
 }

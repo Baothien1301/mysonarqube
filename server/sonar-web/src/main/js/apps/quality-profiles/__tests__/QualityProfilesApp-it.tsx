@@ -17,12 +17,12 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import { getByText } from '@testing-library/react';
+import { act, getByText } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import selectEvent from 'react-select-event';
 import { byRole } from 'testing-library-selector';
 import QualityProfilesServiceMock from '../../../api/mocks/QualityProfilesServiceMock';
-import { mockRule } from '../../../helpers/testMocks';
+import { mockPaging, mockRule } from '../../../helpers/testMocks';
 import { renderAppRoutes } from '../../../helpers/testReactTestingUtils';
 import routes from '../routes';
 
@@ -119,7 +119,9 @@ it('should list recently added rules', async () => {
   serviceMock.setAdmin();
   serviceMock.setRulesSearchResponse({
     rules: [mockRule({ name: 'Recently Added Rule' })],
-    total: 20,
+    paging: mockPaging({
+      total: 20,
+    }),
   });
 
   renderQualityProfiles();
@@ -138,7 +140,9 @@ it('should be able to extend Quality Profile', async () => {
 
   await user.clear(ui.namePropupInput.get());
   await user.type(ui.namePropupInput.get(), ui.newCQualityProfileName);
-  await user.click(ui.extendButton.get());
+  await act(async () => {
+    await user.click(ui.extendButton.get());
+  });
   expect(await ui.listLinkNewCQualityProfile.find()).toBeInTheDocument();
 
   // From the create form
@@ -148,7 +152,9 @@ it('should be able to extend Quality Profile', async () => {
   await selectEvent.select(ui.languageSelect.get(), 'C');
   await selectEvent.select(ui.profileExtendSelect.get(), ui.newCQualityProfileName);
   await user.type(ui.nameCreatePopupInput.get(), ui.newCQualityProfileNameFromCreateButton);
-  await user.click(ui.createButton.get(ui.popup.get()));
+  await act(async () => {
+    await user.click(ui.createButton.get(ui.popup.get()));
+  });
 
   expect(await ui.listLinkNewCQualityProfileFromCreateButton.find()).toBeInTheDocument();
 });
@@ -164,7 +170,9 @@ it('should be able to copy Quality Profile', async () => {
 
   await user.clear(ui.namePropupInput.get());
   await user.type(ui.namePropupInput.get(), ui.newCQualityProfileName);
-  await user.click(ui.copyButton.get(ui.popup.get()));
+  await act(async () => {
+    await user.click(ui.copyButton.get(ui.popup.get()));
+  });
   expect(await ui.listLinkNewCQualityProfile.find()).toBeInTheDocument();
 
   // From the create form
@@ -175,7 +183,9 @@ it('should be able to copy Quality Profile', async () => {
   await selectEvent.select(ui.languageSelect.get(), 'C');
   await selectEvent.select(ui.profileCopySelect.get(), ui.newCQualityProfileName);
   await user.type(ui.nameCreatePopupInput.get(), ui.newCQualityProfileNameFromCreateButton);
-  await user.click(ui.createButton.get(ui.popup.get()));
+  await act(async () => {
+    await user.click(ui.createButton.get(ui.popup.get()));
+  });
 
   expect(await ui.listLinkNewCQualityProfileFromCreateButton.find()).toBeInTheDocument();
 });
@@ -191,7 +201,9 @@ it('should be able to create blank Quality Profile', async () => {
   await user.click(ui.blankRadio.get());
   await selectEvent.select(ui.languageSelect.get(), 'C');
   await user.type(ui.nameCreatePopupInput.get(), ui.newCQualityProfileName);
-  await user.click(ui.createButton.get(ui.popup.get()));
+  await act(async () => {
+    await user.click(ui.createButton.get(ui.popup.get()));
+  });
 
   expect(await ui.listLinkNewCQualityProfile.find()).toBeInTheDocument();
 });

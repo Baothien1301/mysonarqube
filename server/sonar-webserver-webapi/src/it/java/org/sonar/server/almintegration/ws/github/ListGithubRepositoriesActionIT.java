@@ -62,7 +62,7 @@ public class ListGithubRepositoriesActionIT {
   private final GithubApplicationClientImpl appClient = mock(GithubApplicationClientImpl.class);
 
   @Rule
-  public DbTester db = DbTester.create(system2);
+  public DbTester db = DbTester.create(system2, true);
 
   private final ProjectAlmSettingDao projectAlmSettingDao = db.getDbClient().projectAlmSettingDao();
 
@@ -114,10 +114,10 @@ public class ListGithubRepositoriesActionIT {
               "https://github-enterprise.sonarqube.com/api/v3/github/HelloWorld", "main"))
             .collect(Collectors.toList())));
 
-    ProjectDto project = db.components().insertPrivateProjectDto(componentDto -> componentDto.setKey("github_HelloWorld"));
+    ProjectDto project = db.components().insertPrivateProject(componentDto -> componentDto.setKey("github_HelloWorld")).getProjectDto();
     db.almSettings().insertGitHubProjectAlmSetting(githubAlmSettings, project, projectAlmSettingDto -> projectAlmSettingDto.setAlmRepo("github/HelloWorld"));
 
-    ProjectDto project2 = db.components().insertPrivateProjectDto(componentDto -> componentDto.setKey("github_HelloWorld2"));
+    ProjectDto project2 = db.components().insertPrivateProject(componentDto -> componentDto.setKey("github_HelloWorld2")).getProjectDto();
     db.almSettings().insertGitHubProjectAlmSetting(githubAlmSettings, project2, projectAlmSettingDto -> projectAlmSettingDto.setAlmRepo("github/HelloWorld"));
 
     ListGithubRepositoriesWsResponse response = ws.newRequest()

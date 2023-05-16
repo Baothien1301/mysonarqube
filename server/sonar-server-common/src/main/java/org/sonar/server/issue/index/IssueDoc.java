@@ -25,7 +25,6 @@ import java.util.Date;
 import java.util.Map;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.rule.Severity;
 import org.sonar.api.rules.RuleType;
 import org.sonar.api.utils.Duration;
@@ -132,10 +131,6 @@ public class IssueDoc extends BaseDoc {
 
   public RuleType type() {
     return RuleType.valueOf(getField(IssueIndexDefinition.FIELD_ISSUE_TYPE));
-  }
-
-  public CodeCharacteristic characteristic() {
-    return CodeCharacteristic.valueOf(getField(IssueIndexDefinition.FIELD_ISSUE_CHARACTERISTIC));
   }
 
   @CheckForNull
@@ -271,11 +266,6 @@ public class IssueDoc extends BaseDoc {
     return this;
   }
 
-  public IssueDoc setCharacteristic(CodeCharacteristic characteristic) {
-    setField(IssueIndexDefinition.FIELD_ISSUE_CHARACTERISTIC, characteristic.toString());
-    return this;
-  }
-
   @CheckForNull
   public Collection<String> getPciDss32() {
     return getNullableField(IssueIndexDefinition.FIELD_ISSUE_PCI_DSS_32);
@@ -374,11 +364,6 @@ public class IssueDoc extends BaseDoc {
 
   public IssueDoc setIsNewCodeReference(boolean b) {
     setField(IssueIndexDefinition.FIELD_ISSUE_NEW_CODE_REFERENCE, b);
-    return this;
-  }
-
-  public IssueDoc setCharacteristic(String characteristic) {
-    setField(IssueIndexDefinition.FIELD_ISSUE_CHARACTERISTIC, characteristic);
     return this;
   }
 }

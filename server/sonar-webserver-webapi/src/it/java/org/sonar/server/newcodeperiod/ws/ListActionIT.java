@@ -38,57 +38,71 @@
    */
   package org.sonar.server.newcodeperiod.ws;
 
-  import java.time.Instant;
-  import java.util.Optional;
-  import org.junit.Rule;
-  import org.junit.Test;
-  import org.sonar.api.server.ws.WebService;
-  import org.sonar.api.utils.DateUtils;
-  import org.sonar.api.utils.System2;
-  import org.sonar.api.web.UserRole;
-  import org.sonar.core.util.UuidFactoryFast;
-  import org.sonar.db.DbClient;
-  import org.sonar.db.DbTester;
-  import org.sonar.db.component.BranchType;
-  import org.sonar.db.component.ComponentDbTester;
-  import org.sonar.db.component.ComponentDto;
-  import org.sonar.db.component.SnapshotDto;
-  import org.sonar.db.newcodeperiod.NewCodePeriodDao;
-  import org.sonar.db.newcodeperiod.NewCodePeriodDbTester;
-  import org.sonar.db.newcodeperiod.NewCodePeriodDto;
-  import org.sonar.db.newcodeperiod.NewCodePeriodType;
-  import org.sonar.server.component.ComponentFinder;
-  import org.sonar.server.component.TestComponentFinder;
-  import org.sonar.server.exceptions.ForbiddenException;
-  import org.sonar.server.exceptions.NotFoundException;
-  import org.sonar.server.tester.UserSessionRule;
-  import org.sonar.server.ws.WsActionTester;
-  import org.sonarqube.ws.NewCodePeriods;
-  import org.sonarqube.ws.NewCodePeriods.ListWSResponse;
-  import org.sonarqube.ws.NewCodePeriods.ShowWSResponse;
+import java.time.Instant;
+import java.util.Optional;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.sonar.api.server.ws.WebService;
+import org.sonar.api.utils.DateUtils;
+import org.sonar.api.utils.System2;
+import org.sonar.api.web.UserRole;
+import org.sonar.core.documentation.DocumentationLinkGenerator;
+import org.sonar.core.util.UuidFactoryFast;
+import org.sonar.db.DbClient;
+import org.sonar.db.DbTester;
+import org.sonar.db.component.BranchType;
+import org.sonar.db.component.ComponentDbTester;
+import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.SnapshotDto;
+import org.sonar.db.newcodeperiod.NewCodePeriodDao;
+import org.sonar.db.newcodeperiod.NewCodePeriodDbTester;
+import org.sonar.db.newcodeperiod.NewCodePeriodDto;
+import org.sonar.db.newcodeperiod.NewCodePeriodType;
+import org.sonar.server.component.ComponentFinder;
+import org.sonar.server.component.TestComponentFinder;
+import org.sonar.server.exceptions.ForbiddenException;
+import org.sonar.server.exceptions.NotFoundException;
+import org.sonar.server.tester.UserSessionRule;
+import org.sonar.server.ws.WsActionTester;
+import org.sonarqube.ws.NewCodePeriods;
+import org.sonarqube.ws.NewCodePeriods.ListWSResponse;
+import org.sonarqube.ws.NewCodePeriods.ShowWSResponse;
 
-  import static org.assertj.core.api.Assertions.assertThat;
-  import static org.assertj.core.api.Assertions.assertThatThrownBy;
-  import static org.sonar.db.component.BranchDto.DEFAULT_MAIN_BRANCH_NAME;
-  import static org.sonar.db.component.SnapshotTesting.newAnalysis;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.sonar.db.component.BranchDto.DEFAULT_MAIN_BRANCH_NAME;
+import static org.sonar.db.component.SnapshotTesting.newAnalysis;
 
   public class ListActionIT {
     @Rule
     public UserSessionRule userSession = UserSessionRule.standalone();
     @Rule
-    public DbTester db = DbTester.create(System2.INSTANCE);
+    public DbTester db = DbTester.create(System2.INSTANCE, true);
 
     private ComponentDbTester componentDb = new ComponentDbTester(db);
     private DbClient dbClient = db.getDbClient();
     private ComponentFinder componentFinder = TestComponentFinder.from(db);
     private NewCodePeriodDao dao = new NewCodePeriodDao(System2.INSTANCE, UuidFactoryFast.getInstance());
     private NewCodePeriodDbTester tester = new NewCodePeriodDbTester(db);
-    private ListAction underTest = new ListAction(dbClient, userSession, componentFinder, dao);
-    private WsActionTester ws = new WsActionTester(underTest);
+    private DocumentationLinkGenerator documentationLinkGenerator = mock(DocumentationLinkGenerator.class);
+    private WsActionTester ws;
+
+    @Before
+    public void setup(){
+      when(documentationLinkGenerator.getDocumentationLink(any())).thenReturn("https://docs.sonarqube.org/9.9/project-administration/defining-new-code/");
+      ws = new WsActionTester(new ListAction(dbClient, userSession, componentFinder, dao, documentationLinkGenerator));
+    }
 
     @Test
     public void test_definition() {
+
       WebService.Action definition = ws.getDef();
+
+      assertThat(definition.description()).contains("https://docs.sonarqube.org/9.9/project-administration/defining-new-code/");
 
       assertThat(definition.key()).isEqualTo("list");
       assertThat(definition.isInternal()).isFalse();
@@ -110,7 +124,7 @@
 
     @Test
     public void throw_FE_if_no_project_permission() {
-      ComponentDto project = componentDb.insertPublicProject();
+      ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
       assertThatThrownBy(() -> ws.newRequest()
         .setParam("project", project.getKey())
@@ -121,7 +135,7 @@
 
     @Test
     public void list_only_branches() {
-      ComponentDto project = componentDb.insertPublicProject();
+      ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
 
       createBranches(project, 5, BranchType.BRANCH);
       createBranches(project, 3, BranchType.PULL_REQUEST);
@@ -144,7 +158,7 @@
 
     @Test
     public void list_inherited_global_settings() {
-      ComponentDto project = componentDb.insertPublicProject();
+      ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
       tester.insert(new NewCodePeriodDto().setType(NewCodePeriodType.SPECIFIC_ANALYSIS).setValue("uuid"));
 
       createBranches(project, 5, BranchType.BRANCH);
@@ -171,8 +185,8 @@
 
     @Test
     public void list_inherited_project_settings() {
-      ComponentDto projectWithOwnSettings = componentDb.insertPublicProject();
-      ComponentDto projectWithGlobalSettings = componentDb.insertPublicProject();
+      ComponentDto projectWithOwnSettings = componentDb.insertPublicProject().getMainBranchComponent();
+      ComponentDto projectWithGlobalSettings = componentDb.insertPublicProject().getMainBranchComponent();
       tester.insert(new NewCodePeriodDto()
         .setType(NewCodePeriodType.SPECIFIC_ANALYSIS)
         .setValue("global_uuid"));
@@ -224,7 +238,7 @@
 
     @Test
     public void list_branch_and_inherited_global_settings() {
-      ComponentDto project = componentDb.insertPublicProject();
+      ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
       ComponentDto branchWithOwnSettings = componentDb.insertProjectBranch(project, branchDto -> branchDto.setKey("OWN_SETTINGS"));
       componentDb.insertProjectBranch(project, branchDto -> branchDto.setKey("GLOBAL_SETTINGS"));
 
@@ -275,7 +289,7 @@
 
     @Test
     public void list_branch_and_inherited_project_settings() {
-      ComponentDto project = componentDb.insertPublicProject();
+      ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
       ComponentDto branchWithOwnSettings = componentDb.insertProjectBranch(project, branchDto -> branchDto.setKey("OWN_SETTINGS"));
       componentDb.insertProjectBranch(project, branchDto -> branchDto.setKey("PROJECT_SETTINGS"));
 
@@ -331,7 +345,7 @@
 
     @Test
     public void verify_specific_analysis_effective_value() {
-      ComponentDto project = componentDb.insertPublicProject();
+      ComponentDto project = componentDb.insertPublicProject().getMainBranchComponent();
       ComponentDto branch = componentDb.insertProjectBranch(project, branchDto -> branchDto.setKey("PROJECT_BRANCH"));
 
       SnapshotDto analysis = componentDb.insertSnapshot(newAnalysis(project)

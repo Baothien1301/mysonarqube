@@ -19,7 +19,7 @@
  */
 import styled from '@emotion/styled';
 import classNames from 'classnames';
-import { debounce, get, keyBy, omit, set, without } from 'lodash';
+import { debounce, keyBy, omit, without } from 'lodash';
 import * as React from 'react';
 import { Helmet } from 'react-helmet-async';
 import { FormattedMessage } from 'react-intl';
@@ -33,11 +33,11 @@ import A11ySkipTarget from '../../../components/a11y/A11ySkipTarget';
 import EmptySearch from '../../../components/common/EmptySearch';
 import FiltersHeader from '../../../components/common/FiltersHeader';
 import ScreenPositionHelper from '../../../components/common/ScreenPositionHelper';
-import { Button } from '../../../components/controls/buttons';
 import ButtonToggle from '../../../components/controls/ButtonToggle';
 import Checkbox from '../../../components/controls/Checkbox';
 import HelpTooltip from '../../../components/controls/HelpTooltip';
 import ListFooter from '../../../components/controls/ListFooter';
+import { Button } from '../../../components/controls/buttons';
 import Suggestions from '../../../components/embed-docs-modal/Suggestions';
 import withIndexationGuard from '../../../components/hoc/withIndexationGuard';
 import { Location, Router, withRouter } from '../../../components/hoc/withRouter';
@@ -69,7 +69,6 @@ import {
   ASSIGNEE_ME,
   Facet,
   FetchIssuesPromise,
-  IssueCharacteristicFitFor,
   ReferencedComponent,
   ReferencedLanguage,
   ReferencedRule,
@@ -80,24 +79,22 @@ import { CurrentUser, UserBase } from '../../../types/users';
 import * as actions from '../actions';
 import ConciseIssuesList from '../conciseIssuesList/ConciseIssuesList';
 import ConciseIssuesListHeader from '../conciseIssuesList/ConciseIssuesListHeader';
-import FiltersVisibilityButton from '../sidebar/FiltersVisibilityButton';
 import Sidebar from '../sidebar/Sidebar';
 import '../styles.css';
 import {
+  Query,
+  STANDARDS,
   areMyIssuesSelected,
   areQueriesEqual,
   getOpen,
   getOpenIssue,
-  OpenFacets,
   parseFacets,
   parseQuery,
-  Query,
   saveMyIssues,
   serializeQuery,
   shouldOpenSonarSourceSecurityFacet,
   shouldOpenStandardsChildFacet,
   shouldOpenStandardsFacet,
-  STANDARDS,
 } from '../utils';
 import BulkChangeModal, { MAX_PAGE_SIZE } from './BulkChangeModal';
 import IssueHeader from './IssueHeader';
@@ -130,8 +127,7 @@ export interface State {
   loadingMore: boolean;
   locationsNavigator: boolean;
   myIssues: boolean;
-  showAllFilters: boolean;
-  openFacets: OpenFacets;
+  openFacets: Dict<boolean>;
   openIssue?: Issue;
   openPopup?: { issue: string; name: string };
   openRuleDetails?: RuleDetails;
@@ -170,21 +166,17 @@ export class App extends React.PureComponent<Props, State> {
       loadingMore: false,
       locationsNavigator: false,
       myIssues: areMyIssuesSelected(props.location.query),
-      showAllFilters: false,
       openFacets: {
-        characteristics: {
-          [IssueCharacteristicFitFor.Production]: true,
-          [IssueCharacteristicFitFor.Development]: true,
-        },
-        severities: true,
         owaspTop10: shouldOpenStandardsChildFacet({}, query, SecurityStandard.OWASP_TOP10),
         'owaspTop10-2021': shouldOpenStandardsChildFacet(
           {},
           query,
           SecurityStandard.OWASP_TOP10_2021
         ),
+        severities: true,
         sonarsourceSecurity: shouldOpenSonarSourceSecurityFacet({}, query),
         standards: shouldOpenStandardsFacet({}, query),
+        types: true,
       },
       query,
       referencedComponentsById: {},
@@ -647,12 +639,6 @@ export class App extends React.PureComponent<Props, State> {
     return translateWithParameters('issues.bulk_change_X_issues', count);
   };
 
-  handleShowFiltersChange = (showAllFilters: boolean) => {
-    this.setState({
-      showAllFilters,
-    });
-  };
-
   handleFilterChange = (changes: Partial<Query>) => {
     this.props.router.push({
       pathname: this.props.location.pathname,
@@ -714,41 +700,32 @@ export class App extends React.PureComponent<Props, State> {
     }));
   };
 
-  /**
-   * @param property Facet property within openFacets. Can be a path, e.g. 'characteristics.PRODUCTION'
-   */
-  handleFacetToggle = async (property: string) => {
-    const willOpenProperty = !get(this.state.openFacets, property);
-    const newState = {
-      loadingFacets: this.state.loadingFacets,
-      openFacets: { ...this.state.openFacets },
-    };
-    set(newState.openFacets, property, willOpenProperty);
+  handleFacetToggle = (property: string) => {
+    this.setState((state) => {
+      const willOpenProperty = !state.openFacets[property];
+      const newState = {
+        loadingFacets: state.loadingFacets,
+        openFacets: { ...state.openFacets, [property]: willOpenProperty },
+      };
 
-    // Try to open sonarsource security "subfacet" by default if the standard facet is open
-    if (property === STANDARDS && willOpenProperty) {
-      newState.openFacets.sonarsourceSecurity = shouldOpenSonarSourceSecurityFacet(
-        newState.openFacets,
-        this.state.query
-      );
-      // Force loading of sonarsource security facet data
-      property = newState.openFacets.sonarsourceSecurity ? 'sonarsourceSecurity' : property;
-    }
+      // Try to open sonarsource security "subfacet" by default if the standard facet is open
+      if (willOpenProperty && property === STANDARDS) {
+        newState.openFacets.sonarsourceSecurity = shouldOpenSonarSourceSecurityFacet(
+          newState.openFacets,
+          state.query
+        );
+        // Force loading of sonarsource security facet data
+        property = newState.openFacets.sonarsourceSecurity ? 'sonarsourceSecurity' : property;
+      }
 
-    // No need to load facets data for standard facet
-    if (property !== STANDARDS) {
-      newState.loadingFacets[property] = true;
-    }
+      // No need to load facets data for standard facet
+      if (property !== STANDARDS && !state.facets[property]) {
+        newState.loadingFacets[property] = true;
+        this.fetchFacet(property);
+      }
 
-    this.setState(newState);
-
-    // No need to load facets data for standard facet
-    if (property !== STANDARDS) {
-      // Fetch facet from the backend, only keeping first level of the property,
-      // eg will send 'characteristics' for property 'characteristics.PRODUCTION'
-      const facetName = property.split('.')[0];
-      await this.fetchFacet(facetName);
-    }
+      return newState;
+    });
   };
 
   handleReset = () => {
@@ -914,7 +891,7 @@ export class App extends React.PureComponent<Props, State> {
 
   renderFacets() {
     const { component, currentUser, branchLike } = this.props;
-    const { query, showAllFilters } = this.state;
+    const { query } = this.state;
 
     return (
       <div className="layout-page-filters">
@@ -943,16 +920,11 @@ export class App extends React.PureComponent<Props, State> {
           onFilterChange={this.handleFilterChange}
           openFacets={this.state.openFacets}
           query={query}
-          showAllFilters={showAllFilters}
           referencedComponentsById={this.state.referencedComponentsById}
           referencedComponentsByKey={this.state.referencedComponentsByKey}
           referencedLanguages={this.state.referencedLanguages}
           referencedRules={this.state.referencedRules}
           referencedUsers={this.state.referencedUsers}
-        />
-        <FiltersVisibilityButton
-          showAllFilters={showAllFilters}
-          onClick={this.handleShowFiltersChange}
         />
       </div>
     );

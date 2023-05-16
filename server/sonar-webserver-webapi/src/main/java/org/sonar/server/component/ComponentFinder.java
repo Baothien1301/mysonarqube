@@ -145,12 +145,12 @@ public class ComponentFinder {
       return dbClient.branchDao().selectByPullRequestKey(dbSession, projectUuid, pullRequestKey)
         .orElseThrow(() -> new NotFoundException(String.format("Pull request '%s' in project '%s' not found", pullRequestKey, projectKey)));
     }
-    return dbClient.branchDao().selectByUuid(dbSession, projectUuid)
+    return dbClient.branchDao().selectMainBranchByProjectUuid(dbSession, projectUuid)
       .orElseThrow(() -> new NotFoundException(String.format("Main branch in project '%s' not found", projectKey)));
   }
 
   public BranchDto getMainBranch(DbSession dbSession, ProjectDto projectDto) {
-    return dbClient.branchDao().selectByUuid(dbSession, projectDto.getUuid())
+    return dbClient.branchDao().selectMainBranchByProjectUuid(dbSession, projectDto.getUuid())
       .orElseThrow(() -> new IllegalStateException(String.format("Can't find main branch for project '%s'", projectDto.getKey())));
   }
 

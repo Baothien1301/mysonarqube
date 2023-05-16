@@ -25,8 +25,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
-import org.sonar.api.code.CodeCharacteristic;
-import org.sonar.api.rules.RuleType;
 import org.sonar.core.util.Uuids;
 
 import static org.apache.commons.lang.RandomStringUtils.randomAlphanumeric;
@@ -38,8 +36,8 @@ import static org.sonar.db.rule.RuleTesting.newRule;
 
 public class RuleDtoTest {
 
-  public static final String SECTION_KEY = "section key";
 
+  public static final String SECTION_KEY = "section key";
   @Test
   public void fail_if_key_is_too_long() {
     assertThatThrownBy(() -> new RuleDto().setRuleKey(repeat("x", 250)))
@@ -180,36 +178,4 @@ public class RuleDtoTest {
       .key(section_key)
       .build();
   }
-
-  @Test
-  public void getEffectiveCharacteristic_when_noCharacteristicInitialized_should_return_dbConstantValueFromConverter() {
-    RuleDto rule = new RuleDto().setType(RuleType.BUG);
-
-    CodeCharacteristic characteristic = rule.getCharacteristic();
-    assertThat(characteristic).isNull();
-
-    CodeCharacteristic effectiveCharacteristic = rule.getEffectiveCharacteristic();
-    CodeCharacteristic expected = RuleTypeToCodeCharacteristicConverter.convertToCodeCharacteristic(RuleType.BUG);
-    assertThat(effectiveCharacteristic).isEqualTo(expected);
-  }
-
-  @Test
-  public void getEffectiveCharacteristic_when_characteristicInitialized_should_return_characteristicDbConstantValue() {
-    RuleDto rule = new RuleDto().setType(RuleType.BUG).setCharacteristic(CodeCharacteristic.COMPLIANT);
-
-    CodeCharacteristic effectiveCharacteristic = rule.getEffectiveCharacteristic();
-    CodeCharacteristic characteristic = rule.getCharacteristic();
-
-    assertThat(effectiveCharacteristic).isEqualTo(characteristic).isEqualTo(CodeCharacteristic.COMPLIANT);
-  }
-
-  @Test
-  public void getEffectiveCharacteristic_whenType0_shouldReturnClearCharacteristic() {
-    RuleDto rule = new RuleDto().setType(0);
-
-    CodeCharacteristic effectiveCharacteristic = rule.getEffectiveCharacteristic();
-
-    assertThat(effectiveCharacteristic).isEqualTo(CodeCharacteristic.CLEAR);
-  }
-
 }

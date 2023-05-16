@@ -36,7 +36,6 @@ interface Props {
   open: boolean;
   stats: Dict<number> | undefined;
   statuses: string[];
-  forceShow: boolean;
 }
 
 const STATUSES = ['OPEN', 'CONFIRMED', 'REOPENED', 'RESOLVED', 'CLOSED'];
@@ -74,8 +73,7 @@ export default class StatusFacet extends React.PureComponent<Props> {
   }
 
   renderItem = (status: string) => {
-    const { statuses } = this.props;
-    const active = statuses.includes(status);
+    const active = this.props.statuses.includes(status);
     const stat = this.getStat(status);
 
     return (
@@ -93,17 +91,15 @@ export default class StatusFacet extends React.PureComponent<Props> {
   };
 
   render() {
-    const { statuses, stats = {}, forceShow, fetching, open } = this.props;
+    const { fetching, open, statuses, stats = {} } = this.props;
     const values = statuses.map((status) => translate('issue.status', status));
-
-    if (values.length < 1 && !forceShow) {
-      return null;
-    }
+    const headerId = `facet_${this.property}`;
 
     return (
       <FacetBox property={this.property}>
         <FacetHeader
           fetching={fetching}
+          id={headerId}
           name={translate('issues.facet', this.property)}
           onClear={this.handleClear}
           onClick={this.handleHeaderClick}
@@ -113,7 +109,7 @@ export default class StatusFacet extends React.PureComponent<Props> {
 
         {open && (
           <>
-            <FacetItemsList label={this.property}>{STATUSES.map(this.renderItem)}</FacetItemsList>
+            <FacetItemsList labelledby={headerId}>{STATUSES.map(this.renderItem)}</FacetItemsList>
             <MultipleSelectionHint options={Object.keys(stats).length} values={statuses.length} />
           </>
         )}

@@ -39,7 +39,7 @@ public interface BranchMapper {
 
   BranchDto selectByKey(@Param("projectUuid") String projectUuid, @Param("key") String key, @Param("branchType") BranchType branchType);
 
-  List<BranchDto> selectByKeys(@Param("projectUuid") String projectUuid, @Param("keys") Set<String> branchKeys);
+  List<BranchDto> selectByKeys(@Param("projectUuid") String projectUuid, @Param("keys") Collection<String> branchKeys);
 
   BranchDto selectByUuid(@Param("uuid") String uuid);
 
@@ -74,4 +74,6 @@ public interface BranchMapper {
   short doAnyOfComponentsNeedIssueSync(@Param("componentKeys") List<String> components);
 
   Optional<BranchDto> selectMainBranchByProjectUuid(String projectUuid);
+
+  List<BranchDto> selectMainBranchesByProjectUuids(@Param("projectUuids") Collection<String> projectUuids);
 }

@@ -24,23 +24,14 @@ import { mockQuery } from '../../../../helpers/mocks/issues';
 import { mockAppState } from '../../../../helpers/testMocks';
 import { renderComponent } from '../../../../helpers/testReactTestingUtils';
 import { ComponentQualifier } from '../../../../types/component';
-import { IssueSeverity } from '../../../../types/issues';
 import { GlobalSettingKeys } from '../../../../types/settings';
 import { Sidebar } from '../Sidebar';
 
-const getFacetNames = () =>
-  screen
-    .getAllByRole('button')
-    .map((button) => button.textContent)
-    .filter((name) => !!name);
-
 it('should render correct facets for Application', () => {
   renderSidebar({ component: mockComponent({ qualifier: ComponentQualifier.Application }) });
-  expect(getFacetNames()).toStrictEqual([
-    'issues.facet.characteristics.PRODUCTION',
-    'issues.facet.characteristics.DEVELOPMENT',
-    'issues.facet.severities',
+  expect(screen.getAllByRole('button').map((button) => button.textContent)).toStrictEqual([
     'issues.facet.types',
+    'issues.facet.severities',
     'issues.facet.scopes',
     'issues.facet.resolutions',
     'issues.facet.statuses',
@@ -58,11 +49,9 @@ it('should render correct facets for Application', () => {
 
 it('should render correct facets for Portfolio', () => {
   renderSidebar({ component: mockComponent({ qualifier: ComponentQualifier.Portfolio }) });
-  expect(getFacetNames()).toStrictEqual([
-    'issues.facet.characteristics.PRODUCTION',
-    'issues.facet.characteristics.DEVELOPMENT',
-    'issues.facet.severities',
+  expect(screen.getAllByRole('button').map((button) => button.textContent)).toStrictEqual([
     'issues.facet.types',
+    'issues.facet.severities',
     'issues.facet.scopes',
     'issues.facet.resolutions',
     'issues.facet.statuses',
@@ -80,11 +69,9 @@ it('should render correct facets for Portfolio', () => {
 
 it('should render correct facets for SubPortfolio', () => {
   renderSidebar({ component: mockComponent({ qualifier: ComponentQualifier.SubPortfolio }) });
-  expect(getFacetNames()).toStrictEqual([
-    'issues.facet.characteristics.PRODUCTION',
-    'issues.facet.characteristics.DEVELOPMENT',
-    'issues.facet.severities',
+  expect(screen.getAllByRole('button').map((button) => button.textContent)).toStrictEqual([
     'issues.facet.types',
+    'issues.facet.severities',
     'issues.facet.scopes',
     'issues.facet.resolutions',
     'issues.facet.statuses',
@@ -97,55 +84,6 @@ it('should render correct facets for SubPortfolio', () => {
     'issues.facet.assignees',
     'clear',
     'issues.facet.authors',
-  ]);
-});
-
-it('should render only main visible facets: Characteristics & Severity', () => {
-  renderSidebar({
-    component: mockComponent(),
-    showAllFilters: false,
-    query: mockQuery({ assigned: true }),
-  });
-
-  expect(getFacetNames()).toStrictEqual([
-    'issues.facet.characteristics.PRODUCTION',
-    'issues.facet.characteristics.DEVELOPMENT',
-    'issues.facet.severities',
-  ]);
-});
-
-it('should render secondary facets with filters applied eventhough "Show more filters" button isn`t toggled', () => {
-  renderSidebar({
-    component: mockComponent(),
-    showAllFilters: false,
-    query: mockQuery({
-      assigned: false,
-      tags: ['tag'],
-      rules: ['rule'],
-      directories: ['directory'],
-      cwe: ['security'],
-      languages: ['java'],
-      severities: [IssueSeverity.Blocker],
-    }),
-  });
-
-  expect(getFacetNames()).toStrictEqual([
-    'issues.facet.characteristics.PRODUCTION',
-    'issues.facet.characteristics.DEVELOPMENT',
-    'issues.facet.severities',
-    'clear',
-    'issues.facet.standards',
-    'clear',
-    'issues.facet.languages',
-    'clear',
-    'issues.facet.rules',
-    'clear',
-    'issues.facet.tags',
-    'clear',
-    'issues.facet.directories',
-    'clear',
-    'issues.facet.assignees',
-    'clear',
   ]);
 });
 
@@ -185,7 +123,6 @@ function renderSidebar(props: Partial<Sidebar['props']> = {}) {
       referencedLanguages={{}}
       referencedRules={{}}
       referencedUsers={{}}
-      showAllFilters={true}
       {...props}
     />
   );

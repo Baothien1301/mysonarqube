@@ -38,7 +38,7 @@ public interface UserTokenMapper {
 
   int deleteByUserUuidAndName(@Param("userUuid") String userUuid, @Param("name") String name);
 
-  int deleteByProjectKey(@Param("projectKey") String projectKey);
+  int deleteByProjectUuid(@Param("projectUuid") String projectUuid);
 
   List<UserTokenCount> countTokensByUserUuids(@Param("userUuids") List<String> userUuids);
 

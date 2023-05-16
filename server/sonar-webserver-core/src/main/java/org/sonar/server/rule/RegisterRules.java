@@ -39,7 +39,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.commons.lang.StringUtils;
 import org.sonar.api.Startable;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.resources.Languages;
 import org.sonar.api.rule.RuleKey;
 import org.sonar.api.rule.RuleScope;
@@ -100,6 +99,7 @@ public class RegisterRules implements Startable {
   private final UuidFactory uuidFactory;
   private final MetadataIndex metadataIndex;
   private final RuleDescriptionSectionsGeneratorResolver ruleDescriptionSectionsGeneratorResolver;
+
 
   public RegisterRules(RuleDefinitionsLoader defLoader, QProfileRules qProfileRules, DbClient dbClient, RuleIndexer ruleIndexer,
     ActiveRuleIndexer activeRuleIndexer, Languages languages, System2 system2,
@@ -391,8 +391,7 @@ public class RegisterRules implements Startable {
       .setGapDescription(ruleDef.gapDescription())
       .setSystemTags(ruleDef.tags())
       .setSecurityStandards(ruleDef.securityStandards())
-      .setType(ruleDef.type())
-      .setCharacteristic(ruleDef.characteristic())
+      .setType(RuleType.valueOf(ruleDef.type().name()))
       .setScope(toDtoScope(ruleDef.scope()))
       .setIsExternal(ruleDef.repository().isExternal())
       .setIsAdHoc(false)
@@ -487,17 +486,11 @@ public class RegisterRules implements Startable {
       dto.setLanguage(def.repository().language());
       changed = true;
     }
-    RuleType type = def.type();
+    RuleType type = RuleType.valueOf(def.type().name());
     if (!Objects.equals(dto.getType(), type.getDbConstant())) {
       dto.setType(type);
       changed = true;
     }
-    CodeCharacteristic characteristic = def.characteristic();
-    if (!Objects.equals(dto.getCharacteristic(), characteristic)) {
-      dto.setCharacteristic(characteristic);
-      changed = true;
-    }
-
     if (dto.isAdHoc()) {
       dto.setIsAdHoc(false);
       changed = true;

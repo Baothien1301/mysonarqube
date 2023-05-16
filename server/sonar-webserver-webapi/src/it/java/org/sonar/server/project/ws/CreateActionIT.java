@@ -76,7 +76,7 @@ public class CreateActionIT {
   private final System2 system2 = System2.INSTANCE;
 
   @Rule
-  public final DbTester db = DbTester.create(system2);
+  public final DbTester db = DbTester.create(system2, true);
   @Rule
   public final UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
@@ -90,7 +90,7 @@ public class CreateActionIT {
     new CreateAction(
       db.getDbClient(), userSession,
       new ComponentUpdater(db.getDbClient(), i18n, system2, permissionTemplateService, new FavoriteUpdater(db.getDbClient()),
-        projectIndexers, new SequenceUuidFactory(), defaultBranchNameResolver),
+        projectIndexers, new SequenceUuidFactory(), defaultBranchNameResolver, true),
       projectDefaultVisibility));
 
   @Before
@@ -207,7 +207,7 @@ public class CreateActionIT {
   public void do_not_add_project_to_user_favorites_if_project_creator_is_defined_in_permission_template_and_already_100_favorites() {
     UserDto user = db.users().insertUser();
     when(permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(any(DbSession.class), any(ComponentDto.class))).thenReturn(true);
-    rangeClosed(1, 100).forEach(i -> db.favorites().add(db.components().insertPrivateProject(), user.getUuid(), user.getLogin()));
+    rangeClosed(1, 100).forEach(i -> db.favorites().add(db.components().insertPrivateProject().getMainBranchComponent(), user.getUuid(), user.getLogin()));
     userSession.logIn(user).addPermission(PROVISION_PROJECTS);
 
     ws.newRequest()
@@ -221,7 +221,7 @@ public class CreateActionIT {
 
   @Test
   public void fail_when_project_already_exists() {
-    db.components().insertPublicProject(project -> project.setKey(DEFAULT_PROJECT_KEY));
+    db.components().insertPublicProject(project -> project.setKey(DEFAULT_PROJECT_KEY)).getMainBranchComponent();
     userSession.addPermission(PROVISION_PROJECTS);
 
     CreateRequest request = CreateRequest.builder()

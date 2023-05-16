@@ -23,7 +23,6 @@ import com.google.common.base.Preconditions;
 import java.util.Collection;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.rule.RuleStatus;
 import org.sonar.api.rule.Severity;
 import org.sonar.api.rules.RuleType;
@@ -41,7 +40,6 @@ public class RuleQuery {
   private Collection<RuleStatus> statuses;
   private Collection<String> tags;
   private Collection<RuleType> types;
-  private Collection<CodeCharacteristic> characteristics;
   private Boolean activation;
   private QProfileDto profile;
   private QProfileDto compareToQProfile;
@@ -173,16 +171,6 @@ public class RuleQuery {
 
   public RuleQuery setTypes(@Nullable Collection<RuleType> types) {
     this.types = types;
-    return this;
-  }
-
-  @CheckForNull
-  public Collection<CodeCharacteristic> getCharacteristics() {
-    return characteristics;
-  }
-
-  public RuleQuery setCharacteristics(@Nullable Collection<CodeCharacteristic> characteristics) {
-    this.characteristics = characteristics;
     return this;
   }
 

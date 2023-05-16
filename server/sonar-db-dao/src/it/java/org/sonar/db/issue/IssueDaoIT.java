@@ -27,7 +27,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.Rule;
 import org.junit.Test;
-import org.sonar.api.code.CodeCharacteristic;
 import org.sonar.api.rule.RuleKey;
 import org.sonar.api.rules.RuleType;
 import org.sonar.api.utils.System2;
@@ -123,9 +122,6 @@ public class IssueDaoIT {
     assertThat(issue.getLocations()).isNull();
     assertThat(issue.parseLocations()).isNull();
     assertThat(issue.isExternal()).isTrue();
-    assertThat(issue.getRuleType()).isEqualTo(RuleType.CODE_SMELL.getDbConstant());
-    assertThat(issue.getRuleCharacteristic()).isEqualTo(CodeCharacteristic.CLEAR);
-    assertThat(issue.getEffectiveRuleCharacteristic()).isEqualTo(CodeCharacteristic.CLEAR);
     assertFalse(issue.isQuickFixAvailable());
   }
 
@@ -220,7 +216,7 @@ public class IssueDaoIT {
     long updatedAt = 1_340_000_000_000L;
     long changedSince = 1_000_000_000_000L;
 
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     RuleDto rule = db.rules().insert(r -> r.setRepositoryKey("java").setLanguage("java"));
 
     ComponentDto branchA = db.components().insertProjectBranch(project, b -> b.setKey("branchA"));
@@ -288,7 +284,7 @@ public class IssueDaoIT {
   @Test
   public void selectOpenByComponentUuid() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto projectBranch = db.components().insertProjectBranch(project,
       b -> b.setKey("feature/foo")
         .setBranchType(BranchType.BRANCH));
@@ -310,7 +306,7 @@ public class IssueDaoIT {
   @Test
   public void selectOpenByComponentUuid_should_correctly_map_required_fields() {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto projectBranch = db.components().insertProjectBranch(project,
       b -> b.setKey("feature/foo")
         .setBranchType(BranchType.BRANCH));
@@ -338,7 +334,7 @@ public class IssueDaoIT {
 
   @Test
   public void test_selectIssueGroupsByComponent_on_component_without_issues() {
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(ComponentTesting.newFileDto(project));
 
     Collection<IssueGroupDto> groups = underTest.selectIssueGroupsByComponent(db.getSession(), file, 1_000L);
@@ -376,7 +372,7 @@ public class IssueDaoIT {
 
   @Test
   public void selectIssueGroupsByComponent_on_file() {
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(ComponentTesting.newFileDto(project));
     RuleDto rule = db.rules().insert();
     IssueDto fpBug = db.issues().insert(rule, project, file,
@@ -424,7 +420,7 @@ public class IssueDaoIT {
 
   @Test
   public void selectGroupsOfComponentTreeOnLeak_on_file_new_code_reference_branch() {
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(ComponentTesting.newFileDto(project));
     RuleDto rule = db.rules().insert();
     IssueDto fpBug = db.issues().insert(rule, project, file,
@@ -599,7 +595,7 @@ public class IssueDaoIT {
 
   private void prepareIssuesComponent() {
     db.rules().insert(RULE.setIsExternal(true));
-    ComponentDto projectDto = db.components().insertPrivateProject(t -> t.setUuid(PROJECT_UUID).setKey(PROJECT_KEY));
+    ComponentDto projectDto = db.components().insertPrivateProject(t -> t.setUuid(PROJECT_UUID).setKey(PROJECT_KEY)).getMainBranchComponent();
     db.components().insertComponent(newFileDto(projectDto).setUuid(FILE_UUID).setKey(FILE_KEY));
   }
 

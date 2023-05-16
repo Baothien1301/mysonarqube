@@ -24,10 +24,12 @@ export enum Key {
   ArrowDown = 'ArrowDown',
 
   Alt = 'Alt',
+  Option = 'Option',
   Backspace = 'Backspace',
   CapsLock = 'CapsLock',
   Meta = 'Meta',
   Control = 'Control',
+  Command = 'Command',
   Delete = 'Delete',
   End = 'End',
   Enter = 'Enter',

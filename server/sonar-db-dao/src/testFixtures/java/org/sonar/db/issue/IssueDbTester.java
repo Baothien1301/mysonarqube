@@ -30,6 +30,7 @@ import org.sonar.core.issue.FieldDiffs;
 import org.sonar.core.util.Uuids;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.project.ProjectDto;
 import org.sonar.db.rule.RuleDto;
 import org.sonar.db.user.UserDto;
@@ -67,7 +68,7 @@ public class IssueDbTester {
   @SafeVarargs
   public final IssueDto insert(Consumer<IssueDto>... populators) {
     RuleDto rule = db.rules().insert();
-    ComponentDto project = db.components().insertPublicProject();
+    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(newFileDto(project));
     IssueDto issue = newIssue(rule, project, file);
     stream(populators).forEach(p -> p.accept(issue));
@@ -136,7 +137,7 @@ public class IssueDbTester {
    */
   @SafeVarargs
   public final IssueDto insertIssue(RuleDto ruleDto, Consumer<IssueDto>... populators) {
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(newFileDto(project));
     IssueDto issue = newIssue(ruleDto, project, file)
       .setType(RULE_TYPES_EXCEPT_HOTSPOTS[new Random().nextInt(RULE_TYPES_EXCEPT_HOTSPOTS.length)]);
@@ -175,6 +176,10 @@ public class IssueDbTester {
     return insertHotspot(issue);
   }
 
+  public final IssueDto insertHotspot(RuleDto rule, ProjectData project, ComponentDto file, Consumer<IssueDto>... populators) {
+    return insertHotspot(rule, project.getMainBranchComponent(), file, populators);
+  }
+
   public final IssueDto insertHotspot(ProjectDto project, ComponentDto file, Consumer<IssueDto>... populators) {
     RuleDto rule = db.rules().insertHotspotRule();
     IssueDto issue = newIssue(rule, project, file)
@@ -203,7 +208,7 @@ public class IssueDbTester {
   @SafeVarargs
   public final IssueDto insertHotspot(Consumer<IssueDto>... populators) {
     RuleDto rule = db.rules().insertHotspotRule();
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto file = db.components().insertComponent(newFileDto(project));
     IssueDto issue = newIssue(rule, project, file)
       .setType(SECURITY_HOTSPOT)

@@ -19,25 +19,36 @@
  */
 package org.sonar.auth.github;
 
+import java.util.Optional;
+import org.junit.Rule;
 import org.junit.Test;
+import org.sonar.api.config.PropertyDefinition;
 import org.sonar.api.config.PropertyDefinitions;
 import org.sonar.api.config.internal.MapSettings;
 import org.sonar.api.utils.System2;
+import org.sonar.db.DbTester;
+import org.sonar.db.user.GroupDto;
+import org.sonar.server.property.InternalProperties;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class GitHubSettingsTest {
+  @Rule
+  public DbTester db = DbTester.create(System2.INSTANCE);
 
   private MapSettings settings = new MapSettings(new PropertyDefinitions(System2.INSTANCE, GitHubSettings.definitions()));
+  private InternalProperties internalProperties = mock(InternalProperties.class);
 
-  private GitHubSettings underTest = new GitHubSettings(settings.asConfig());
+  private GitHubSettings underTest = new GitHubSettings(settings.asConfig(), internalProperties, db.getDbClient());
 
   @Test
   public void is_enabled() {
-    settings.setProperty("sonar.auth.github.clientId.secured", "id");
-    settings.setProperty("sonar.auth.github.clientSecret.secured", "secret");
+    enableGithubAuthentication();
 
-    settings.setProperty("sonar.auth.github.enabled", true);
     assertThat(underTest.isEnabled()).isTrue();
 
     settings.setProperty("sonar.auth.github.enabled", false);
@@ -63,6 +74,87 @@ public class GitHubSettingsTest {
   }
 
   @Test
+  public void isProvisioningEnabled_returnsFalseByDefault() {
+    enableGithubAuthentication();
+    when(internalProperties.read(GitHubSettings.PROVISIONING)).thenReturn(Optional.empty());
+    assertThat(underTest.isProvisioningEnabled()).isFalse();
+  }
+
+  @Test
+  public void isProvisioningEnabled_ifProvisioningEnabledButGithubAuthNotSet_returnsFalse() {
+    enableGithubAuthentication();
+    when(internalProperties.read(GitHubSettings.PROVISIONING)).thenReturn(Optional.of(Boolean.FALSE.toString()));
+    assertThat(underTest.isProvisioningEnabled()).isFalse();
+  }
+
+  @Test
+  public void isProvisioningEnabled_ifProvisioningEnabledButGithubAuthDisabled_returnsFalse() {
+    when(internalProperties.read(GitHubSettings.PROVISIONING)).thenReturn(Optional.of(Boolean.TRUE.toString()));
+    assertThat(underTest.isProvisioningEnabled()).isFalse();
+  }
+
+  @Test
+  public void isProvisioningEnabled_ifProvisioningEnabledAndGithubAuthEnabled_returnsTrue() {
+    enableGithubAuthenticationWithGithubApp();
+    when(internalProperties.read(GitHubSettings.PROVISIONING)).thenReturn(Optional.of(Boolean.TRUE.toString()));
+    assertThat(underTest.isProvisioningEnabled()).isTrue();
+  }
+
+  @Test
+  public void setProvisioning_whenGitHubAuthDisabled_shouldThrow() {
+    assertThatIllegalStateException()
+      .isThrownBy(() -> underTest.setProvisioning(true))
+      .withMessage("GitHub authentication must be enabled to enable GitHub provisioning.");
+    assertThat(underTest.isProvisioningEnabled()).isFalse();
+  }
+
+  @Test
+  public void setProvisioning_whenPrivateKeyMissing_shouldThrow() {
+    enableGithubAuthenticationWithGithubApp();
+    settings.setProperty("sonar.auth.github.privateKey.secured", "");
+
+    assertThatIllegalStateException()
+      .isThrownBy(() -> underTest.setProvisioning(true))
+      .withMessage("Private key must be provided to enable GitHub provisioning.");
+    assertThat(underTest.isProvisioningEnabled()).isFalse();
+  }
+
+  @Test
+  public void setProvisioning_whenAppIdMissing_shouldThrow() {
+    enableGithubAuthenticationWithGithubApp();
+    settings.setProperty("sonar.auth.github.appId", "");
+
+    assertThatIllegalStateException()
+      .isThrownBy(() -> underTest.setProvisioning(true))
+      .withMessage("Application ID must be provided to enable GitHub provisioning.");
+    assertThat(underTest.isProvisioningEnabled()).isFalse();
+  }
+
+  @Test
+  public void setProvisioning_whenPassedTrue_delegatesToInternalPropertiesWrite() {
+    enableGithubAuthenticationWithGithubApp();
+    underTest.setProvisioning(true);
+    verify(internalProperties).write(GitHubSettings.PROVISIONING, Boolean.TRUE.toString());
+  }
+
+  @Test
+  public void setProvisioning_whenPassedFalse_delegatesToInternalPropertiesWriteAndCleansUpExternalGroups() {
+    GroupDto groupDto = createGithubManagedGroup();
+
+    underTest.setProvisioning(false);
+
+    verify(internalProperties).write(GitHubSettings.PROVISIONING, Boolean.FALSE.toString());
+    assertThat(db.getDbClient().externalGroupDao().selectByGroupUuid(db.getSession(), groupDto.getUuid())).isEmpty();
+  }
+
+  private GroupDto createGithubManagedGroup() {
+    GroupDto groupDto = db.users().insertGroup();
+    db.users().markGroupAsGithubManaged(groupDto.getUuid());
+    return groupDto;
+  }
+
+
+  @Test
   public void return_client_id() {
     settings.setProperty("sonar.auth.github.clientId.secured", "id");
     assertThat(underTest.clientId()).isEqualTo("id");
@@ -72,6 +164,18 @@ public class GitHubSettingsTest {
   public void return_client_secret() {
     settings.setProperty("sonar.auth.github.clientSecret.secured", "secret");
     assertThat(underTest.clientSecret()).isEqualTo("secret");
+  }
+
+  @Test
+  public void return_app_id() {
+    settings.setProperty("sonar.auth.github.appId", "secret");
+    assertThat(underTest.appId()).isEqualTo("secret");
+  }
+
+  @Test
+  public void return_private_key() {
+    settings.setProperty("sonar.auth.github.privateKey.secured", "secret");
+    assertThat(underTest.privateKey()).isEqualTo("secret");
   }
 
   @Test
@@ -144,6 +248,30 @@ public class GitHubSettingsTest {
 
   @Test
   public void definitions() {
-    assertThat(GitHubSettings.definitions()).hasSize(8);
+    assertThat(GitHubSettings.definitions().stream()
+      .map(PropertyDefinition::name))
+      .containsExactly(
+        "Enabled",
+        "Client ID",
+        "Client Secret",
+        "App ID",
+        "Private Key",
+        "Allow users to sign up",
+        "Synchronize teams as groups",
+        "The API url for a GitHub instance.",
+        "The WEB url for a GitHub instance.",
+        "Organizations");
+  }
+
+  private void enableGithubAuthentication() {
+    settings.setProperty("sonar.auth.github.clientId.secured", "id");
+    settings.setProperty("sonar.auth.github.clientSecret.secured", "secret");
+    settings.setProperty("sonar.auth.github.enabled", true);
+  }
+
+  private void enableGithubAuthenticationWithGithubApp() {
+    enableGithubAuthentication();
+    settings.setProperty("sonar.auth.github.appId", "id");
+    settings.setProperty("sonar.auth.github.privateKey.secured", "secret");
   }
 }

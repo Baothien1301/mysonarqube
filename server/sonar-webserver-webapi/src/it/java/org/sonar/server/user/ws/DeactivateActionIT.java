@@ -77,7 +77,7 @@ public class DeactivateActionIT {
   private final DbClient dbClient = db.getDbClient();
   private final DbSession dbSession = db.getSession();
   private final UserAnonymizer userAnonymizer = new UserAnonymizer(db.getDbClient(), () -> "anonymized");
-  private final UserDeactivator userDeactivator = new UserDeactivator(dbClient, userSession, userAnonymizer);
+  private final UserDeactivator userDeactivator = new UserDeactivator(dbClient, userAnonymizer);
   private final ManagedInstanceChecker managedInstanceChecker = mock(ManagedInstanceChecker.class);
   private final WsActionTester ws = new WsActionTester(new DeactivateAction(dbClient, userSession, new UserJsonWriter(userSession), userDeactivator, managedInstanceChecker));
 
@@ -145,7 +145,7 @@ public class DeactivateActionIT {
     createAdminUser();
     logInAsSystemAdministrator();
     UserDto user = db.users().insertUser();
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     db.properties().insertProperty(newUserPropertyDto(user), null, null, null, user.getLogin());
     db.properties().insertProperty(newUserPropertyDto(user), null, null, null, user.getLogin());
     db.properties().insertProperty(newUserPropertyDto(user).setComponentUuid(project.uuid()), project.getKey(),
@@ -162,7 +162,7 @@ public class DeactivateActionIT {
     createAdminUser();
     logInAsSystemAdministrator();
     UserDto user = db.users().insertUser();
-    ComponentDto project = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     db.users().insertGlobalPermissionOnUser(user, GlobalPermission.SCAN);
     db.users().insertGlobalPermissionOnUser(user, GlobalPermission.ADMINISTER_QUALITY_PROFILES);
     db.users().insertProjectPermissionOnUser(user, UserRole.USER, project);
@@ -210,8 +210,8 @@ public class DeactivateActionIT {
     createAdminUser();
     logInAsSystemAdministrator();
     UserDto user = db.users().insertUser();
-    ComponentDto project = db.components().insertPrivateProject();
-    ComponentDto anotherProject = db.components().insertPrivateProject();
+    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
+    ComponentDto anotherProject = db.components().insertPrivateProject().getMainBranchComponent();
     db.properties().insertProperty(new PropertyDto().setKey("sonar.issues.defaultAssigneeLogin").setValue(user.getLogin())
       .setComponentUuid(project.uuid()), project.getKey(), project.name(), project.qualifier(), user.getLogin());
     db.properties().insertProperty(new PropertyDto().setKey("sonar.issues.defaultAssigneeLogin").setValue(user.getLogin())
@@ -276,8 +276,8 @@ public class DeactivateActionIT {
   public void deactivate_user_deletes_their_dismissed_messages() {
     createAdminUser();
     logInAsSystemAdministrator();
-    ProjectDto project1 = db.components().insertPrivateProjectDto();
-    ProjectDto project2 = db.components().insertPrivateProjectDto();
+    ProjectDto project1 = db.components().insertPrivateProject().getProjectDto();
+    ProjectDto project2 = db.components().insertPrivateProject().getProjectDto();
     UserDto user = db.users().insertUser();
 
     db.users().insertUserDismissedMessage(user, project1, CeTaskMessageType.SUGGEST_DEVELOPER_EDITION_UPGRADE);

@@ -51,11 +51,6 @@ export const ui = {
   issueItem7: byRole('region', { name: 'Issue with tags' }),
   issueItem8: byRole('region', { name: 'Issue on page 2' }),
 
-  clearFitForDevelopmentFacet: byRole('button', {
-    name: 'clear_x_filter.issues.facet.characteristics.DEVELOPMENT',
-  }),
-  clearCharacteristicFilter: byRole('checkbox', { name: 'issue.characteristic.CLEAR' }),
-  typeFacet: byRole('button', { name: 'issues.facet.types' }),
   clearIssueTypeFacet: byRole('button', { name: 'clear_x_filter.issues.facet.types' }),
   codeSmellIssueTypeFilter: byRole('checkbox', { name: 'issue.type.CODE_SMELL' }),
   vulnerabilityIssueTypeFilter: byRole('checkbox', { name: 'issue.type.VULNERABILITY' }),
@@ -89,12 +84,11 @@ export const ui = {
   dateInputYearSelect: byRole('combobox', { name: 'Year:' }),
 
   clearAllFilters: byRole('button', { name: 'clear_all_filters' }),
-  showFiltersButton: (showMore = true) =>
-    byRole('button', { name: `issues.show_${showMore ? 'more' : 'less'}_filters` }),
 
-  ruleFacetList: byRole('list', { name: 'rules' }),
-  languageFacetList: byRole('list', { name: 'languages' }),
+  ruleFacetList: byRole('list', { name: 'issues.facet.rules' }),
+  languageFacetList: byRole('list', { name: 'issues.facet.languages' }),
   ruleFacetSearch: byRole('searchbox', { name: 'search.search_for_rules' }),
+  inNewCodeFilter: byRole('checkbox', { name: 'issues.new_code' }),
 };
 
 export async function waitOnDataLoaded() {

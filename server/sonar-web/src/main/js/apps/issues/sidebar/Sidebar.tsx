@@ -19,10 +19,7 @@
  */
 import * as React from 'react';
 import withAppStateContext from '../../../app/components/app-state/withAppStateContext';
-import DocLink from '../../../components/common/DocLink';
-import DismissableAlert from '../../../components/ui/DismissableAlert';
 import { isBranch, isPullRequest } from '../../../helpers/branch-like';
-import { translate } from '../../../helpers/l10n';
 import { AppState } from '../../../types/appstate';
 import { BranchLike } from '../../../types/branch-like';
 import {
@@ -33,8 +30,6 @@ import {
 } from '../../../types/component';
 import {
   Facet,
-  IssueCharacteristic,
-  IssueCharacteristicFitFor,
   ReferencedComponent,
   ReferencedLanguage,
   ReferencedRule,
@@ -42,10 +37,9 @@ import {
 import { GlobalSettingKeys } from '../../../types/settings';
 import { Component, Dict } from '../../../types/types';
 import { UserBase } from '../../../types/users';
-import { OpenFacets, Query } from '../utils';
+import { Query } from '../utils';
 import AssigneeFacet from './AssigneeFacet';
 import AuthorFacet from './AuthorFacet';
-import CharacteristicFacet from './CharacteristicFacet';
 import CreationDateFacet from './CreationDateFacet';
 import DirectoryFacet from './DirectoryFacet';
 import FileFacet from './FileFacet';
@@ -66,34 +60,24 @@ export interface Props {
   branchLike?: BranchLike;
   component: Component | undefined;
   createdAfterIncludesTime: boolean;
-  facets: Dict<Facet>;
+  facets: Dict<Facet | undefined>;
   loadSearchResultCount: (property: string, changes: Partial<Query>) => Promise<Facet>;
   loadingFacets: Dict<boolean>;
   myIssues: boolean;
   onFacetToggle: (property: string) => void;
   onFilterChange: (changes: Partial<Query>) => void;
-  openFacets: OpenFacets;
+  openFacets: Dict<boolean>;
   query: Query;
   referencedComponentsById: Dict<ReferencedComponent>;
   referencedComponentsByKey: Dict<ReferencedComponent>;
   referencedLanguages: Dict<ReferencedLanguage>;
   referencedRules: Dict<ReferencedRule>;
   referencedUsers: Dict<UserBase>;
-  showAllFilters: boolean;
 }
 
 export class Sidebar extends React.PureComponent<Props> {
   renderComponentFacets() {
-    const {
-      component,
-      facets,
-      loadingFacets,
-      openFacets,
-      query,
-      branchLike,
-      showAllFilters,
-      loadSearchResultCount,
-    } = this.props;
+    const { component, facets, loadingFacets, openFacets, query, branchLike } = this.props;
     const hasFileOrDirectory =
       !isApplication(component?.qualifier) && !isPortfolioLike(component?.qualifier);
     if (!component || !hasFileOrDirectory) {
@@ -101,7 +85,7 @@ export class Sidebar extends React.PureComponent<Props> {
     }
     const commonProps = {
       componentKey: component.key,
-      loadSearchResultCount,
+      loadSearchResultCount: this.props.loadSearchResultCount,
       onChange: this.props.onFilterChange,
       onToggle: this.props.onFacetToggle,
       query,
@@ -115,7 +99,6 @@ export class Sidebar extends React.PureComponent<Props> {
             fetching={loadingFacets.directories === true}
             open={!!openFacets.directories}
             stats={facets.directories}
-            forceShow={showAllFilters}
             {...commonProps}
           />
         )}
@@ -125,7 +108,6 @@ export class Sidebar extends React.PureComponent<Props> {
           files={query.files}
           open={!!openFacets.files}
           stats={facets.files}
-          forceShow={showAllFilters}
           {...commonProps}
         />
       </>
@@ -141,13 +123,6 @@ export class Sidebar extends React.PureComponent<Props> {
       openFacets,
       query,
       branchLike,
-      showAllFilters,
-      loadingFacets,
-      loadSearchResultCount,
-      referencedRules,
-      referencedLanguages,
-      referencedComponentsByKey,
-      referencedUsers,
     } = this.props;
 
     const disableDeveloperAggregatedInfo =
@@ -166,91 +141,62 @@ export class Sidebar extends React.PureComponent<Props> {
       <>
         {displayPeriodFilter && (
           <PeriodFilter
-            fetching={loadingFacets.period === true}
+            fetching={this.props.loadingFacets.period === true}
             onChange={this.props.onFilterChange}
             stats={facets.period}
             newCodeSelected={query.inNewCodePeriod}
           />
         )}
-        <DismissableAlert alertKey="issues-characteristic-facets" variant="info" display="inline">
-          <strong>{translate('issues.characteristic.facet-highlight.title')}</strong>
-          <br />
-          <DocLink to="/what-sonarqube-can-do">{translate('learn_more')}</DocLink>
-        </DismissableAlert>
-        <CharacteristicFacet
-          fetching={loadingFacets.characteristics === true}
+        <TypeFacet
+          fetching={this.props.loadingFacets.types === true}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
-          open={openFacets.characteristics?.[IssueCharacteristicFitFor.Production]}
-          stats={facets.characteristics}
-          fitFor={IssueCharacteristicFitFor.Production}
-          characteristics={query.characteristics as IssueCharacteristic[]}
-        />
-        <CharacteristicFacet
-          fetching={this.props.loadingFacets.characteristics === true}
-          onChange={this.props.onFilterChange}
-          onToggle={this.props.onFacetToggle}
-          open={openFacets.characteristics?.[IssueCharacteristicFitFor.Development]}
-          stats={facets.characteristics}
-          fitFor={IssueCharacteristicFitFor.Development}
-          characteristics={query.characteristics as IssueCharacteristic[]}
+          open={!!openFacets.types}
+          stats={facets.types}
+          types={query.types}
         />
         <SeverityFacet
-          fetching={loadingFacets.severities === true}
+          fetching={this.props.loadingFacets.severities === true}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.severities}
           severities={query.severities}
           stats={facets.severities}
         />
-        <TypeFacet
-          fetching={loadingFacets.types === true}
-          onChange={this.props.onFilterChange}
-          onToggle={this.props.onFacetToggle}
-          open={!!openFacets.types}
-          stats={facets.types}
-          types={query.types}
-          forceShow={showAllFilters}
-        />
-
         <ScopeFacet
-          fetching={loadingFacets.scopes === true}
+          fetching={this.props.loadingFacets.scopes === true}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.scopes}
           stats={facets.scopes}
           scopes={query.scopes}
-          forceShow={showAllFilters}
         />
-
         <ResolutionFacet
-          fetching={loadingFacets.resolutions === true}
+          fetching={this.props.loadingFacets.resolutions === true}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.resolutions}
           resolutions={query.resolutions}
           resolved={query.resolved}
           stats={facets.resolutions}
-          forceShow={showAllFilters}
         />
         <StatusFacet
-          fetching={loadingFacets.statuses === true}
+          fetching={this.props.loadingFacets.statuses === true}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.statuses}
           stats={facets.statuses}
           statuses={query.statuses}
-          forceShow={showAllFilters}
         />
         <StandardFacet
           cwe={query.cwe}
           cweOpen={!!openFacets.cwe}
           cweStats={facets.cwe}
-          fetchingCwe={loadingFacets.cwe === true}
-          fetchingOwaspTop10={loadingFacets.owaspTop10 === true}
-          fetchingOwaspTop10-2021={loadingFacets['owaspTop10-2021'] === true}
-          fetchingSonarSourceSecurity={loadingFacets.sonarsourceSecurity === true}
-          loadSearchResultCount={loadSearchResultCount}
+          fetchingCwe={this.props.loadingFacets.cwe === true}
+          fetchingOwaspTop10={this.props.loadingFacets.owaspTop10 === true}
+          fetchingOwaspTop10-2021={this.props.loadingFacets['owaspTop10-2021'] === true}
+          fetchingSonarSourceSecurity={this.props.loadingFacets.sonarsourceSecurity === true}
+          loadSearchResultCount={this.props.loadSearchResultCount}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.standards}
@@ -264,7 +210,6 @@ export class Sidebar extends React.PureComponent<Props> {
           sonarsourceSecurity={query.sonarsourceSecurity}
           sonarsourceSecurityOpen={!!openFacets.sonarsourceSecurity}
           sonarsourceSecurityStats={facets.sonarsourceSecurity}
-          forceShow={showAllFilters}
         />
         <CreationDateFacet
           component={component}
@@ -273,63 +218,58 @@ export class Sidebar extends React.PureComponent<Props> {
           createdAt={query.createdAt}
           createdBefore={query.createdBefore}
           createdInLast={query.createdInLast}
-          fetching={loadingFacets.createdAt === true}
+          fetching={this.props.loadingFacets.createdAt === true}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.createdAt}
           inNewCodePeriod={query.inNewCodePeriod}
           stats={facets.createdAt}
-          forceShow={showAllFilters}
         />
         <LanguageFacet
-          fetching={loadingFacets.languages === true}
-          loadSearchResultCount={loadSearchResultCount}
+          fetching={this.props.loadingFacets.languages === true}
+          loadSearchResultCount={this.props.loadSearchResultCount}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.languages}
           query={query}
-          referencedLanguages={referencedLanguages}
+          referencedLanguages={this.props.referencedLanguages}
           selectedLanguages={query.languages}
           stats={facets.languages}
-          forceShow={showAllFilters}
         />
         <RuleFacet
-          fetching={loadingFacets.rules === true}
-          loadSearchResultCount={loadSearchResultCount}
+          fetching={this.props.loadingFacets.rules === true}
+          loadSearchResultCount={this.props.loadSearchResultCount}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.rules}
           query={query}
-          referencedRules={referencedRules}
+          referencedRules={this.props.referencedRules}
           stats={facets.rules}
-          forceShow={showAllFilters}
         />
         <TagFacet
           component={component}
           branch={branch}
-          fetching={loadingFacets.tags === true}
-          loadSearchResultCount={loadSearchResultCount}
+          fetching={this.props.loadingFacets.tags === true}
+          loadSearchResultCount={this.props.loadSearchResultCount}
           onChange={this.props.onFilterChange}
           onToggle={this.props.onFacetToggle}
           open={!!openFacets.tags}
           query={query}
           stats={facets.tags}
           tags={query.tags}
-          forceShow={showAllFilters}
         />
         {displayProjectsFacet && (
           <ProjectFacet
             component={component}
-            fetching={loadingFacets.projects === true}
-            loadSearchResultCount={loadSearchResultCount}
+            fetching={this.props.loadingFacets.projects === true}
+            loadSearchResultCount={this.props.loadSearchResultCount}
             onChange={this.props.onFilterChange}
             onToggle={this.props.onFacetToggle}
             open={!!openFacets.projects}
             projects={query.projects}
             query={query}
-            referencedComponents={referencedComponentsByKey}
+            referencedComponents={this.props.referencedComponentsByKey}
             stats={facets.projects}
-            forceShow={showAllFilters}
           />
         )}
         {this.renderComponentFacets()}
@@ -337,29 +277,27 @@ export class Sidebar extends React.PureComponent<Props> {
           <AssigneeFacet
             assigned={query.assigned}
             assignees={query.assignees}
-            fetching={loadingFacets.assignees === true}
-            loadSearchResultCount={loadSearchResultCount}
+            fetching={this.props.loadingFacets.assignees === true}
+            loadSearchResultCount={this.props.loadSearchResultCount}
             onChange={this.props.onFilterChange}
             onToggle={this.props.onFacetToggle}
             open={!!openFacets.assignees}
             query={query}
-            referencedUsers={referencedUsers}
+            referencedUsers={this.props.referencedUsers}
             stats={facets.assignees}
-            forceShow={showAllFilters}
           />
         )}
         {displayAuthorFacet && !disableDeveloperAggregatedInfo && (
           <AuthorFacet
             author={query.author}
             component={component}
-            fetching={loadingFacets.author === true}
-            loadSearchResultCount={loadSearchResultCount}
+            fetching={this.props.loadingFacets.author === true}
+            loadSearchResultCount={this.props.loadSearchResultCount}
             onChange={this.props.onFilterChange}
             onToggle={this.props.onFacetToggle}
             open={!!openFacets.author}
             query={query}
             stats={facets.author}
-            forceShow={showAllFilters}
           />
         )}
       </>

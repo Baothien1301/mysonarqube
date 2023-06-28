@@ -48,7 +48,9 @@ interface Props {
   closeOnClick?: boolean;
   id: string;
   isPortal?: boolean;
+  onClose?: VoidFunction;
   onOpen?: VoidFunction;
+  openDropdown?: boolean;
   overlay: React.ReactNode;
   placement?: PopupPlacement;
   size?: InputSizeKeys;
@@ -62,14 +64,20 @@ interface State {
 export class Dropdown extends React.PureComponent<Props, State> {
   state: State = { open: false };
 
-  componentDidUpdate(_: Props, prevState: State) {
+  componentDidUpdate(props: Props, prevState: State) {
     if (!prevState.open && this.state.open && this.props.onOpen) {
       this.props.onOpen();
+    }
+    if (props.openDropdown !== this.props.openDropdown && this.props.openDropdown) {
+      this.setState({ open: this.props.openDropdown });
     }
   }
 
   handleClose = () => {
     this.setState({ open: false });
+    if (this.props.onClose) {
+      this.props.onClose();
+    }
   };
 
   handleToggleClick: OnClickCallback = (event) => {
@@ -132,17 +140,18 @@ export class Dropdown extends React.PureComponent<Props, State> {
 }
 
 interface ActionsDropdownProps extends Omit<Props, 'children' | 'overlay'> {
+  ariaLabel?: string;
   buttonSize?: 'small' | 'medium';
   children: React.ReactNode;
 }
 
 export function ActionsDropdown(props: ActionsDropdownProps) {
-  const { children, buttonSize, ...dropdownProps } = props;
+  const { children, buttonSize, ariaLabel, ...dropdownProps } = props;
   return (
     <Dropdown overlay={children} {...dropdownProps}>
       <InteractiveIcon
         Icon={MenuIcon}
-        aria-label={translate('menu')}
+        aria-label={ariaLabel ?? translate('menu')}
         size={buttonSize}
         stopPropagation={false}
       />

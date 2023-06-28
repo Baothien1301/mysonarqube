@@ -18,16 +18,16 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-import { act, screen, within } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { omit, pick } from 'lodash';
 import * as React from 'react';
-import { byRole, byText } from 'testing-library-selector';
+import { Route } from 'react-router-dom';
 import IssuesServiceMock from '../../../api/mocks/IssuesServiceMock';
 import { KeyboardKeys } from '../../../helpers/keycodes';
-import { mockIssueComment } from '../../../helpers/mocks/issues';
 import { mockIssue, mockLoggedInUser, mockRawIssue } from '../../../helpers/testMocks';
-import { findTooltipWithContent, renderApp } from '../../../helpers/testReactTestingUtils';
+import { findTooltipWithContent, renderAppRoutes } from '../../../helpers/testReactTestingUtils';
+import { byLabelText, byRole, byText } from '../../../helpers/testSelector';
 import {
   IssueActions,
   IssueSeverity,
@@ -36,12 +36,7 @@ import {
   IssueType,
 } from '../../../types/issues';
 import { RuleStatus } from '../../../types/rules';
-import { IssueComment } from '../../../types/types';
 import Issue from '../Issue';
-
-jest.mock('../../../api/issues');
-jest.mock('../../../api/rules');
-jest.mock('../../../api/users');
 
 jest.mock('../../../helpers/preferences', () => ({
   getKeyboardShortcutEnabled: jest.fn(() => true),
@@ -54,30 +49,18 @@ beforeEach(() => {
 });
 
 describe('rendering', () => {
-  it('should render correctly with comments', () => {
-    const { ui } = getPageObject();
-    renderIssue({ issue: mockIssue(false, { comments: [mockIssueCommentPosted4YearsAgo()] }) });
-
-    const comments = within(ui.commentsList());
-    expect(comments.getByText('Leïa Skywalker')).toBeInTheDocument();
-    expect(comments.getByRole('listitem')).toHaveTextContent('This is a comment, bud');
-    expect(comments.getByRole('listitem')).toHaveTextContent('issue.comment.posted_on4 years ago');
-  });
-
-  it('should render correctly for locations, issue message, line, permalink, why, and effort', async () => {
+  it('should render correctly for issue message and effort', async () => {
     const { ui } = getPageObject();
     const issue = mockIssue(true, { effort: '2 days', message: 'This is an issue' });
     const onClick = jest.fn();
-    renderIssue({ issue, displayLocationsCount: true, displayWhyIsThisAnIssue: true, onClick });
+    renderIssue({ issue, onSelect: onClick });
 
-    expect(ui.locationsBadge(7).get()).toBeInTheDocument();
-    expect(ui.lineInfo(26).get()).toBeInTheDocument();
-    expect(ui.permalink.get()).toHaveAttribute(
-      'href',
-      `/project/issues?issues=${issue.key}&open=${issue.key}&id=${issue.project}`
-    );
-    expect(ui.whyLink.get()).toBeInTheDocument();
     expect(ui.effort('2 days').get()).toBeInTheDocument();
+    expect(ui.issueMessageLink.get()).toHaveAttribute(
+      'href',
+      '/project/issues?scopes=MAIN&severities=MINOR&types=VULNERABILITY&open=AVsae-CQS-9G3txfbFN2&id=myproject'
+    );
+
     await ui.clickIssueMessage();
     expect(onClick).toHaveBeenCalledWith(issue.key);
   });
@@ -93,7 +76,7 @@ describe('rendering', () => {
 
   it('should render correctly for external rule engines', () => {
     renderIssue({ issue: mockIssue(true, { externalRuleEngine: 'ESLINT' }) });
-    expect(screen.getByText('ESLINT')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'ESLINT' })).toBeInTheDocument();
   });
 
   it('should render the SonarLint icon correctly', () => {
@@ -112,15 +95,11 @@ describe('rendering', () => {
     expect(onCheck).toHaveBeenCalledWith(issue.key);
   });
 
-  it('should correctly render the changelog', async () => {
+  it('should correctly render any code variants', () => {
     const { ui } = getPageObject();
-    renderIssue();
-
-    await ui.showChangelog();
-    expect(
-      ui.changelogRow('status', IssueStatus.Confirmed, IssueStatus.Reopened).get()
-    ).toBeInTheDocument();
-    expect(ui.changelogRow('assign', 'luke.skywalker', 'darth.vader').get()).toBeInTheDocument();
+    renderIssue({ issue: mockIssue(false, { codeVariants: ['variant 1', 'variant 2'] }) });
+    expect(ui.variants(2).get()).toBeInTheDocument();
+    expect(findTooltipWithContent('variant 1, variant 2', undefined, 'div')).toBeInTheDocument();
   });
 });
 
@@ -179,28 +158,6 @@ describe('updating', () => {
 
     await ui.updateAssignee('leia', 'Skywalker');
     expect(ui.updateAssigneeBtn('luke').get()).toBeInTheDocument();
-  });
-
-  it('should allow commenting', async () => {
-    const { ui } = getPageObject();
-    const issue = mockRawIssue(false, {
-      actions: [IssueActions.Comment],
-    });
-    issuesHandler.setIssueList([{ issue, snippets: {} }]);
-    renderIssue({ issue: mockIssue(false, { ...pick(issue, 'actions', 'key') }) });
-
-    // Create
-    await ui.addComment('Original content');
-    const comments = within(ui.commentsList());
-    expect(comments.getByRole('listitem')).toHaveTextContent('Original content');
-
-    // Update
-    await ui.updateComment('New content');
-    expect(comments.getByRole('listitem')).toHaveTextContent('New content');
-
-    // Delete
-    await ui.deleteComment();
-    expect(comments.getByRole('listitem')).toHaveTextContent('New content');
   });
 
   it('should allow updating the tags', async () => {
@@ -262,68 +219,6 @@ it('should correctly handle keyboard shortcuts', async () => {
   expect(ui.updateAssigneeBtn('leia').get()).toBeInTheDocument();
 });
 
-it('should correctly handle similar issues filtering', async () => {
-  const { ui, user } = getPageObject();
-  const onFilter = jest.fn();
-  const issue = mockIssue(false, {
-    ruleName: 'Rule Foo',
-    tags: ['accessibility', 'owasp'],
-    projectName: 'Project Bar',
-    componentLongName: 'main.js',
-  });
-  renderIssue({ onFilter, issue });
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueTypeLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('type', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueSeverityLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('severity', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueStatusLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('status', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueResolutionLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('resolution', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueAssigneeLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('assignee', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueRuleLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('rule', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueTagLink('accessibility').get());
-  expect(onFilter).toHaveBeenLastCalledWith('tag###accessibility', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueTagLink('owasp').get());
-  expect(onFilter).toHaveBeenLastCalledWith('tag###owasp', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueProjectLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('project', issue);
-
-  await ui.showSimilarIssues();
-  await user.click(ui.similarIssueFileLink.get());
-  expect(onFilter).toHaveBeenLastCalledWith('file', issue);
-});
-
-function mockIssueCommentPosted4YearsAgo(overrides: Partial<IssueComment> = {}) {
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - 4);
-  return mockIssueComment({
-    authorName: 'Leïa Skywalker',
-    createdAt: date.toISOString(),
-    ...overrides,
-  });
-}
-
 function getPageObject() {
   const user = userEvent.setup();
 
@@ -332,11 +227,11 @@ function getPageObject() {
     ruleStatusBadge: (status: RuleStatus) => byText(`issue.resolution.badge.${status}`),
     locationsBadge: (count: number) => byText(count),
     lineInfo: (line: number) => byText(`L${line}`),
-    permalink: byRole('link', { name: 'permalink' }),
     effort: (effort: string) => byText(`issue.x_effort.${effort}`),
     whyLink: byRole('link', { name: 'issue.why_this_issue.long' }),
     checkbox: byRole('checkbox'),
-    issueMessageBtn: byRole('button', { name: 'This is an issue' }),
+    issueMessageLink: byRole('link', { name: 'This is an issue' }),
+    variants: (n: number) => byText(`issue.x_code_variants.${n}`),
 
     // Changelog
     toggleChangelogBtn: byRole('button', {
@@ -381,38 +276,31 @@ function getPageObject() {
 
     // Type
     updateTypeBtn: (currentType: IssueType) =>
-      byRole('button', { name: `issue.type.type_x_click_to_change.issue.type.${currentType}` }),
-    setTypeBtn: (type: IssueType) => byRole('button', { name: `issue.type.${type}` }),
+      byLabelText(`issue.type.type_x_click_to_change.issue.type.${currentType}`),
+    setTypeBtn: (type: IssueType) => byText(`issue.type.${type}`),
 
     // Severity
     updateSeverityBtn: (currentSeverity: IssueSeverity) =>
-      byRole('button', {
-        name: `issue.severity.severity_x_click_to_change.severity.${currentSeverity}`,
-      }),
-    setSeverityBtn: (severity: IssueSeverity) => byRole('button', { name: `severity.${severity}` }),
+      byLabelText(`issue.severity.severity_x_click_to_change.severity.${currentSeverity}`),
+    setSeverityBtn: (severity: IssueSeverity) => byText(`severity.${severity}`),
 
     // Status
     updateStatusBtn: (currentStatus: IssueStatus) =>
-      byRole('button', {
-        name: `issue.transition.status_x_click_to_change.issue.status.${currentStatus}`,
-      }),
-    setStatusBtn: (transition: IssueTransition) =>
-      byRole('button', { name: `issue.transition.${transition}` }),
+      byLabelText(`issue.transition.status_x_click_to_change.issue.status.${currentStatus}`),
+    setStatusBtn: (transition: IssueTransition) => byText(`issue.transition.${transition}`),
 
     // Assignee
-    assigneeSearchInput: byRole('searchbox'),
+    assigneeSearchInput: byLabelText('search.search_for_users'),
     updateAssigneeBtn: (currentAssignee: string) =>
-      byRole('button', {
+      byRole('combobox', {
         name: `issue.assign.assigned_to_x_click_to_change.${currentAssignee}`,
       }),
-    setAssigneeBtn: (name: RegExp) => byRole('button', { name }),
+    setAssigneeBtn: (name: RegExp) => byLabelText(name),
 
     // Tags
     tagsSearchInput: byRole('searchbox'),
     updateTagsBtn: (currentTags?: string[]) =>
-      byRole('button', {
-        name: `tags_list_x.${currentTags ? currentTags.join(', ') : 'issue.no_tag'}`,
-      }),
+      byRole('button', { name: `${currentTags ? currentTags.join(', ') : 'issue.no_tag'} +` }),
     toggleTagCheckbox: (name: string) => byRole('checkbox', { name }),
   };
 
@@ -458,7 +346,9 @@ function getPageObject() {
     },
     async updateAssignee(currentAssignee: string, newAssignee: string) {
       await user.click(selectors.updateAssigneeBtn(currentAssignee).get());
-      await user.type(selectors.assigneeSearchInput.get(), newAssignee);
+      await act(async () => {
+        await user.type(selectors.assigneeSearchInput.get(), newAssignee);
+      });
       await act(async () => {
         await user.click(selectors.setAssigneeBtn(new RegExp(newAssignee)).get());
       });
@@ -475,14 +365,12 @@ function getPageObject() {
     async showChangelog() {
       await user.click(selectors.toggleChangelogBtn.get());
     },
-    async showSimilarIssues() {
-      await user.click(selectors.toggleSimilarIssuesBtn.get());
-    },
+
     async toggleCheckbox() {
       await user.click(selectors.checkbox.get());
     },
     async clickIssueMessage() {
-      await user.click(selectors.issueMessageBtn.get());
+      await user.click(selectors.issueMessageLink.get());
     },
     async pressDismissShortcut() {
       await act(async () => {
@@ -548,7 +436,16 @@ function renderIssue(props: Partial<Omit<Issue['props'], 'onChange' | 'onPopupTo
     );
   }
 
-  return renderApp('/', <Wrapper issue={mockIssue()} selected={false} {...props} />, {
-    currentUser: mockLoggedInUser({ login: 'leia', name: 'Organa' }),
-  });
+  return renderAppRoutes(
+    'issues?scopes=MAIN&severities=MINOR&types=VULNERABILITY',
+    () => (
+      <Route
+        path="issues"
+        element={<Wrapper onSelect={jest.fn()} issue={mockIssue()} selected={false} {...props} />}
+      />
+    ),
+    {
+      currentUser: mockLoggedInUser({ login: 'leia', name: 'Organa' }),
+    }
+  );
 }

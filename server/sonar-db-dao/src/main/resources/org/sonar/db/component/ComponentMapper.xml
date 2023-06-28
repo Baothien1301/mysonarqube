@@ -6,7 +6,6 @@
     p.uuid as uuid,
     p.uuid_path as uuidPath,
     p.branch_uuid as branchUuid,
-    p.main_branch_project_uuid as mainBranchProjectUuid,
     p.kee as kee,
     p.name as name,
     p.long_name as longName,
@@ -39,7 +38,7 @@
     SELECT
       <include refid="componentColumns"/>
     FROM components p
-    inner join project_branches pb on pb.uuid = p.branch_uuid
+    left outer join project_branches pb on pb.uuid = p.branch_uuid
     where
       lower(p.kee)=lower(#{key,jdbcType=VARCHAR})
       and <include refid="mainBranchOrPortfolio"/>
@@ -61,7 +60,6 @@
           p.uuid as uuid,
           p.uuid_path as uuidPath,
           p.branch_uuid as branchUuid,
-          p.main_branch_project_uuid as mainBranchProjectUuid,
           p.kee as kee,
           case
             when pr.name is not null and p.scope = 'PRJ'
@@ -481,22 +479,6 @@
     </choose>
   </select>
 
-  <select id="scrollForIndexing" parameterType="map" resultType="Component" fetchSize="${_scrollFetchSize}" resultSetType="FORWARD_ONLY">
-    select
-      <include refid="componentColumns"/>
-    from components p
-    LEFT JOIN project_branches pb ON pb.uuid = p.branch_uuid
-    where
-      p.enabled=${_true}
-      and p.copy_component_uuid is null
-      and <include refid="mainBranchOrPortfolio"/>
-      and p.scope = 'PRJ'
-      and p.qualifier in ('TRK','VW','SVW','APP')
-      <if test="branchUuid != null">
-        and p.branch_uuid = #{branchUuid,jdbcType=VARCHAR}
-      </if>
-  </select>
-
   <select id="scrollAllFilesForFileMove" parameterType="map" resultType="org.sonar.db.component.FileMoveRowDto" fetchSize="${_scrollFetchSize}" resultSetType="FORWARD_ONLY">
     select
       p.uuid as uuid,
@@ -520,7 +502,6 @@
       uuid,
       uuid_path,
       branch_uuid,
-      main_branch_project_uuid,
       name,
       long_name,
       qualifier,
@@ -548,7 +529,6 @@
     #{uuid,jdbcType=VARCHAR},
     #{uuidPath,jdbcType=VARCHAR},
     #{branchUuid,jdbcType=VARCHAR},
-    #{mainBranchProjectUuid, jdbcType=VARCHAR},
     #{name,jdbcType=VARCHAR},
     #{longName,jdbcType=VARCHAR},
     #{qualifier,jdbcType=VARCHAR},
@@ -631,8 +611,8 @@
         when b_qualifier = 'DIR' THEN 'DIR'
         when b_qualifier = 'FIL' THEN 'FIL'
         when b_qualifier = 'UTS' THEN 'FIL'
-        <!-- For the few cases where qualifier is not enough to guess the scope (like TRK), just assume the scope remains unchanged -->
-        else scope
+    <!-- For the few cases where qualifier is not enough to guess the scope (like TRK), just assume the scope remains unchanged -->
+    else scope
       end
     ),
     b_changed = ${_false},

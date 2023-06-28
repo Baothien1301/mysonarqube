@@ -209,7 +209,7 @@ public class IssueIndexFiltersTest extends IssueIndexTestCommon {
     ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto projectFile = db.components().insertComponent(newFileDto(project));
     ComponentDto branch = db.components().insertProjectBranch(project, b -> b.setKey("my_branch"));
-    ComponentDto branchFile = db.components().insertComponent(newFileDto(branch, project.uuid())).setMainBranchProjectUuid(project.uuid());
+    ComponentDto branchFile = db.components().insertComponent(newFileDto(branch, project.uuid()));
 
     indexIssues(
       newDocForProject("I1", project),
@@ -308,7 +308,7 @@ public class IssueIndexFiltersTest extends IssueIndexTestCommon {
     ComponentDto applicationBranch2 = db.components().insertProjectBranch(application, a -> a.setKey("app-branch2"));
     ComponentDto project1 = db.components().insertPrivateProject(p -> p.setKey("prj1")).getMainBranchComponent();
     ComponentDto project1Branch1 = db.components().insertProjectBranch(project1);
-    ComponentDto fileOnProject1Branch1 = db.components().insertComponent(newFileDto(project1Branch1)).setMainBranchProjectUuid(project1.uuid());
+    ComponentDto fileOnProject1Branch1 = db.components().insertComponent(newFileDto(project1Branch1));
     ComponentDto project1Branch2 = db.components().insertProjectBranch(project1);
     ComponentDto project2 = db.components().insertPrivateProject(p -> p.setKey("prj2")).getMainBranchComponent();
     indexView(applicationBranch1.uuid(), asList(project1Branch1.uuid(), project2.uuid()));
@@ -836,6 +836,20 @@ public class IssueIndexFiltersTest extends IssueIndexTestCommon {
       newDoc("I3", project.uuid(), file));
 
     assertThatSearchReturnsOnly(IssueQuery.builder().sonarsourceSecurity(singletonList("buffer-overflow")), "I1");
+  }
+
+  @Test
+  public void search_whenFilteringByCodeVariants_shouldReturnRelevantIssues() {
+    ComponentDto project = newPrivateProjectDto();
+    ComponentDto file = newFileDto(project);
+
+    indexIssues(
+      newDoc("I1", project.uuid(), file).setCodeVariants(asList("variant1", "variant2")),
+      newDoc("I2", project.uuid(), file).setCodeVariants(singletonList("variant2")),
+      newDoc("I3", project.uuid(), file).setCodeVariants(singletonList("variant3")),
+      newDoc("I4", project.uuid(), file));
+
+    assertThatSearchReturnsOnly(IssueQuery.builder().codeVariants(singletonList("variant2")), "I1", "I2");
   }
 
   private void indexView(String viewUuid, List<String> projects) {

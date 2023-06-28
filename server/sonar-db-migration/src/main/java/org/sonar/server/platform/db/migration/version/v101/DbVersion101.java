@@ -57,6 +57,17 @@ public class DbVersion101 implements DbVersion {
       .add(10_1_013, "Increase size of 'ce_queue.task_type' from 15 to 40 characters", IncreaseTaskTypeColumnSizeInCeQueue.class)
       .add(10_1_014, "Increase size of 'ce_activity.task_type' from 15 to 40 characters", IncreaseTaskTypeColumnSizeInCeActivity.class)
       .add(10_1_015, "Add 'external_groups' table.", CreateExternalGroupsTable.class)
-      .add(10_1_016, "Add index on 'external_groups(external_identity_provider, external_id).", CreateIndexOnExternalIdAndIdentityOnExternalGroupsTable.class);
+      .add(10_1_016, "Add index on 'external_groups(external_identity_provider, external_id).", CreateIndexOnExternalIdAndIdentityOnExternalGroupsTable.class)
+      .add(10_1_017, "Add 'code_variants' column in 'issues' table", AddCodeVariantsColumnInIssuesTable.class)
+      .add(10_1_018, "Fix different uuids for subportfolios", FixDifferentUuidsForSubportfolios.class)
+      .add(10_1_019, "Add report_schedules table", AddReportSchedulesTable.class)
+      .add(10_1_020, "Add report_subscriptions table", AddReportSubscriptionsTable.class)
+      .add(10_1_021, "Add report_schedules unique index", CreateUniqueIndexForReportSchedulesTable.class)
+      .add(10_1_022, "Add report_subscriptions unique index", CreateUniqueIndexForReportSubscriptionsTable.class)
+      .add(10_1_023, "Rename column 'component_uuid' to 'entity_uuid' in the 'properties' table", RenameColumnComponentUuidInProperties.class)
+      .add(10_1_024, "Populate report_schedules table", PopulateReportSchedules.class)
+      .add(10_1_025, "Populate report_subscriptions table", PopulateReportSubscriptions.class)
+      .add(10_1_026, "Remove report properties", RemoveReportProperties.class)
+      ;
   }
 }

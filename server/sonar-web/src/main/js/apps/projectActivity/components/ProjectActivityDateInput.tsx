@@ -17,9 +17,8 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import { ButtonSecondary, DateRangePicker, PopupZLevel } from 'design-system';
 import * as React from 'react';
-import { Button } from '../../../components/controls/buttons';
-import DateRangeInput from '../../../components/controls/DateRangeInput';
 import { translate } from '../../../helpers/l10n';
 import { Query } from '../utils';
 
@@ -40,18 +39,26 @@ export default class ProjectActivityDateInput extends React.PureComponent<Props>
 
   render() {
     return (
-      <div className="display-flex-end">
-        <DateRangeInput
+      <div className="sw-flex">
+        <DateRangePicker
+          ariaNextMonthLabel={translate('next_')}
+          ariaPreviousMonthLabel={translate('previous_')}
+          className="sw-w-abs-350"
+          clearButtonLabel={translate('clear')}
+          fromLabel={translate('start_date')}
           onChange={this.handleChange}
+          separatorText={translate('to_')}
+          toLabel={translate('end_date')}
           value={{ from: this.props.from, to: this.props.to }}
+          zLevel={PopupZLevel.Content}
         />
-        <Button
-          className="spacer-left"
+        <ButtonSecondary
+          className="sw-ml-2"
           disabled={this.props.from === undefined && this.props.to === undefined}
           onClick={this.handleResetClick}
         >
           {translate('project_activity.reset_dates')}
-        </Button>
+        </ButtonSecondary>
       </div>
     );
   }

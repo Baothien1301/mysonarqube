@@ -24,6 +24,7 @@ import javax.annotation.Nullable;
 import org.sonar.api.resources.Qualifiers;
 import org.sonar.api.resources.Scopes;
 import org.sonar.core.util.Uuids;
+import org.sonar.db.portfolio.PortfolioDto;
 import org.sonar.db.project.ProjectDto;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -32,15 +33,16 @@ import static org.sonar.db.component.BranchDto.DEFAULT_MAIN_BRANCH_NAME;
 import static org.sonar.db.component.ComponentDto.UUID_PATH_OF_ROOT;
 import static org.sonar.db.component.ComponentDto.formatUuidPathFromParent;
 import static org.sonar.db.component.ComponentDto.generateBranchKey;
+import static org.sonar.db.portfolio.PortfolioDto.SelectionMode.NONE;
 
 public class ComponentTesting {
 
-  public static ComponentDto newFileDto(ComponentDto project) {
-    return newFileDto(project, (ComponentDto) null);
+  public static ComponentDto newFileDto(ComponentDto branch) {
+    return newFileDto(branch, (ComponentDto) null);
   }
 
-  public static ComponentDto newFileDto(ComponentDto project, @Nullable ComponentDto directory) {
-    return newFileDto(project, directory, Uuids.createFast());
+  public static ComponentDto newFileDto(ComponentDto branch, @Nullable ComponentDto directory) {
+    return newFileDto(branch, directory, Uuids.createFast());
   }
 
   public static ComponentDto newFileDto(ComponentDto branch, String mainBranchUuid) {
@@ -51,49 +53,47 @@ public class ComponentTesting {
     return newFileDto(projectOrBranch, directory, Uuids.createFast(), mainBranchUuid);
   }
 
-  public static ComponentDto newFileDto(ComponentDto project, @Nullable ComponentDto directory, String fileUuid) {
-    return newFileDto(project, directory, fileUuid, null);
+  public static ComponentDto newFileDto(ComponentDto branch, @Nullable ComponentDto directory, String fileUuid) {
+    return newFileDto(branch, directory, fileUuid, null);
   }
 
-  public static ComponentDto newFileDto(ComponentDto project, @Nullable ComponentDto directory, String fileUuid, @Nullable String mainBranchUuid) {
+  public static ComponentDto newFileDto(ComponentDto branch, @Nullable ComponentDto directory, String fileUuid, @Nullable String mainBranchUuid) {
     String filename = "NAME_" + fileUuid;
-    String path = directory != null ? directory.path() + "/" + filename : project.path() + "/" + filename;
-    return newChildComponent(fileUuid, project, directory == null ? project : directory)
+    String path = directory != null ? directory.path() + "/" + filename : branch.path() + "/" + filename;
+    return newChildComponent(fileUuid, branch, directory == null ? branch : directory)
       .setKey("FILE_KEY_" + fileUuid)
       .setName(filename)
       .setLongName(path)
       .setScope(Scopes.FILE)
-      .setBranchUuid(project.branchUuid())
-      .setMainBranchProjectUuid(mainBranchUuid)
+      .setBranchUuid(branch.branchUuid())
       .setQualifier(Qualifiers.FILE)
       .setPath(path)
       .setCreatedAt(new Date())
       .setLanguage("xoo");
   }
 
-  public static ComponentDto newDirectory(ComponentDto project, String path) {
-    return newDirectory(project, Uuids.createFast(), path);
+  public static ComponentDto newDirectory(ComponentDto branch, String path) {
+    return newDirectory(branch, Uuids.createFast(), path);
   }
 
-  public static ComponentDto newDirectoryOnBranch(ComponentDto project, String path, String mainBranchUuid) {
-    return newDirectory(project, Uuids.createFast(), path, mainBranchUuid);
+  public static ComponentDto newDirectoryOnBranch(ComponentDto branch, String path, String mainBranchUuid) {
+    return newDirectory(branch, Uuids.createFast(), path, mainBranchUuid);
   }
 
-  private static ComponentDto newDirectory(ComponentDto project, String uuid, String path, String mainBranchUuid) {
-    String key = !path.equals("/") ? project.getKey() + ":" + path : project.getKey() + ":/";
-    return newChildComponent(uuid, project, project)
+  private static ComponentDto newDirectory(ComponentDto branch, String uuid, String path, String mainBranchUuid) {
+    String key = !path.equals("/") ? branch.getKey() + ":" + path : branch.getKey() + ":/";
+    return newChildComponent(uuid, branch, branch)
       .setKey(key)
       .setName(path)
       .setLongName(path)
-      .setBranchUuid(project.branchUuid())
-      .setMainBranchProjectUuid(mainBranchUuid)
+      .setBranchUuid(branch.branchUuid())
       .setPath(path)
       .setScope(Scopes.DIRECTORY)
       .setQualifier(Qualifiers.DIRECTORY);
   }
 
-  public static ComponentDto newDirectory(ComponentDto project, String uuid, String path) {
-    return newDirectory(project, uuid, path, null);
+  public static ComponentDto newDirectory(ComponentDto branch, String uuid, String path) {
+    return newDirectory(branch, uuid, path, null);
   }
 
   public static ComponentDto newSubPortfolio(ComponentDto portfolioOrSubPortfolio, String uuid, String key) {
@@ -156,6 +156,19 @@ public class ComponentTesting {
       .setPrivate(false);
   }
 
+  public static PortfolioDto newPortfolioDto(String uuid, String key, String name, @Nullable PortfolioDto parent) {
+    return new PortfolioDto()
+      .setUuid(uuid)
+      .setKey(key)
+      .setParentUuid(parent == null ? null : parent.getUuid())
+      .setRootUuid(parent == null ? uuid : parent.getRootUuid())
+      .setSelectionMode(NONE.name())
+      .setCreatedAt(1L)
+      .setUpdatedAt(1L)
+      .setPrivate(false)
+      .setName(name);
+  }
+
   public static ComponentDto newApplication() {
     return newPortfolio(Uuids.createFast()).setQualifier(Qualifiers.APP);
   }
@@ -192,18 +205,18 @@ public class ComponentTesting {
       .setLanguage(null);
   }
 
-  public static ComponentDto newChildComponent(String uuid, ComponentDto project, ComponentDto parent) {
-    checkArgument(project.isPrivate() == parent.isPrivate(),
-      "private flag inconsistent between moduleOrProject (%s) and parent (%s)",
-      project.isPrivate(), parent.isPrivate());
+  public static ComponentDto newChildComponent(String uuid, ComponentDto branch, ComponentDto parent) {
+    checkArgument(branch.isPrivate() == parent.isPrivate(),
+      "private flag inconsistent between branch (%s) and parent (%s)",
+      branch.isPrivate(), parent.isPrivate());
     return new ComponentDto()
       .setUuid(uuid)
       .setUuidPath(formatUuidPathFromParent(parent))
       .setKey(uuid)
-      .setBranchUuid(project.branchUuid())
+      .setBranchUuid(branch.branchUuid())
       .setCreatedAt(new Date())
       .setEnabled(true)
-      .setPrivate(project.isPrivate());
+      .setPrivate(branch.isPrivate());
   }
 
 
@@ -218,10 +231,6 @@ public class ComponentTesting {
   }
 
   public static BranchDto newBranchDto(ComponentDto project) {
-    return newBranchDto(project.branchUuid(), BranchType.BRANCH);
-  }
-
-  public static BranchDto newBranchDto(ComponentDto project, boolean isMain) {
     return newBranchDto(project.branchUuid(), BranchType.BRANCH);
   }
 
@@ -245,6 +254,22 @@ public class ComponentTesting {
       .setBranchType(BranchType.BRANCH);
   }
 
+  public static ProjectDto newProjectDto() {
+    return new ProjectDto()
+      .setKey("projectKey")
+      .setUuid("uuid")
+      .setName("projectName")
+      .setQualifier(Qualifiers.PROJECT);
+  }
+
+  public static ProjectDto newApplicationDto() {
+    return new ProjectDto()
+      .setKey("appKey")
+      .setUuid("uuid")
+      .setName("appName")
+      .setQualifier(Qualifiers.APP);
+  }
+
   public static ComponentDto newBranchComponent(ProjectDto project, BranchDto branchDto) {
     String uuid = branchDto.getUuid();
     return new ComponentDto()
@@ -252,7 +277,6 @@ public class ComponentTesting {
       .setUuidPath(UUID_PATH_OF_ROOT)
       .setBranchUuid(uuid)
       .setKey(project.getKey())
-      .setMainBranchProjectUuid(project.getUuid())
       .setName(project.getName())
       .setLongName(project.getName())
       .setDescription(project.getDescription())
@@ -272,7 +296,6 @@ public class ComponentTesting {
       .setUuidPath(UUID_PATH_OF_ROOT)
       .setBranchUuid(uuid)
       .setKey(project.getKey())
-      .setMainBranchProjectUuid(project.uuid())
       .setName(project.name())
       .setLongName(project.longName())
       .setDescription(project.description())

@@ -62,8 +62,8 @@ import static org.sonar.core.util.stream.MoreCollectors.toList;
 import static org.sonar.core.util.stream.MoreCollectors.uniqueIndex;
 import static org.sonar.db.component.BranchType.BRANCH;
 import static org.sonar.db.component.BranchType.PULL_REQUEST;
-import static org.sonar.server.developers.ws.UuidFromPairs.componentUuids;
 import static org.sonar.server.developers.ws.UuidFromPairs.fromDates;
+import static org.sonar.server.developers.ws.UuidFromPairs.projectUuids;
 import static org.sonar.server.exceptions.BadRequestException.checkRequest;
 import static org.sonar.server.ws.WsUtils.writeProtobuf;
 
@@ -134,15 +134,15 @@ public class SearchEventsAction implements DevelopersWsAction {
     try (DbSession dbSession = dbClient.openSession(false)) {
       List<ProjectDto> authorizedProjects = searchProjects(dbSession, projectKeys);
       Map<String, ProjectDto> projectsByUuid = authorizedProjects.stream().collect(uniqueIndex(ProjectDto::getUuid));
-      List<UuidFromPair> uuidFromPairs = componentUuidFromPairs(fromDates, projectKeys, authorizedProjects);
-      List<SnapshotDto> analyses = dbClient.snapshotDao().selectFinishedByComponentUuidsAndFromDates(dbSession, componentUuids(uuidFromPairs), fromDates(uuidFromPairs));
+      List<UuidFromPair> uuidFromPairs = buildUuidFromPairs(fromDates, projectKeys, authorizedProjects);
+      List<SnapshotDto> analyses = dbClient.snapshotDao().selectFinishedByProjectUuidsAndFromDates(dbSession, projectUuids(uuidFromPairs), fromDates(uuidFromPairs));
 
       if (analyses.isEmpty()) {
         return Stream.empty();
       }
 
-      List<String> projectUuids = analyses.stream().map(SnapshotDto::getComponentUuid).collect(toList());
-      Map<String, BranchDto> branchesByUuids = dbClient.branchDao().selectByUuids(dbSession, projectUuids).stream().collect(uniqueIndex(BranchDto::getUuid));
+      List<String> branchUuids = analyses.stream().map(SnapshotDto::getComponentUuid).collect(toList());
+      Map<String, BranchDto> branchesByUuids = dbClient.branchDao().selectByUuids(dbSession, branchUuids).stream().collect(uniqueIndex(BranchDto::getUuid));
 
       return Stream.concat(
         computeQualityGateChangeEvents(dbSession, projectsByUuid, branchesByUuids, analyses),
@@ -183,9 +183,9 @@ public class SearchEventsAction implements DevelopersWsAction {
   private Stream<Event> computeNewIssuesEvents(Map<String, ProjectDto> projectsByUuid, Map<String, BranchDto> branchesByUuids,
     List<UuidFromPair> uuidFromPairs) {
     Map<String, Long> fromsByProjectUuid = uuidFromPairs.stream().collect(Collectors.toMap(
-      UuidFromPair::getComponentUuid,
+      UuidFromPair::getProjectUuid,
       UuidFromPair::getFrom));
-    List<ProjectStatistics> projectStatistics = issueIndex.searchProjectStatistics(componentUuids(uuidFromPairs), fromDates(uuidFromPairs), userSession.getUuid());
+    List<ProjectStatistics> projectStatistics = issueIndex.searchProjectStatistics(projectUuids(uuidFromPairs), fromDates(uuidFromPairs), userSession.getUuid());
     return projectStatistics
       .stream()
       .map(e -> {
@@ -207,7 +207,7 @@ public class SearchEventsAction implements DevelopersWsAction {
 
   private List<ProjectDto> searchProjects(DbSession dbSession, List<String> projectKeys) {
     List<ProjectDto> projects = dbClient.projectDao().selectProjectsByKeys(dbSession, new HashSet<>(projectKeys));
-    return userSession.keepAuthorizedProjects(UserRole.USER, projects);
+    return userSession.keepAuthorizedEntities(UserRole.USER, projects);
   }
 
   private String computeIssuesSearchLink(ProjectDto project, BranchDto branch, long functionalFromDate, String login) {
@@ -224,7 +224,7 @@ public class SearchEventsAction implements DevelopersWsAction {
     return link;
   }
 
-  private static List<UuidFromPair> componentUuidFromPairs(List<Long> fromDates, List<String> projectKeys, List<ProjectDto> authorizedProjects) {
+  private static List<UuidFromPair> buildUuidFromPairs(List<Long> fromDates, List<String> projectKeys, List<ProjectDto> authorizedProjects) {
     checkRequest(projectKeys.size() == fromDates.size(), "The number of components (%s) and from dates (%s) must be the same.", projectKeys.size(), fromDates.size());
     Map<String, Long> fromDatesByProjectKey = IntStream.range(0, projectKeys.size()).boxed()
       .collect(uniqueIndex(projectKeys::get, fromDates::get));

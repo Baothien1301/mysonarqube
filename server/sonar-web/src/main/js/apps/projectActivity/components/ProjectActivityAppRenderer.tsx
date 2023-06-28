@@ -17,6 +17,13 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import styled from '@emotion/styled';
+import {
+  LargeCenteredLayout,
+  PageContentFontWrapper,
+  themeBorder,
+  themeColor,
+} from 'design-system';
 import * as React from 'react';
 import { Helmet } from 'react-helmet-async';
 import A11ySkipTarget from '../../../components/a11y/A11ySkipTarget';
@@ -27,7 +34,6 @@ import { ComponentQualifier } from '../../../types/component';
 import { MeasureHistory, ParsedAnalysis } from '../../../types/project-activity';
 import { Component, Metric } from '../../../types/types';
 import { Query } from '../utils';
-import './projectActivity.css';
 import ProjectActivityAnalysesList from './ProjectActivityAnalysesList';
 import ProjectActivityGraphs from './ProjectActivityGraphs';
 import ProjectActivityPageFilters from './ProjectActivityPageFilters';
@@ -58,56 +64,64 @@ export default function ProjectActivityAppRenderer(props: Props) {
     (configuration ? configuration.showHistory : false);
   const canDeleteAnalyses = configuration ? configuration.showHistory : false;
   return (
-    <main className="page page-limited" id="project-activity">
+    <main className="sw-p-5" id="project-activity">
       <Suggestions suggestions="project_activity" />
       <Helmet defer={false} title={translate('project_activity.page')} />
 
       <A11ySkipTarget anchor="activity_main" />
-
-      <ProjectActivityPageFilters
-        category={query.category}
-        from={query.from}
-        project={props.project}
-        to={query.to}
-        updateQuery={props.onUpdateQuery}
-      />
-
-      <div className="layout-page project-activity-page">
-        <div className="layout-page-side-outer project-activity-page-side-outer boxed-group">
-          <ProjectActivityAnalysesList
-            onAddCustomEvent={props.onAddCustomEvent}
-            onAddVersion={props.onAddVersion}
-            analyses={analyses}
-            analysesLoading={props.analysesLoading}
-            canAdmin={canAdmin}
-            canDeleteAnalyses={canDeleteAnalyses}
-            onChangeEvent={props.onChangeEvent}
-            onDeleteAnalysis={props.onDeleteAnalysis}
-            onDeleteEvent={props.onDeleteEvent}
-            initializing={props.initializing}
-            leakPeriodDate={
-              props.project.leakPeriodDate ? parseDate(props.project.leakPeriodDate) : undefined
-            }
+      <LargeCenteredLayout>
+        <PageContentFontWrapper>
+          <ProjectActivityPageFilters
+            category={query.category}
+            from={query.from}
             project={props.project}
-            query={query}
-            onUpdateQuery={props.onUpdateQuery}
-          />
-        </div>
-        <div className="project-activity-layout-page-main">
-          <ProjectActivityGraphs
-            analyses={analyses}
-            leakPeriodDate={
-              props.project.leakPeriodDate ? parseDate(props.project.leakPeriodDate) : undefined
-            }
-            loading={props.graphLoading}
-            measuresHistory={measuresHistory}
-            metrics={props.metrics}
-            project={props.project.key}
-            query={query}
+            to={query.to}
             updateQuery={props.onUpdateQuery}
           />
-        </div>
-      </div>
+
+          <div className="sw-grid sw-grid-cols-12 sw-gap-x-12">
+            <StyledWrapper className="sw-col-span-4 sw-rounded-1">
+              <ProjectActivityAnalysesList
+                onAddCustomEvent={props.onAddCustomEvent}
+                onAddVersion={props.onAddVersion}
+                analyses={analyses}
+                analysesLoading={props.analysesLoading}
+                canAdmin={canAdmin}
+                canDeleteAnalyses={canDeleteAnalyses}
+                onChangeEvent={props.onChangeEvent}
+                onDeleteAnalysis={props.onDeleteAnalysis}
+                onDeleteEvent={props.onDeleteEvent}
+                initializing={props.initializing}
+                leakPeriodDate={
+                  props.project.leakPeriodDate ? parseDate(props.project.leakPeriodDate) : undefined
+                }
+                project={props.project}
+                query={query}
+                onUpdateQuery={props.onUpdateQuery}
+              />
+            </StyledWrapper>
+            <StyledWrapper className="sw-col-span-8 sw-rounded-1">
+              <ProjectActivityGraphs
+                analyses={analyses}
+                leakPeriodDate={
+                  props.project.leakPeriodDate ? parseDate(props.project.leakPeriodDate) : undefined
+                }
+                loading={props.graphLoading}
+                measuresHistory={measuresHistory}
+                metrics={props.metrics}
+                project={props.project.key}
+                query={query}
+                updateQuery={props.onUpdateQuery}
+              />
+            </StyledWrapper>
+          </div>
+        </PageContentFontWrapper>
+      </LargeCenteredLayout>
     </main>
   );
 }
+
+const StyledWrapper = styled.div`
+  border: ${themeBorder('default', 'filterbarBorder')};
+  background-color: ${themeColor('backgroundSecondary')};
+`;

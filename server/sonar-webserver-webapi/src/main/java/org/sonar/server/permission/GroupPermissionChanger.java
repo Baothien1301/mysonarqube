@@ -25,7 +25,7 @@ import org.sonar.api.web.UserRole;
 import org.sonar.core.util.UuidFactory;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.permission.GlobalPermission;
 import org.sonar.db.permission.GroupPermissionDto;
 import org.sonar.db.user.GroupDto;
@@ -62,32 +62,32 @@ public class GroupPermissionChanger {
   }
 
   private static boolean isImplicitlyAlreadyDone(GroupPermissionChange change) {
-    ComponentDto project = change.getProject();
+    EntityDto project = change.getEntity();
     if (project != null) {
       return isImplicitlyAlreadyDone(project, change);
     }
     return false;
   }
 
-  private static boolean isImplicitlyAlreadyDone(ComponentDto project, GroupPermissionChange change) {
+  private static boolean isImplicitlyAlreadyDone(EntityDto project, GroupPermissionChange change) {
     return isAttemptToAddPublicPermissionToPublicComponent(change, project)
       || isAttemptToRemovePermissionFromAnyoneOnPrivateComponent(change, project);
   }
 
-  private static boolean isAttemptToAddPublicPermissionToPublicComponent(GroupPermissionChange change, ComponentDto project) {
+  private static boolean isAttemptToAddPublicPermissionToPublicComponent(GroupPermissionChange change, EntityDto project) {
     return !project.isPrivate()
       && change.getOperation() == ADD
       && UserRole.PUBLIC_PERMISSIONS.contains(change.getPermission());
   }
 
-  private static boolean isAttemptToRemovePermissionFromAnyoneOnPrivateComponent(GroupPermissionChange change, ComponentDto project) {
+  private static boolean isAttemptToRemovePermissionFromAnyoneOnPrivateComponent(GroupPermissionChange change, EntityDto project) {
     return project.isPrivate()
       && change.getOperation() == REMOVE
       && change.getGroupUuidOrAnyone().isAnyone();
   }
 
   private static void ensureConsistencyWithVisibility(GroupPermissionChange change) {
-    ComponentDto project = change.getProject();
+    EntityDto project = change.getEntity();
     if (project != null) {
       checkRequest(
         !isAttemptToAddPermissionToAnyoneOnPrivateComponent(change, project),
@@ -98,13 +98,13 @@ public class GroupPermissionChanger {
     }
   }
 
-  private static boolean isAttemptToAddPermissionToAnyoneOnPrivateComponent(GroupPermissionChange change, ComponentDto project) {
+  private static boolean isAttemptToAddPermissionToAnyoneOnPrivateComponent(GroupPermissionChange change, EntityDto project) {
     return project.isPrivate()
       && change.getOperation() == ADD
       && change.getGroupUuidOrAnyone().isAnyone();
   }
 
-  private static boolean isAttemptToRemovePublicPermissionFromPublicComponent(GroupPermissionChange change, ComponentDto project) {
+  private static boolean isAttemptToRemovePublicPermissionFromPublicComponent(GroupPermissionChange change, EntityDto project) {
     return !project.isPrivate()
       && change.getOperation() == REMOVE
       && UserRole.PUBLIC_PERMISSIONS.contains(change.getPermission());
@@ -122,15 +122,15 @@ public class GroupPermissionChanger {
       .setUuid(uuidFactory.create())
       .setRole(change.getPermission())
       .setGroupUuid(groupUuid)
-      .setComponentName(change.getProjectName())
-      .setComponentUuid(change.getProjectUuid());
+      .setEntityName(change.getProjectName())
+      .setEntityUuid(change.getProjectUuid());
 
     Optional.ofNullable(groupUuid)
       .map(uuid -> dbClient.groupDao().selectByUuid(dbSession, groupUuid))
       .map(GroupDto::getName)
       .ifPresent(addedDto::setGroupName);
 
-    dbClient.groupPermissionDao().insert(dbSession, addedDto, change.getProject(), null);
+    dbClient.groupPermissionDao().insert(dbSession, addedDto, change.getEntity(), null);
     return true;
   }
 
@@ -154,15 +154,14 @@ public class GroupPermissionChanger {
       change.getPermission(),
       groupUuid,
       groupName,
-      change.getProjectUuid(),
-      change.getProject());
+      change.getEntity());
     return true;
   }
 
   private List<String> loadExistingPermissions(DbSession dbSession, GroupPermissionChange change) {
     String projectUuid = change.getProjectUuid();
     if (projectUuid != null) {
-      return dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession,
+      return dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession,
         change.getGroupUuidOrAnyone().getUuid(),
         projectUuid);
     }

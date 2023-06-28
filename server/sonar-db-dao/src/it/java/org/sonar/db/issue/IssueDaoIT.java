@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import org.junit.Rule;
 import org.junit.Test;
 import org.sonar.api.rule.RuleKey;
@@ -122,6 +123,8 @@ public class IssueDaoIT {
     assertThat(issue.getLocations()).isNull();
     assertThat(issue.parseLocations()).isNull();
     assertThat(issue.isExternal()).isTrue();
+    assertThat(issue.getTags()).containsOnly("tag1", "tag2");
+    assertThat(issue.getCodeVariants()).containsOnly("variant1", "variant2");
     assertFalse(issue.isQuickFixAvailable());
   }
 
@@ -225,21 +228,24 @@ public class IssueDaoIT {
     List<String> statusesA = List.of(STATUS_OPEN, STATUS_REVIEWED, STATUS_CLOSED, STATUS_RESOLVED);
     IntStream.range(0, statusesA.size()).forEach(i -> insertBranchIssue(branchA, fileA, rule, "A" + i, statusesA.get(i), updatedAt));
 
+    insertBranchIssue(branchA, fileA, rule, "WithResolution", STATUS_RESOLVED, RESOLUTION_FIXED, updatedAt);
+
     ComponentDto branchB = db.components().insertProjectBranch(project, b -> b.setKey("branchB"));
     ComponentDto fileB = db.components().insertComponent(newFileDto(branchB));
 
     List<String> statusesB = List.of(STATUS_OPEN, STATUS_RESOLVED);
     IntStream.range(0, statusesB.size()).forEach(i -> insertBranchIssue(branchB, fileB, rule, "B" + i, statusesB.get(i), updatedAt));
 
-    List<IssueDto> branchAIssuesA1 = underTest.selectByBranch(db.getSession(), Set.of("issueA0", "issueA1", "issueA3"),
+    List<IssueDto> branchAIssuesA1 = underTest.selectByBranch(db.getSession(), Set.of("issueA0", "issueA1", "issueA3", "issueWithResolution"),
       buildSelectByBranchQuery(branchA, "java", false, changedSince));
 
     assertThat(branchAIssuesA1)
-      .extracting(IssueDto::getKey, IssueDto::getStatus)
+      .extracting(IssueDto::getKey, IssueDto::getStatus, IssueDto::getResolution)
       .containsExactlyInAnyOrder(
-        tuple("issueA0", STATUS_OPEN),
-        tuple("issueA1", STATUS_REVIEWED),
-        tuple("issueA3", STATUS_RESOLVED));
+        tuple("issueA0", STATUS_OPEN, null),
+        tuple("issueA1", STATUS_REVIEWED, null),
+        tuple("issueA3", STATUS_RESOLVED, null),
+        tuple("issueWithResolution", STATUS_RESOLVED, RESOLUTION_FIXED));
 
     assertThat(branchAIssuesA1.get(0))
       .extracting(IssueDto::getMessage, IssueDto::parseMessageFormattings)
@@ -590,6 +596,8 @@ public class IssueDaoIT {
     dto.setIssueCreationTime(1_450_000_000_000L);
     dto.setIssueUpdateTime(1_450_000_000_000L);
     dto.setIssueCloseTime(1_450_000_000_000L);
+    dto.setTags(Set.of("tag1", "tag2"));
+    dto.setCodeVariants(Set.of("variant1", "variant2"));
     return dto;
   }
 
@@ -618,10 +626,18 @@ public class IssueDaoIT {
     return RULE_TYPES_EXCEPT_HOTSPOT[nextInt(RULE_TYPES_EXCEPT_HOTSPOT.length)];
   }
 
-  private void insertBranchIssue(ComponentDto branch, ComponentDto file, RuleDto rule, String id, String status, Long updateAt) {
-    db.issues().insert(rule, branch, file, i -> i.setKee("issue" + id).setStatus(status).setUpdatedAt(updateAt).setType(randomRuleTypeExceptHotspot())
+  private void insertBranchIssue(ComponentDto branch, ComponentDto file, RuleDto rule, String id, String status, @Nullable String resolution, Long updateAt) {
+    db.issues().insert(rule, branch, file, i -> i.setKee("issue" + id)
+      .setStatus(status)
+      .setResolution(resolution)
+      .setUpdatedAt(updateAt)
+      .setType(randomRuleTypeExceptHotspot())
       .setMessage("message")
       .setMessageFormattings(MESSAGE_FORMATTING));
+  }
+
+  private void insertBranchIssue(ComponentDto branch, ComponentDto file, RuleDto rule, String id, String status, Long updateAt) {
+    insertBranchIssue(branch, file, rule, id, status, null, updateAt);
   }
 
   private static IssueQueryParams buildSelectByBranchQuery(ComponentDto branch, String language, boolean resolvedOnly, Long changedSince) {

@@ -17,20 +17,18 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import { StandoutLink } from 'design-system';
 import * as React from 'react';
+import { parseQuery, serializeQuery } from '../../../apps/issues/utils';
 import { getBranchLikeQuery } from '../../../helpers/branch-like';
 import { translate } from '../../../helpers/l10n';
 import { getComponentIssuesUrl } from '../../../helpers/urls';
 import { BranchLike } from '../../../types/branch-like';
-import { RuleStatus } from '../../../types/rules';
 import { Issue } from '../../../types/types';
-import Link from '../../common/Link';
-import { ButtonPlain } from '../../controls/buttons';
+import { useLocation } from '../../hoc/withRouter';
 import { IssueMessageHighlighting } from '../IssueMessageHighlighting';
-import IssueMessageTags from './IssueMessageTags';
 
 export interface IssueMessageProps {
-  onClick?: () => void;
   issue: Issue;
   branchLike?: BranchLike;
   displayWhyIsThisAnIssue?: boolean;
@@ -38,8 +36,10 @@ export interface IssueMessageProps {
 
 export default function IssueMessage(props: IssueMessageProps) {
   const { issue, branchLike, displayWhyIsThisAnIssue } = props;
+  const location = useLocation();
+  const query = parseQuery(location.query);
 
-  const { externalRuleEngine, quickFixAvailable, message, messageFormattings, ruleStatus } = issue;
+  const { message, messageFormattings } = issue;
 
   const whyIsThisAnIssueUrl = getComponentIssuesUrl(issue.project, {
     ...getBranchLikeQuery(branchLike),
@@ -49,33 +49,32 @@ export default function IssueMessage(props: IssueMessageProps) {
     why: '1',
   });
 
+  const issueUrl = getComponentIssuesUrl(issue.project, {
+    ...getBranchLikeQuery(branchLike),
+    ...serializeQuery(query),
+    open: issue.key,
+  });
   return (
     <>
-      <div className="display-inline-flex-center issue-message break-word">
-        {props.onClick ? (
-          <ButtonPlain preventDefault={true} className="spacer-right" onClick={props.onClick}>
-            <IssueMessageHighlighting message={message} messageFormattings={messageFormattings} />
-          </ButtonPlain>
-        ) : (
-          <span className="spacer-right">
-            <IssueMessageHighlighting message={message} messageFormattings={messageFormattings} />
-          </span>
-        )}
-        <IssueMessageTags
-          engine={externalRuleEngine}
-          quickFixAvailable={quickFixAvailable}
-          ruleStatus={ruleStatus as RuleStatus | undefined}
-        />
-      </div>
+      {issueUrl?.pathname ? (
+        <StandoutLink className="it__issue-message" to={issueUrl}>
+          <IssueMessageHighlighting message={message} messageFormattings={messageFormattings} />
+        </StandoutLink>
+      ) : (
+        <span className="spacer-right">
+          <IssueMessageHighlighting message={message} messageFormattings={messageFormattings} />
+        </span>
+      )}
+
       {displayWhyIsThisAnIssue && (
-        <Link
+        <StandoutLink
           aria-label={translate('issue.why_this_issue.long')}
-          className="spacer-right"
           target="_blank"
+          className="sw-ml-2"
           to={whyIsThisAnIssueUrl}
         >
           {translate('issue.why_this_issue')}
-        </Link>
+        </StandoutLink>
       )}
     </>
   );

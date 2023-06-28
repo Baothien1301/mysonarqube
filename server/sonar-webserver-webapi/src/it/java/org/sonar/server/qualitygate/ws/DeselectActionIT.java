@@ -49,7 +49,7 @@ public class DeselectActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create();
+  public DbTester db = DbTester.create(true);
 
   private final DbClient dbClient = db.getDbClient();
   private final ComponentFinder componentFinder = TestComponentFinder.from(db);
@@ -183,14 +183,14 @@ public class DeselectActionIT {
   }
 
   private void assertDeselected(ProjectDto project) {
-    Optional<String> qGateUuid = db.qualityGates().selectQGateUuidByComponentUuid(project.getUuid());
+    Optional<String> qGateUuid = db.qualityGates().selectQGateUuidByProjectUuid(project.getUuid());
     assertThat(qGateUuid)
       .isNotNull()
       .isEmpty();
   }
 
   private void assertSelected(QualityGateDto qualityGate, ProjectDto project) {
-    Optional<String> qGateUuid = db.qualityGates().selectQGateUuidByComponentUuid(project.getUuid());
+    Optional<String> qGateUuid = db.qualityGates().selectQGateUuidByProjectUuid(project.getUuid());
     assertThat(qGateUuid)
       .isNotNull()
       .isNotEmpty()

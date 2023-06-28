@@ -17,7 +17,6 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-
 import * as React from 'react';
 import Issue from '../../../components/issue/Issue';
 import { BranchLike } from '../../../types/branch-like';
@@ -31,6 +30,7 @@ interface Props {
   onChange: (issue: TypeIssue) => void;
   onCheck: ((issueKey: string) => void) | undefined;
   onClick: (issueKey: string) => void;
+  onSelect: (issueKey: string) => void;
   onFilterChange: (changes: Partial<Query>) => void;
   onPopupToggle: (issue: string, popupName: string, open?: boolean) => void;
   openPopup: string | undefined;
@@ -38,22 +38,6 @@ interface Props {
 }
 
 export default class ListItem extends React.PureComponent<Props> {
-  nodeRef: HTMLLIElement | null = null;
-
-  componentDidMount() {
-    const { selected } = this.props;
-    if (this.nodeRef && selected) {
-      this.nodeRef.scrollIntoView({ block: 'center', inline: 'center' });
-    }
-  }
-
-  componentDidUpdate(prevProps: Props) {
-    const { selected } = this.props;
-    if (!prevProps.selected && selected && this.nodeRef) {
-      this.nodeRef.scrollIntoView({ block: 'center', inline: 'center' });
-    }
-  }
-
   handleFilter = (property: string, issue: TypeIssue) => {
     const { onFilterChange } = this.props;
 
@@ -103,20 +87,18 @@ export default class ListItem extends React.PureComponent<Props> {
     const { branchLike, issue } = this.props;
 
     return (
-      <li className="issues-workspace-list-item" ref={(node) => (this.nodeRef = node)}>
-        <Issue
-          branchLike={branchLike}
-          checked={this.props.checked}
-          issue={issue}
-          onChange={this.props.onChange}
-          onCheck={this.props.onCheck}
-          onClick={this.props.onClick}
-          onFilter={this.handleFilter}
-          onPopupToggle={this.props.onPopupToggle}
-          openPopup={this.props.openPopup}
-          selected={this.props.selected}
-        />
-      </li>
+      <Issue
+        branchLike={branchLike}
+        checked={this.props.checked}
+        issue={issue}
+        onChange={this.props.onChange}
+        onCheck={this.props.onCheck}
+        onClick={this.props.onClick}
+        onSelect={this.props.onSelect}
+        onPopupToggle={this.props.onPopupToggle}
+        openPopup={this.props.openPopup}
+        selected={this.props.selected}
+      />
     );
   }
 }

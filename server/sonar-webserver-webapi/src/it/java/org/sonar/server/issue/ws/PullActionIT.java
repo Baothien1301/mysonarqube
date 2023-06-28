@@ -68,9 +68,6 @@ public class PullActionIT {
   private static final String DEFAULT_BRANCH = DEFAULT_MAIN_BRANCH_NAME;
 
   @Rule
-  public DbTester dbTester = DbTester.create();
-
-  @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
 
   @Rule
@@ -468,11 +465,11 @@ public class PullActionIT {
   }
 
   private void loginWithBrowsePermission(String projectUuid, String componentUuid) {
-    UserDto user = dbTester.users().insertUser("john");
+    UserDto user = db.users().insertUser("john");
     userSession.logIn(user)
       .addProjectPermission(USER,
-        db.getDbClient().componentDao().selectByUuid(dbTester.getSession(), projectUuid).get(),
-        db.getDbClient().componentDao().selectByUuid(dbTester.getSession(), componentUuid).get());
+        db.getDbClient().componentDao().selectByUuid(db.getSession(), projectUuid).get(),
+        db.getDbClient().componentDao().selectByUuid(db.getSession(), componentUuid).get());
   }
 
 }

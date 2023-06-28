@@ -30,6 +30,7 @@ import org.sonar.alm.client.bitbucketserver.BitbucketServerSettingsValidator;
 import org.sonar.alm.client.github.GithubApplicationClientImpl;
 import org.sonar.alm.client.github.GithubApplicationHttpClientImpl;
 import org.sonar.alm.client.github.GithubGlobalSettingsValidator;
+import org.sonar.alm.client.github.config.GithubProvisioningConfigValidator;
 import org.sonar.alm.client.github.security.GithubAppSecurityImpl;
 import org.sonar.alm.client.gitlab.GitlabGlobalSettingsValidator;
 import org.sonar.alm.client.gitlab.GitlabHttpClient;
@@ -40,6 +41,7 @@ import org.sonar.api.rules.AnnotationRuleParser;
 import org.sonar.api.server.rule.RulesDefinitionXmlLoader;
 import org.sonar.auth.bitbucket.BitbucketModule;
 import org.sonar.auth.github.GitHubModule;
+import org.sonar.auth.github.GitHubSettings;
 import org.sonar.auth.gitlab.GitLabModule;
 import org.sonar.auth.ldap.LdapModule;
 import org.sonar.auth.saml.SamlModule;
@@ -58,6 +60,7 @@ import org.sonar.server.almintegration.ws.AlmIntegrationsWSModule;
 import org.sonar.server.almintegration.ws.CredentialsEncoderHelper;
 import org.sonar.server.almintegration.ws.ImportHelper;
 import org.sonar.server.almintegration.ws.ProjectKeyGenerator;
+import org.sonar.server.almintegration.ws.github.GithubProvisioningWs;
 import org.sonar.server.almsettings.MultipleAlmFeature;
 import org.sonar.server.almsettings.ws.AlmSettingsWsModule;
 import org.sonar.server.authentication.AuthenticationModule;
@@ -143,6 +146,7 @@ import org.sonar.server.monitoring.devops.AzureMetricsTask;
 import org.sonar.server.monitoring.devops.BitbucketMetricsTask;
 import org.sonar.server.monitoring.devops.GithubMetricsTask;
 import org.sonar.server.monitoring.devops.GitlabMetricsTask;
+import org.sonar.server.newcodeperiod.NewCodeDefinitionResolver;
 import org.sonar.server.newcodeperiod.ws.NewCodePeriodsWsModule;
 import org.sonar.server.notification.NotificationModule;
 import org.sonar.server.notification.ws.NotificationWsModule;
@@ -190,6 +194,7 @@ import org.sonar.server.projectlink.ws.ProjectLinksModule;
 import org.sonar.server.projecttag.ws.ProjectTagsWsModule;
 import org.sonar.server.property.InternalPropertiesImpl;
 import org.sonar.server.pushapi.ServerPushModule;
+import org.sonar.server.pushapi.hotspots.HotspotChangeEventServiceImpl;
 import org.sonar.server.pushapi.issues.IssueChangeEventServiceImpl;
 import org.sonar.server.pushapi.qualityprofile.QualityProfileChangeEventServiceImpl;
 import org.sonar.server.qualitygate.ProjectsInWarningModule;
@@ -233,6 +238,7 @@ import org.sonar.server.setting.SettingsChangeNotifier;
 import org.sonar.server.setting.ws.SettingsWsModule;
 import org.sonar.server.source.ws.SourceWsModule;
 import org.sonar.server.startup.LogServerId;
+import org.sonar.server.telemetry.CloudUsageDataProvider;
 import org.sonar.server.telemetry.TelemetryClient;
 import org.sonar.server.telemetry.TelemetryDaemon;
 import org.sonar.server.telemetry.TelemetryDataJsonWriter;
@@ -381,6 +387,7 @@ public class PlatformLevel4 extends PlatformLevel {
       new AuthenticationModule(),
       new AuthenticationWsModule(),
       new BitbucketModule(),
+      GitHubSettings.class,
       new GitHubModule(),
       new GitLabModule(),
       new LdapModule(),
@@ -456,6 +463,7 @@ public class PlatformLevel4 extends PlatformLevel {
       MyNewIssuesNotificationHandler.class,
       MyNewIssuesNotificationHandler.newMetadata(),
       IssueChangeEventServiceImpl.class,
+      HotspotChangeEventServiceImpl.class,
 
       // issues actions
       AssignAction.class,
@@ -501,6 +509,7 @@ public class PlatformLevel4 extends PlatformLevel {
 
       // New Code Periods
       new NewCodePeriodsWsModule(),
+      NewCodeDefinitionResolver.class,
 
       // Project Links
       new ProjectLinksModule(),
@@ -539,6 +548,8 @@ public class PlatformLevel4 extends PlatformLevel {
       GithubAppSecurityImpl.class,
       GithubApplicationClientImpl.class,
       GithubApplicationHttpClientImpl.class,
+      GithubProvisioningConfigValidator.class,
+      GithubProvisioningWs.class,
       BitbucketCloudRestClientConfiguration.class,
       BitbucketServerRestClient.class,
       GitlabHttpClient.class,
@@ -611,6 +622,7 @@ public class PlatformLevel4 extends PlatformLevel {
       TelemetryDataJsonWriter.class,
       TelemetryDaemon.class,
       TelemetryClient.class,
+      CloudUsageDataProvider.class,
 
       // monitoring
       ServerMonitoringMetrics.class,

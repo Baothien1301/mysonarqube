@@ -22,7 +22,7 @@ import { theme } from 'twin.macro';
 
 export const DEFAULT_LOCALE = 'en';
 export const IS_SSR = typeof window === 'undefined';
-export const REACT_DOM_CONTAINER = '#___gatsby';
+export const REACT_DOM_CONTAINER = '#content';
 
 export const RULE_STATUSES = ['READY', 'BETA', 'DEPRECATED'];
 
@@ -60,11 +60,11 @@ export const LAYOUT_BANNER_HEIGHT = 44;
 export const LAYOUT_BRANDING_ICON_WIDTH = 198;
 export const LAYOUT_FILTERBAR_HEADER = 56;
 export const LAYOUT_GLOBAL_NAV_HEIGHT = 52;
-export const LAYOUT_PROJECT_NAV_HEIGHT = 110;
+export const LAYOUT_PROJECT_NAV_HEIGHT = 108;
 export const LAYOUT_LOGO_MARGIN_RIGHT = 45;
 export const LAYOUT_LOGO_MAX_HEIGHT = 40;
 export const LAYOUT_LOGO_MAX_WIDTH = 150;
-export const LAYOUT_FOOTER_HEIGHT = 52;
+export const LAYOUT_FOOTER_HEIGHT = 60;
 export const LAYOUT_NOTIFICATIONSBAR_WIDTH = 350;
 
 export const CORE_CONCEPTS_WIDTH = 350;
@@ -72,3 +72,5 @@ export const CORE_CONCEPTS_WIDTH = 350;
 export const DARK_THEME_ID = 'dark-theme';
 
 export const OPACITY_20_PERCENT = 0.2;
+
+export const OPACITY_75_PERCENT = 0.75;

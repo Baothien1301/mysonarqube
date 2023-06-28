@@ -17,26 +17,18 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import { cloneDeep, keyBy, times, uniqueId } from 'lodash';
+import { cloneDeep, uniqueId } from 'lodash';
 import { RuleDescriptionSections } from '../../apps/coding-rules/rule';
-import { mockIssueChangelog } from '../../helpers/mocks/issues';
-import { mockSnippetsByComponent } from '../../helpers/mocks/sources';
+
+import { RESOLUTIONS, SEVERITIES, SOURCE_SCOPES, STATUSES } from '../../helpers/constants';
+import { mockIssueAuthors, mockIssueChangelog } from '../../helpers/mocks/issues';
 import { RequestData } from '../../helpers/request';
 import { getStandards } from '../../helpers/security-standard';
-import {
-  mockLoggedInUser,
-  mockPaging,
-  mockRawIssue,
-  mockRule,
-  mockRuleDetails,
-} from '../../helpers/testMocks';
+import { mockLoggedInUser, mockPaging, mockRuleDetails } from '../../helpers/testMocks';
 import { SearchRulesResponse } from '../../types/coding-rules';
 import {
   ASSIGNEE_ME,
-  IssueActions,
   IssueResolution,
-  IssueScope,
-  IssueSeverity,
   IssueStatus,
   IssueTransition,
   IssueType,
@@ -45,17 +37,11 @@ import {
   RawIssuesResponse,
   ReferencedComponent,
 } from '../../types/issues';
+import { MetricKey } from '../../types/metrics';
 import { SearchRulesQuery } from '../../types/rules';
 import { Standards } from '../../types/security';
-import {
-  Dict,
-  FlowType,
-  Rule,
-  RuleActivation,
-  RuleDetails,
-  SnippetsByComponent,
-} from '../../types/types';
-import { LoggedInUser, NoticeType } from '../../types/users';
+import { Dict, Rule, RuleActivation, RuleDetails, SnippetsByComponent } from '../../types/types';
+import { LoggedInUser, NoticeType, User } from '../../types/users';
 import {
   addIssueComment,
   bulkChangeIssues,
@@ -63,6 +49,7 @@ import {
   editIssueComment,
   getIssueChangelog,
   getIssueFlowSnippets,
+  searchIssueAuthors,
   searchIssueTags,
   searchIssues,
   setIssueAssignee,
@@ -73,6 +60,14 @@ import {
 } from '../issues';
 import { getRuleDetails, searchRules } from '../rules';
 import { dismissNotice, getCurrentUser, searchUsers } from '../users';
+import { IssueData, mockIssuesList } from './data/issues';
+import { mockRuleList } from './data/rules';
+
+jest.mock('../../api/issues');
+// The following 2 mocks are needed, because IssuesServiceMock mocks more than it should.
+// This should be removed once IssuesServiceMock is cleaned up.
+jest.mock('../../api/rules');
+jest.mock('../../api/users');
 
 function mockReferenceComponent(override?: Partial<ReferencedComponent>) {
   return {
@@ -97,11 +92,6 @@ function generateReferenceComponentsForIssues(issueData: IssueData[]) {
     .map((key) => mockReferenceComponent({ key, enabled: true }));
 }
 
-interface IssueData {
-  issue: RawIssue;
-  snippets: Dict<SnippetsByComponent>;
-}
-
 export default class IssuesServiceMock {
   isAdmin = false;
   currentUser: LoggedInUser;
@@ -112,389 +102,30 @@ export default class IssuesServiceMock {
 
   constructor() {
     this.currentUser = mockLoggedInUser();
-    this.defaultList = [
-      {
-        issue: mockRawIssue(false, {
-          key: 'issue101',
-          component: 'foo:test1.js',
-          creationDate: '2023-01-05T09:36:01+0100',
-          message: 'Issue with no location message',
-          type: IssueType.Vulnerability,
-          rule: 'simpleRuleId',
-          textRange: {
-            startLine: 10,
-            endLine: 10,
-            startOffset: 0,
-            endOffset: 2,
-          },
-          flows: [
-            {
-              locations: [
-                {
-                  component: 'foo:test1.js',
-                  textRange: {
-                    startLine: 1,
-                    endLine: 1,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-              ],
-            },
-            {
-              locations: [
-                {
-                  component: 'foo:test2.js',
-                  textRange: {
-                    startLine: 20,
-                    endLine: 20,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-              ],
-            },
-          ],
-          resolution: IssueResolution.WontFix,
-          scope: IssueScope.Main,
-          tags: ['tag0', 'tag1'],
-        }),
-        snippets: keyBy(
-          [
-            mockSnippetsByComponent(
-              'test1.js',
-              'foo',
-              times(40, (i) => i + 1)
-            ),
-            mockSnippetsByComponent(
-              'test2.js',
-              'foo',
-              times(40, (i) => i + 1)
-            ),
-          ],
-          'component.key'
-        ),
-      },
-      {
-        issue: mockRawIssue(false, {
-          key: 'issue11',
-          component: 'foo:test1.js',
-          creationDate: '2022-01-01T09:36:01+0100',
-          message: 'FlowIssue',
-          type: IssueType.CodeSmell,
-          severity: IssueSeverity.Minor,
-          rule: 'simpleRuleId',
-          textRange: {
-            startLine: 10,
-            endLine: 10,
-            startOffset: 0,
-            endOffset: 2,
-          },
-          flows: [
-            {
-              type: FlowType.DATA,
-              description: 'Backtracking 1',
-              locations: [
-                {
-                  component: 'foo:test1.js',
-                  msg: 'Data location 1',
-                  textRange: {
-                    startLine: 20,
-                    endLine: 20,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-                {
-                  component: 'foo:test1.js',
-                  msg: 'Data location 2',
-                  textRange: {
-                    startLine: 21,
-                    endLine: 21,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-              ],
-            },
-            {
-              type: FlowType.EXECUTION,
-              locations: [
-                {
-                  component: 'foo:test2.js',
-                  msg: 'Execution location 1',
-                  textRange: {
-                    startLine: 20,
-                    endLine: 20,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-                {
-                  component: 'foo:test2.js',
-                  msg: 'Execution location 2',
-                  textRange: {
-                    startLine: 22,
-                    endLine: 22,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-                {
-                  component: 'foo:test2.js',
-                  msg: 'Execution location 3',
-                  textRange: {
-                    startLine: 5,
-                    endLine: 5,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-              ],
-            },
-          ],
-          tags: ['tag1'],
-        }),
-        snippets: keyBy(
-          [
-            mockSnippetsByComponent(
-              'test1.js',
-              'foo',
-              times(40, (i) => i + 1)
-            ),
-            mockSnippetsByComponent(
-              'test2.js',
-              'foo',
-              times(40, (i) => i + 1)
-            ),
-          ],
-          'component.key'
-        ),
-      },
-      {
-        issue: mockRawIssue(false, {
-          key: 'issue0',
-          component: 'foo:test1.js',
-          message: 'Issue on file',
-          assignee: mockLoggedInUser().login,
-          type: IssueType.CodeSmell,
-          rule: 'simpleRuleId',
-          textRange: undefined,
-          line: undefined,
-          scope: IssueScope.Test,
-        }),
-        snippets: {},
-      },
-      {
-        issue: mockRawIssue(false, {
-          key: 'issue1',
-          component: 'foo:huge.js',
-          message: 'Fix this',
-          type: IssueType.Vulnerability,
-          rule: 'simpleRuleId',
-          textRange: {
-            startLine: 10,
-            endLine: 10,
-            startOffset: 0,
-            endOffset: 2,
-          },
-          flows: [
-            {
-              locations: [
-                {
-                  component: 'foo:huge.js',
-                  msg: 'location 1',
-                  textRange: {
-                    startLine: 1,
-                    endLine: 1,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-              ],
-            },
-            {
-              locations: [
-                {
-                  component: 'foo:huge.js',
-                  msg: 'location 2',
-                  textRange: {
-                    startLine: 50,
-                    endLine: 50,
-                    startOffset: 0,
-                    endOffset: 1,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-        snippets: keyBy(
-          [
-            mockSnippetsByComponent(
-              'huge.js',
-              'foo',
-              times(80, (i) => i + 1)
-            ),
-            mockSnippetsByComponent(
-              'huge.js',
-              'foo',
-              times(80, (i) => i + 1)
-            ),
-          ],
-          'component.key'
-        ),
-      },
-      {
-        issue: mockRawIssue(false, {
-          actions: Object.values(IssueActions),
-          transitions: ['confirm', 'resolve', 'falsepositive', 'wontfix'],
-          key: 'issue2',
-          component: 'foo:test2.js',
-          message: 'Fix that',
-          rule: 'advancedRuleId',
-          textRange: {
-            startLine: 25,
-            endLine: 25,
-            startOffset: 0,
-            endOffset: 1,
-          },
-          ruleDescriptionContextKey: 'spring',
-          resolution: IssueResolution.Unresolved,
-          status: IssueStatus.Open,
-        }),
-        snippets: keyBy(
-          [
-            mockSnippetsByComponent(
-              'test2.js',
-              'foo',
-              times(40, (i) => i + 20)
-            ),
-          ],
-          'component.key'
-        ),
-      },
-      {
-        issue: mockRawIssue(false, {
-          key: 'issue3',
-          component: 'foo:test2.js',
-          message: 'Second issue',
-          rule: 'other',
-          textRange: {
-            startLine: 28,
-            endLine: 28,
-            startOffset: 0,
-            endOffset: 1,
-          },
-          resolution: IssueResolution.Fixed,
-          status: IssueStatus.Confirmed,
-        }),
-        snippets: keyBy(
-          [
-            mockSnippetsByComponent(
-              'test2.js',
-              'foo',
-              times(40, (i) => i + 20)
-            ),
-          ],
-          'component.key'
-        ),
-      },
-      {
-        issue: mockRawIssue(false, {
-          actions: Object.values(IssueActions),
-          transitions: ['confirm', 'resolve', 'falsepositive', 'wontfix'],
-          key: 'issue4',
-          component: 'foo:test2.js',
-          message: 'Issue with tags',
-          rule: 'other',
-          textRange: {
-            startLine: 25,
-            endLine: 25,
-            startOffset: 0,
-            endOffset: 1,
-          },
-          ruleDescriptionContextKey: 'spring',
-          ruleStatus: 'DEPRECATED',
-          quickFixAvailable: true,
-          tags: ['unused'],
-          project: 'org.project2',
-          assignee: 'email1@sonarsource.com',
-          author: 'email3@sonarsource.com',
-        }),
-        snippets: keyBy(
-          [
-            mockSnippetsByComponent(
-              'test2.js',
-              'foo',
-              times(40, (i) => i + 20)
-            ),
-          ],
-          'component.key'
-        ),
-      },
-      {
-        issue: mockRawIssue(false, {
-          key: 'issue1101',
-          component: 'foo:test5.js',
-          message: 'Issue on page 2',
-          rule: 'simpleRuleId',
-          textRange: undefined,
-          line: undefined,
-        }),
-        snippets: {},
-      },
-    ];
-    this.rulesList = [
-      mockRule({
-        key: 'simpleRuleId',
-        name: 'Simple rule',
-        lang: 'java',
-        langName: 'Java',
-        type: 'CODE_SMELL',
-      }),
-      mockRule({
-        key: 'advancedRuleId',
-        name: 'Advanced rule',
-        lang: 'web',
-        langName: 'HTML',
-        type: 'VULNERABILITY',
-      }),
-      mockRule({
-        key: 'cpp:S6069',
-        lang: 'cpp',
-        langName: 'C++',
-        name: 'Security hotspot rule',
-        type: 'SECURITY_HOTSPOT',
-      }),
-      mockRule({
-        key: 'tsql:S131',
-        name: '"CASE" expressions should end with "ELSE" clauses',
-        lang: 'tsql',
-        langName: 'T-SQL',
-      }),
-    ];
+    this.defaultList = mockIssuesList();
+    this.rulesList = mockRuleList();
 
     this.list = cloneDeep(this.defaultList);
 
-    (searchIssues as jest.Mock).mockImplementation(this.handleSearchIssues);
-    (getRuleDetails as jest.Mock).mockImplementation(this.handleGetRuleDetails);
-    jest.mocked(searchRules).mockImplementation(this.handleSearchRules);
-    (getIssueFlowSnippets as jest.Mock).mockImplementation(this.handleGetIssueFlowSnippets);
-    (bulkChangeIssues as jest.Mock).mockImplementation(this.handleBulkChangeIssues);
-    (getCurrentUser as jest.Mock).mockImplementation(this.handleGetCurrentUser);
-    (dismissNotice as jest.Mock).mockImplementation(this.handleDismissNotification);
-    (setIssueType as jest.Mock).mockImplementation(this.handleSetIssueType);
-    jest.mocked(setIssueAssignee).mockImplementation(this.handleSetIssueAssignee);
-    (setIssueSeverity as jest.Mock).mockImplementation(this.handleSetIssueSeverity);
-    (setIssueTransition as jest.Mock).mockImplementation(this.handleSetIssueTransition);
-    (setIssueTags as jest.Mock).mockImplementation(this.handleSetIssueTags);
     jest.mocked(addIssueComment).mockImplementation(this.handleAddComment);
-    jest.mocked(editIssueComment).mockImplementation(this.handleEditComment);
+    jest.mocked(bulkChangeIssues).mockImplementation(this.handleBulkChangeIssues);
     jest.mocked(deleteIssueComment).mockImplementation(this.handleDeleteComment);
-    (searchUsers as jest.Mock).mockImplementation(this.handleSearchUsers);
-    (searchIssueTags as jest.Mock).mockImplementation(this.handleSearchIssueTags);
+    jest.mocked(dismissNotice).mockImplementation(this.handleDismissNotification);
+    jest.mocked(editIssueComment).mockImplementation(this.handleEditComment);
+    jest.mocked(getCurrentUser).mockImplementation(this.handleGetCurrentUser);
     jest.mocked(getIssueChangelog).mockImplementation(this.handleGetIssueChangelog);
+    jest.mocked(getIssueFlowSnippets).mockImplementation(this.handleGetIssueFlowSnippets);
+    jest.mocked(getRuleDetails).mockImplementation(this.handleGetRuleDetails);
+    jest.mocked(searchIssueAuthors).mockImplementation(this.handleSearchIssueAuthors);
+    jest.mocked(searchIssues).mockImplementation(this.handleSearchIssues);
+    jest.mocked(searchIssueTags).mockImplementation(this.handleSearchIssueTags);
+    jest.mocked(searchRules).mockImplementation(this.handleSearchRules);
+    jest.mocked(searchUsers).mockImplementation(this.handleSearchUsers);
+    jest.mocked(setIssueAssignee).mockImplementation(this.handleSetIssueAssignee);
+    jest.mocked(setIssueSeverity).mockImplementation(this.handleSetIssueSeverity);
+    jest.mocked(setIssueTags).mockImplementation(this.handleSetIssueTags);
+    jest.mocked(setIssueTransition).mockImplementation(this.handleSetIssueTransition);
+    jest.mocked(setIssueType).mockImplementation(this.handleSetIssueType);
   }
 
   reset = () => {
@@ -536,7 +167,7 @@ export default class IssuesServiceMock {
       .forEach((data) => {
         data.issue.type = query.set_type;
       });
-    return this.reply({});
+    return this.reply(undefined);
   };
 
   handleGetIssueFlowSnippets = (issueKey: string): Promise<Dict<SnippetsByComponent>> => {
@@ -648,7 +279,37 @@ export default class IssuesServiceMock {
           ],
         };
       }
-      if (name === 'projects') {
+      if (name === 'scopes') {
+        return {
+          property: name,
+          values: SOURCE_SCOPES.map(({ scope }) => ({
+            val: scope,
+            count: 1, // if 0, the facet can't be clicked in tests
+          })),
+        };
+      }
+      if (name === 'codeVariants') {
+        return {
+          property: 'codeVariants',
+          values: this.list.reduce((acc, { issue }) => {
+            if (issue.codeVariants?.length) {
+              issue.codeVariants.forEach((codeVariant) => {
+                const item = acc.find(({ val }) => val === codeVariant);
+                if (item) {
+                  item.count++;
+                } else {
+                  acc.push({
+                    val: codeVariant,
+                    count: 1,
+                  });
+                }
+              });
+            }
+            return acc;
+          }, [] as RawFacet['values']),
+        };
+      }
+      if (name === MetricKey.projects) {
         return {
           property: name,
           values: [
@@ -707,7 +368,13 @@ export default class IssuesServiceMock {
       }
       return {
         property: name,
-        values: [],
+        values: (
+          { resolutions: RESOLUTIONS, severities: SEVERITIES, statuses: STATUSES, types }[name] ??
+          []
+        ).map((val) => ({
+          val,
+          count: 1, // if 0, the facet can't be clicked in tests
+        })),
       };
     });
   };
@@ -757,7 +424,18 @@ export default class IssuesServiceMock {
       .filter(
         (item) =>
           !query.inNewCodePeriod || new Date(item.issue.creationDate) > new Date('2023-01-10')
-      );
+      )
+      .filter((item) => {
+        if (!query.codeVariants) {
+          return true;
+        }
+        if (!item.issue.codeVariants) {
+          return false;
+        }
+        return item.issue.codeVariants.some((codeVariant) =>
+          query.codeVariants?.split(',').includes(codeVariant)
+        );
+      });
 
     // Splice list items according to paging using a fixed page size
     const pageIndex = query.p || 1;
@@ -919,11 +597,15 @@ export default class IssuesServiceMock {
   };
 
   handleSearchUsers = () => {
-    return this.reply({ users: [mockLoggedInUser()] });
+    return this.reply({ paging: mockPaging(), users: [mockLoggedInUser() as unknown as User] });
+  };
+
+  handleSearchIssueAuthors = () => {
+    return this.reply(mockIssueAuthors());
   };
 
   handleSearchIssueTags = () => {
-    return this.reply(['accessibility', 'android']);
+    return this.reply(['accessibility', 'android', 'unused']);
   };
 
   handleGetIssueChangelog = (_issue: string) => {

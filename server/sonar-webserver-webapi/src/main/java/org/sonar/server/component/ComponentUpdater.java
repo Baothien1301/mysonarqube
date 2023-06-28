@@ -21,10 +21,12 @@ package org.sonar.server.component;
 
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.sonar.api.resources.Qualifiers;
 import org.sonar.api.resources.Scopes;
@@ -47,7 +49,6 @@ import org.sonar.server.project.DefaultBranchNameResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import static java.util.Collections.singletonList;
-import static org.sonar.api.resources.Qualifiers.PROJECT;
 import static org.sonar.core.component.ComponentKeys.ALLOWED_CHARACTERS_MESSAGE;
 import static org.sonar.core.component.ComponentKeys.isValidProjectKey;
 import static org.sonar.server.exceptions.BadRequestException.checkRequest;
@@ -138,20 +139,28 @@ public class ComponentUpdater {
 
     BranchDto mainBranch = null;
     ProjectDto projectDto = null;
-    PortfolioDto portfolioDto = null;
+
     if (isRootProject(componentDto)) {
       projectDto = toProjectDto(componentDto, now);
       dbClient.projectDao().insert(dbSession, projectDto);
+      addToFavourites(dbSession, projectDto, userUuid, userLogin);
       mainBranch = createMainBranch(dbSession, componentDto.uuid(), projectDto.getUuid(), mainBranchName);
-    }
-
-    if (isRootView(componentDto)) {
-      portfolioDto = toPortfolioDto(componentDto, now);
+      permissionTemplateService.applyDefaultToNewComponent(dbSession, projectDto, userUuid);
+    } else if (isRootView(componentDto)) {
+      PortfolioDto portfolioDto = toPortfolioDto(componentDto, now);
       dbClient.portfolioDao().insert(dbSession, portfolioDto);
+      permissionTemplateService.applyDefaultToNewComponent(dbSession, portfolioDto, userUuid);
+    } else {
+      throw new IllegalArgumentException("Component " + componentDto + " is not a top level entity");
     }
 
-    handlePermissionTemplate(dbSession, componentDto, userUuid, userLogin);
     return new ComponentCreationData(componentDto, mainBranch, projectDto);
+  }
+
+  private void addToFavourites(DbSession dbSession, ProjectDto projectDto, @Nullable String userUuid, @Nullable String userLogin) {
+    if (permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(dbSession, projectDto)) {
+      favoriteUpdater.add(dbSession, projectDto, userUuid, userLogin, false);
+    }
   }
 
   private void checkKeyFormat(String qualifier, String key) {
@@ -159,12 +168,15 @@ public class ComponentUpdater {
   }
 
   private void checkKeyAlreadyExists(DbSession dbSession, NewComponent newComponent) {
-    Optional<ComponentDto> componentDto = newComponent.isProject()
-      ? dbClient.componentDao().selectByKeyCaseInsensitive(dbSession, newComponent.key())
-      : dbClient.componentDao().selectByKey(dbSession, newComponent.key());
+    List<ComponentDto> componentDtos = dbClient.componentDao().selectByKeyCaseInsensitive(dbSession, newComponent.key());
 
-    componentDto.map(ComponentDto::getKey)
-      .ifPresent(existingKey -> throwBadRequestException(KEY_ALREADY_EXISTS_ERROR, getQualifierToDisplay(newComponent.qualifier()), newComponent.key(), existingKey));
+    if (!componentDtos.isEmpty()) {
+      String alreadyExistingKeys = componentDtos
+        .stream()
+        .map(ComponentDto::getKey)
+        .collect(Collectors.joining(", "));
+      throwBadRequestException(KEY_ALREADY_EXISTS_ERROR, getQualifierToDisplay(newComponent.qualifier()), newComponent.key(), alreadyExistingKeys);
+    }
   }
 
   private ComponentDto createRootComponent(DbSession session, NewComponent newComponent, Consumer<ComponentDto> componentModifier, long now) {
@@ -215,12 +227,12 @@ public class ComponentUpdater {
 
   private static boolean isRootProject(ComponentDto componentDto) {
     return Scopes.PROJECT.equals(componentDto.scope())
-           && MAIN_BRANCH_QUALIFIERS.contains(componentDto.qualifier());
+      && MAIN_BRANCH_QUALIFIERS.contains(componentDto.qualifier());
   }
 
   private static boolean isRootView(ComponentDto componentDto) {
     return Scopes.PROJECT.equals(componentDto.scope())
-           && Qualifiers.VIEW.contains(componentDto.qualifier());
+      && Qualifiers.VIEW.contains(componentDto.qualifier());
   }
 
   private BranchDto createMainBranch(DbSession session, String componentUuid, String projectUuid, @Nullable String mainBranch) {
@@ -234,14 +246,6 @@ public class ComponentUpdater {
       .setProjectUuid(projectUuid);
     dbClient.branchDao().upsert(session, branch);
     return branch;
-  }
-
-  private void handlePermissionTemplate(DbSession dbSession, ComponentDto componentDto, @Nullable String userUuid, @Nullable String userLogin) {
-    permissionTemplateService.applyDefaultToNewComponent(dbSession, componentDto, userUuid);
-    if (componentDto.qualifier().equals(PROJECT)
-        && permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(dbSession, componentDto)) {
-      favoriteUpdater.add(dbSession, componentDto, userUuid, userLogin, false);
-    }
   }
 
   private String getQualifierToDisplay(String qualifier) {

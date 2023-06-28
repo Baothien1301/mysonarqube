@@ -19,7 +19,6 @@
  */
 package org.sonar.db.property;
 
-import com.google.common.collect.ImmutableMap;
 import com.tngtech.java.junit.dataprovider.DataProvider;
 import com.tngtech.java.junit.dataprovider.DataProviderRunner;
 import com.tngtech.java.junit.dataprovider.UseDataProvider;
@@ -30,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
 import org.junit.Before;
 import org.junit.Rule;
@@ -37,18 +37,17 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.sonar.api.impl.utils.AlwaysIncreasingSystem2;
 import org.sonar.api.resources.Qualifiers;
-import org.sonar.api.web.UserRole;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.EmailSubscriberDto;
 import org.sonar.db.audit.AuditPersister;
 import org.sonar.db.component.ComponentDto;
-import org.sonar.db.component.ComponentTesting;
+import org.sonar.db.portfolio.PortfolioDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.UserDto;
 
 import static com.google.common.collect.ImmutableSet.of;
-import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Sets.newHashSet;
 import static java.util.Collections.singletonList;
 import static org.apache.commons.lang.RandomStringUtils.randomAlphabetic;
@@ -64,7 +63,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.sonar.db.property.PropertyTesting.newComponentPropertyDto;
 import static org.sonar.db.property.PropertyTesting.newGlobalPropertyDto;
-import static org.sonar.db.property.PropertyTesting.newPropertyDto;
 import static org.sonar.db.property.PropertyTesting.newUserPropertyDto;
 
 @RunWith(DataProviderRunner.class)
@@ -86,52 +84,6 @@ public class PropertiesDaoIT {
   @Before
   public void setup() {
     when(auditPersister.isTrackedProperty(anyString())).thenReturn(true);
-  }
-
-  @Test
-  public void shouldFindUsersForNotification() {
-    ComponentDto project1 = insertPrivateProject("uuid_45");
-    ComponentDto project2 = insertPrivateProject("uuid_56");
-    UserDto user1 = db.users().insertUser(u -> u.setLogin("user1"));
-    UserDto user2 = db.users().insertUser(u -> u.setLogin("user2"));
-    UserDto user3 = db.users().insertUser(u -> u.setLogin("user3"));
-    insertProperty("notification.NewViolations.Email", "true", project1.uuid(), user2.getUuid(), user2.getLogin(),
-      project1.getKey(), project1.name());
-    insertProperty("notification.NewViolations.Twitter", "true", null, user3.getUuid(), user3.getLogin(),
-      null, null);
-    insertProperty("notification.NewViolations.Twitter", "true", project2.uuid(), user1.getUuid(), user1.getLogin(),
-      project2.getKey(), project2.name());
-    insertProperty("notification.NewViolations.Twitter", "true", project1.uuid(), user2.getUuid(), user2.getLogin(),
-      project1.getKey(), project1.name());
-    insertProperty("notification.NewViolations.Twitter", "true", project2.uuid(), user3.getUuid(), user3.getLogin(),
-      project2.getKey(), project2.name());
-    db.users().insertProjectPermissionOnUser(user2, UserRole.USER, project1);
-    db.users().insertProjectPermissionOnUser(user3, UserRole.USER, project2);
-    db.users().insertProjectPermissionOnUser(user1, UserRole.USER, project2);
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Email", null))
-      .isEmpty();
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Email", "uuid_78"))
-      .isEmpty();
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Email", project1.getKey()))
-      .containsOnly(new Subscriber("user2", false));
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Email", project2.getKey()))
-      .isEmpty();
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Twitter", null))
-      .containsOnly(new Subscriber("user3", true));
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Twitter", "uuid_78"))
-      .containsOnly(new Subscriber("user3", true));
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Twitter", project1.getKey()))
-      .containsOnly(new Subscriber("user2", false), new Subscriber("user3", true));
-
-    assertThat(underTest.findUsersForNotification("NewViolations", "Twitter", project2.getKey()))
-      .containsOnly(new Subscriber("user1", false), new Subscriber("user3", true), new Subscriber("user3", false));
   }
 
   @Test
@@ -284,6 +236,34 @@ public class PropertiesDaoIT {
       .isEmpty();
     assertThat(underTest.findEmailSubscribersForNotification(db.getSession(), channelKey, dispatcherKey, null, allLogins))
       .isEmpty();
+  }
+
+  @Test
+  public void selectEntityPropertyByKeyAndUserUuid_shouldFindPortfolioProperties() {
+    PortfolioDto portfolio = db.components().insertPrivatePortfolioDto();
+    String uuid1 = insertProperty("key", "value1", portfolio.getUuid(), "user1", null, null, null);
+    String uuid2 = insertProperty("key", "value2", portfolio.getUuid(), "user2", null, null, null);
+    String uuid3 = insertProperty("key2", "value3", portfolio.getUuid(), "user1", null, null, null);
+
+    List<PropertyDto> property = underTest.selectEntityPropertyByKeyAndUserUuid(db.getSession(), "key", "user1");
+
+    assertThat(property)
+      .extracting(PropertyDto::getValue, PropertyDto::getEntityUuid, PropertyDto::getKey)
+      .containsOnly(tuple("value1", portfolio.getUuid(), "key"));
+  }
+
+  @Test
+  public void selectEntityPropertyByKeyAndUserUuid_shouldFindProjectAndAppProperties() {
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
+    String uuid1 = insertProperty("key", "value1", project.getUuid(), "user1", null, null, null);
+    String uuid2 = insertProperty("key", "value2", project.getUuid(), "user2", null, null, null);
+    String uuid3 = insertProperty("key2", "value3", project.getUuid(), "user1", null, null, null);
+
+    List<PropertyDto> property = underTest.selectEntityPropertyByKeyAndUserUuid(db.getSession(), "key", "user1");
+
+    assertThat(property)
+      .extracting(PropertyDto::getValue, PropertyDto::getEntityUuid, PropertyDto::getKey)
+      .containsOnly(tuple("value1", project.getUuid(), "key"));
   }
 
   @Test
@@ -467,11 +447,11 @@ public class PropertiesDaoIT {
       .isEqualTo(2);
 
     assertThat(findByKey(properties, "global.one"))
-      .extracting(PropertyDto::getKey, PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
       .containsExactly("global.one", null, null, "one");
 
     assertThat(findByKey(properties, "global.two"))
-      .extracting(PropertyDto::getKey, PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
       .containsExactly("global.two", null, null, "two");
   }
 
@@ -485,7 +465,7 @@ public class PropertiesDaoIT {
       .hasSize(1);
 
     assertThat(dtos.iterator().next())
-      .extracting(PropertyDto::getKey, PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
       .containsExactly("global.one", null, null, expected);
   }
 
@@ -500,7 +480,7 @@ public class PropertiesDaoIT {
     insertProperty("user.one", "one", null, "100", "login", null, null);
 
     assertThat(underTest.selectGlobalProperty("global.one"))
-      .extracting(PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
       .containsExactly(null, null, "one");
 
     assertThat(underTest.selectGlobalProperty("project.one")).isNull();
@@ -514,7 +494,7 @@ public class PropertiesDaoIT {
     insertProperty("global.one", dbValue, null, null, null, null, null);
 
     assertThat(underTest.selectGlobalProperty("global.one"))
-      .extracting(PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
       .containsExactly(null, null, expected);
   }
 
@@ -524,11 +504,11 @@ public class PropertiesDaoIT {
     ComponentDto projectDto = insertPrivateProject("A");
     insertProperty("project.one", dbValue, projectDto.uuid(), null, null, projectDto.getKey(), projectDto.name());
 
-    List<PropertyDto> dtos = underTest.selectComponentProperties(db.getSession(), projectDto.uuid());
+    List<PropertyDto> dtos = underTest.selectEntityProperties(db.getSession(), projectDto.uuid());
     assertThat(dtos).hasSize(1);
 
     assertThat(dtos.iterator().next())
-      .extracting(PropertyDto::getKey, PropertyDto::getComponentUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid, PropertyDto::getValue)
       .containsExactly("project.one", projectDto.uuid(), expected);
   }
 
@@ -550,7 +530,7 @@ public class PropertiesDaoIT {
     PropertyDto property = underTest.selectProjectProperty(db.getSession(), "uuid10", "project.one");
 
     assertThat(property)
-      .extracting(PropertyDto::getKey, PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getValue)
       .containsExactly("project.one", "uuid10", null, "one");
   }
 
@@ -569,7 +549,7 @@ public class PropertiesDaoIT {
     // other
     insertProperty("other.one", "one", "uuid12", null, null, "component", "component");
 
-    List<PropertyDto> results = underTest.selectByQuery(PropertyQuery.builder().setKey("user.two").setComponentUuid("uuid10")
+    List<PropertyDto> results = underTest.selectByQuery(PropertyQuery.builder().setKey("user.two").setEntityUuid("uuid10")
       .setUserUuid("100").build(), db.getSession());
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getValue()).isEqualTo("two");
@@ -615,33 +595,33 @@ public class PropertiesDaoIT {
 
   @Test
   public void select_properties_by_keys_and_component_ids() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
-    ComponentDto project2 = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
+    ProjectDto project2 = db.components().insertPrivateProject().getProjectDto();
     UserDto user = db.users().insertUser();
 
     String key = "key";
     String anotherKey = "anotherKey";
     insertProperties(null, null, null, newGlobalPropertyDto().setKey(key));
-    insertProperties(null, project.getKey(), project.name(), newComponentPropertyDto(project).setKey(key));
-    insertProperties(null, project2.getKey(), project2.name(), newComponentPropertyDto(project2).setKey(key),
+    insertProperties(null, project.getKey(), project.getName(), newComponentPropertyDto(project).setKey(key));
+    insertProperties(null, project2.getKey(), project2.getName(), newComponentPropertyDto(project2).setKey(key),
       newComponentPropertyDto(project2).setKey(anotherKey));
     insertProperties(user.getLogin(), null, null, newUserPropertyDto(user).setKey(key));
 
-    assertThat(underTest.selectPropertiesByKeysAndComponentUuids(session, newHashSet(key), newHashSet(project.uuid())))
-      .extracting("key", "componentUuid").containsOnly(tuple(key, project.uuid()));
-    assertThat(underTest.selectPropertiesByKeysAndComponentUuids(session, newHashSet(key), newHashSet(project.uuid(), project2.uuid())))
-      .extracting("key", "componentUuid").containsOnly(
-        tuple(key, project.uuid()),
-        tuple(key, project2.uuid()));
-    assertThat(underTest.selectPropertiesByKeysAndComponentUuids(session, newHashSet(key, anotherKey), newHashSet(project.uuid(), project2.uuid())))
-      .extracting("key", "componentUuid").containsOnly(
-        tuple(key, project.uuid()),
-        tuple(key, project2.uuid()),
-        tuple(anotherKey, project2.uuid()));
+    assertThat(underTest.selectPropertiesByKeysAndEntityUuids(session, newHashSet(key), newHashSet(project.getUuid())))
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid).containsOnly(tuple(key, project.getUuid()));
+    assertThat(underTest.selectPropertiesByKeysAndEntityUuids(session, newHashSet(key), newHashSet(project.getUuid(), project2.getUuid())))
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid).containsOnly(
+        tuple(key, project.getUuid()),
+        tuple(key, project2.getUuid()));
+    assertThat(underTest.selectPropertiesByKeysAndEntityUuids(session, newHashSet(key, anotherKey), newHashSet(project.getUuid(), project2.getUuid())))
+      .extracting(PropertyDto::getKey, PropertyDto::getEntityUuid).containsOnly(
+        tuple(key, project.getUuid()),
+        tuple(key, project2.getUuid()),
+        tuple(anotherKey, project2.getUuid()));
 
-    assertThat(underTest.selectPropertiesByKeysAndComponentUuids(session, newHashSet("unknown"), newHashSet(project.uuid()))).isEmpty();
-    assertThat(underTest.selectPropertiesByKeysAndComponentUuids(session, newHashSet("key"), newHashSet("uuid123456789"))).isEmpty();
-    assertThat(underTest.selectPropertiesByKeysAndComponentUuids(session, newHashSet("unknown"), newHashSet("uuid123456789"))).isEmpty();
+    assertThat(underTest.selectPropertiesByKeysAndEntityUuids(session, newHashSet("unknown"), newHashSet(project.getUuid()))).isEmpty();
+    assertThat(underTest.selectPropertiesByKeysAndEntityUuids(session, newHashSet("key"), newHashSet("uuid123456789"))).isEmpty();
+    assertThat(underTest.selectPropertiesByKeysAndEntityUuids(session, newHashSet("unknown"), newHashSet("uuid123456789"))).isEmpty();
   }
 
   @Test
@@ -654,37 +634,11 @@ public class PropertiesDaoIT {
     db.properties().insertProperties(null, project1.getKey(), project1.name(), project1.qualifier(), newComponentPropertyDto("another key", "value", project1));
 
     assertThat(underTest.selectByKeyAndMatchingValue(db.getSession(), "key", "value"))
-      .extracting(PropertyDto::getValue, PropertyDto::getComponentUuid)
+      .extracting(PropertyDto::getValue, PropertyDto::getEntityUuid)
       .containsExactlyInAnyOrder(
         tuple("value", project1.uuid()),
         tuple("value", project2.uuid()),
         tuple("value", null));
-  }
-
-  @Test
-  public void selectByKeyAndUserUuidAndComponentQualifier() {
-    UserDto user1 = db.users().insertUser();
-    UserDto user2 = db.users().insertUser();
-    ComponentDto project1 = db.components().insertPrivateProject().getMainBranchComponent();
-    ComponentDto file1 = db.components().insertComponent(ComponentTesting.newFileDto(project1));
-    ComponentDto project2 = db.components().insertPrivateProject().getMainBranchComponent();
-    db.properties().insertProperties(user1.getLogin(), project1.getKey(), project1.name(), project1.qualifier(),
-      newPropertyDto("key", "1", project1, user1));
-    db.properties().insertProperties(user1.getLogin(), project1.getKey(), project2.name(), project2.qualifier(),
-      newPropertyDto("key", "2", project2, user1));
-    db.properties().insertProperties(user1.getLogin(), null, file1.name(), null,
-      newPropertyDto("key", "3", file1, user1));
-    db.properties().insertProperties(user1.getLogin(), project1.getKey(), project1.name(), project1.qualifier(),
-      newPropertyDto("another key", "4", project1, user1));
-    db.properties().insertProperties(user2.getLogin(), project1.getKey(), project1.name(), project1.qualifier(),
-      newPropertyDto("key", "5", project1, user2));
-    db.properties().insertProperties(null, null, null, null, newGlobalPropertyDto("key", "global"));
-
-    assertThat(underTest.selectByKeyAndUserUuidAndComponentQualifier(db.getSession(), "key", user1.getUuid(), "TRK"))
-      .extracting(PropertyDto::getValue).containsExactlyInAnyOrder("1", "2");
-    assertThat(underTest.selectByKeyAndUserUuidAndComponentQualifier(db.getSession(), "key", user1.getUuid(), "FIL"))
-      .extracting(PropertyDto::getValue).containsExactlyInAnyOrder("3");
-    assertThat(underTest.selectByKeyAndUserUuidAndComponentQualifier(db.getSession(), "key", user2.getUuid(), "FIL")).isEmpty();
   }
 
   @Test
@@ -725,11 +679,11 @@ public class PropertiesDaoIT {
   @Test
   public void saveProperty_inserts_component_properties_when_they_do_not_exist_in_db() {
     String componentUuid = "uuid12";
-    underTest.saveProperty(new PropertyDto().setKey("component.null").setComponentUuid(componentUuid).setValue(null));
-    underTest.saveProperty(new PropertyDto().setKey("component.empty").setComponentUuid(componentUuid).setValue(""));
-    underTest.saveProperty(new PropertyDto().setKey("component.text").setComponentUuid(componentUuid).setValue("some text"));
-    underTest.saveProperty(new PropertyDto().setKey("component.4000").setComponentUuid(componentUuid).setValue(VALUE_SIZE_4000));
-    underTest.saveProperty(new PropertyDto().setKey("component.clob").setComponentUuid(componentUuid).setValue(VALUE_SIZE_4001));
+    underTest.saveProperty(new PropertyDto().setKey("component.null").setEntityUuid(componentUuid).setValue(null));
+    underTest.saveProperty(new PropertyDto().setKey("component.empty").setEntityUuid(componentUuid).setValue(""));
+    underTest.saveProperty(new PropertyDto().setKey("component.text").setEntityUuid(componentUuid).setValue("some text"));
+    underTest.saveProperty(new PropertyDto().setKey("component.4000").setEntityUuid(componentUuid).setValue(VALUE_SIZE_4000));
+    underTest.saveProperty(new PropertyDto().setKey("component.clob").setEntityUuid(componentUuid).setValue(VALUE_SIZE_4001));
 
     assertThatPropertiesRow("component.null")
       .hasComponentUuid(componentUuid)
@@ -823,7 +777,7 @@ public class PropertiesDaoIT {
     String componentUuid = "uuid999";
     String uuid = insertProperty("global", oldValue, componentUuid, null, null, "component", "component");
 
-    underTest.saveProperty(new PropertyDto().setKey("global").setComponentUuid(componentUuid).setValue(newValue));
+    underTest.saveProperty(new PropertyDto().setKey("global").setEntityUuid(componentUuid).setValue(newValue));
 
     assertThatPropertiesRowByUuid(uuid)
       .doesNotExist();
@@ -949,7 +903,7 @@ public class PropertiesDaoIT {
     underTest.deleteByKeyAndValue(session, "KEY", "VALUE");
     db.commit();
 
-    assertThat(db.select("select prop_key as \"key\", text_value as \"value\", component_uuid as \"projectUuid\", user_uuid as \"userUuid\" from properties"))
+    assertThat(db.select("select prop_key as \"key\", text_value as \"value\", entity_uuid as \"projectUuid\", user_uuid as \"userUuid\" from properties"))
       .extracting((row) -> row.get("key"), (row) -> row.get("value"), (row) -> row.get("projectUuid"), (row) -> row.get("userUuid"))
       .containsOnly(tuple("KEY", "ANOTHER_VALUE", null, null), tuple("ANOTHER_KEY", "VALUE", project.uuid(), "100"));
   }
@@ -1042,6 +996,7 @@ public class PropertiesDaoIT {
       .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @CheckForNull
   private PropertyDto findByKey(List<PropertyDto> properties, String key) {
     for (PropertyDto property : properties) {
       if (key.equals(property.getKey())) {
@@ -1059,11 +1014,11 @@ public class PropertiesDaoIT {
     session.commit();
   }
 
-  private String insertProperty(String key, @Nullable String value, @Nullable String componentUuid, @Nullable String userUuid,
+  private String insertProperty(String key, @Nullable String value, @Nullable String entityUuid, @Nullable String userUuid,
     @Nullable String userLogin, @Nullable String projectKey, @Nullable String projectName) {
     clearInvocations(auditPersister);
     PropertyDto dto = new PropertyDto().setKey(key)
-      .setComponentUuid(componentUuid)
+      .setEntityUuid(entityUuid)
       .setUserUuid(userUuid)
       .setValue(value);
     boolean isNew = session.getMapper(PropertiesMapper.class).selectByKey(dto) == null;
@@ -1077,7 +1032,7 @@ public class PropertiesDaoIT {
     return (String) db.selectFirst(session, "select uuid as \"uuid\" from properties" +
       " where prop_key='" + key + "'" +
       " and user_uuid" + (userUuid == null ? " is null" : "='" + userUuid + "'") +
-      " and component_uuid" + (componentUuid == null ? " is null" : "='" + componentUuid + "'")).get("uuid");
+      " and entity_uuid" + (entityUuid == null ? " is null" : "='" + entityUuid + "'")).get("uuid");
   }
 
   private ComponentDto insertPrivateProject(String projectKey) {

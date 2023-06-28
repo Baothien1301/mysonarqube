@@ -17,16 +17,17 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
+import styled from '@emotion/styled';
 import classNames from 'classnames';
+import { Checkbox, themeBorder, themeColor } from 'design-system';
 import * as React from 'react';
 import { deleteIssueComment, editIssueComment } from '../../../api/issues';
 import { translate, translateWithParameters } from '../../../helpers/l10n';
 import { BranchLike } from '../../../types/branch-like';
 import { Issue } from '../../../types/types';
-import Checkbox from '../../controls/Checkbox';
 import { updateIssue } from '../actions';
 import IssueActionsBar from './IssueActionsBar';
-import IssueCommentLine from './IssueCommentLine';
 import IssueTitleBar from './IssueTitleBar';
 
 interface Props {
@@ -34,35 +35,36 @@ interface Props {
   checked?: boolean;
   currentPopup?: string;
   displayWhyIsThisAnIssue?: boolean;
-  displayLocationsCount?: boolean;
-  displayLocationsLink?: boolean;
   issue: Issue;
   onAssign: (login: string) => void;
   onChange: (issue: Issue) => void;
   onCheck?: (issue: string) => void;
+  onSelect: (issueKey: string) => void;
   onClick?: (issueKey: string) => void;
-  onFilter?: (property: string, issue: Issue) => void;
   selected: boolean;
   togglePopup: (popup: string, show: boolean | void) => void;
 }
 
 export default class IssueView extends React.PureComponent<Props> {
+  nodeRef: HTMLLIElement | null = null;
+
+  componentDidMount() {
+    const { selected } = this.props;
+    if (this.nodeRef && selected) {
+      this.nodeRef.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  componentDidUpdate(prevProps: Props) {
+    const { selected } = this.props;
+    if (!prevProps.selected && selected && this.nodeRef) {
+      this.nodeRef.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }
+
   handleCheck = () => {
     if (this.props.onCheck) {
       this.props.onCheck(this.props.issue.key);
-    }
-  };
-
-  handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!isClickable(event.target as HTMLElement) && this.props.onClick) {
-      event.preventDefault();
-      this.handleDetailClick();
-    }
-  };
-
-  handleDetailClick = () => {
-    if (this.props.onClick) {
-      this.props.onClick(this.props.issue.key);
     }
   };
 
@@ -75,81 +77,78 @@ export default class IssueView extends React.PureComponent<Props> {
   };
 
   render() {
-    const {
-      issue,
-      branchLike,
-      checked,
-      currentPopup,
-      displayWhyIsThisAnIssue,
-      displayLocationsLink,
-      displayLocationsCount,
-    } = this.props;
+    const { issue, branchLike, checked, currentPopup, displayWhyIsThisAnIssue } = this.props;
 
     const hasCheckbox = this.props.onCheck != null;
 
-    const issueClass = classNames('issue', {
-      'no-click': this.props.onClick === undefined,
-      'issue-with-checkbox': hasCheckbox,
-      selected: this.props.selected,
-    });
+    const issueClass = classNames(
+      'it__issue-item sw-py-3 sw-flex sw-items-center sw-justify-between sw-w-full ',
+      {
+        'no-click': this.props.onClick === undefined,
+        selected: this.props.selected,
+      }
+    );
 
     return (
-      <div
+      <IssueItem
+        onClick={() => this.props.onSelect(issue.key)}
         className={issueClass}
-        onClick={this.handleBoxClick}
         role="region"
         aria-label={issue.message}
+        ref={(node) => (this.nodeRef = node)}
       >
-        {hasCheckbox && (
-          <Checkbox
-            checked={checked ?? false}
-            className="issue-checkbox-container"
-            onCheck={this.handleCheck}
-            label={translateWithParameters('issues.action_select.label', issue.message)}
-            title={translate('issues.action_select')}
-          />
-        )}
-        <IssueTitleBar
-          branchLike={branchLike}
-          onClick={this.handleDetailClick}
-          currentPopup={currentPopup}
-          displayLocationsCount={displayLocationsCount}
-          displayLocationsLink={displayLocationsLink}
-          displayWhyIsThisAnIssue={displayWhyIsThisAnIssue}
-          issue={issue}
-          onFilter={this.props.onFilter}
-          togglePopup={this.props.togglePopup}
-        />
-        <IssueActionsBar
-          className="padded-left"
-          currentPopup={currentPopup}
-          issue={issue}
-          onAssign={this.props.onAssign}
-          onChange={this.props.onChange}
-          togglePopup={this.props.togglePopup}
-        />
-        {issue.comments && issue.comments.length > 0 && (
-          <ul className="issue-comments" data-testid="issue-comments">
-            {issue.comments.map((comment) => (
-              <IssueCommentLine
-                comment={comment}
-                key={comment.key}
-                onDelete={this.deleteComment}
-                onEdit={this.editComment}
+        <div className="sw-flex sw-w-full sw-px-2 sw-gap-4">
+          {hasCheckbox && (
+            <span className="sw-mt-1/2 sw-self-start">
+              <Checkbox
+                checked={checked ?? false}
+                onCheck={this.handleCheck}
+                label={translateWithParameters('issues.action_select.label', issue.message)}
+                title={translate('issues.action_select')}
               />
-            ))}
-          </ul>
-        )}
-      </div>
+            </span>
+          )}
+
+          <div className="sw-flex sw-flex-col sw-grow sw-gap-2">
+            <IssueTitleBar
+              currentPopup={currentPopup}
+              branchLike={branchLike}
+              displayWhyIsThisAnIssue={displayWhyIsThisAnIssue}
+              issue={issue}
+              onChange={this.props.onChange}
+              togglePopup={this.props.togglePopup}
+            />
+
+            <IssueActionsBar
+              currentPopup={currentPopup}
+              issue={issue}
+              onAssign={this.props.onAssign}
+              onChange={this.props.onChange}
+              togglePopup={this.props.togglePopup}
+              showComments
+            />
+          </div>
+        </div>
+      </IssueItem>
     );
   }
 }
 
-function isClickable(node: HTMLElement | undefined | null): boolean {
-  if (!node) {
-    return false;
+const IssueItem = styled.li`
+  box-sizing: border-box;
+  border: ${themeBorder('default', 'transparent')};
+  border-top: ${themeBorder('default')};
+  outline: none;
+
+  &:last-child {
+    border-bottom: ${themeBorder('default')};
   }
-  const clickableTags = ['A', 'BUTTON', 'INPUT', 'TEXTAREA'];
-  const tagName = (node.tagName || '').toUpperCase();
-  return clickableTags.includes(tagName) || isClickable(node.parentElement);
-}
+
+  &.selected {
+    border: ${themeBorder('default', 'tableRowSelected')};
+  }
+
+  &:hover {
+    background: ${themeColor('tableRowHover')};
+  }
+`;

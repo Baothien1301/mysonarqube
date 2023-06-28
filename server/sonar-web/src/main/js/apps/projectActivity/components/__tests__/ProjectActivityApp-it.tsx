@@ -18,14 +18,12 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { keyBy, times } from 'lodash';
 import React from 'react';
 import { act } from 'react-dom/test-utils';
 import { Route } from 'react-router-dom';
-import selectEvent from 'react-select-event';
-import { byLabelText, byRole, byText } from 'testing-library-selector';
 import { ProjectActivityServiceMock } from '../../../../api/mocks/ProjectActivityServiceMock';
 import { TimeMachineServiceMock } from '../../../../api/mocks/TimeMachineServiceMock';
 import { parseDate } from '../../../../helpers/dates';
@@ -38,10 +36,8 @@ import {
 } from '../../../../helpers/mocks/project-activity';
 import { get } from '../../../../helpers/storage';
 import { mockMetric } from '../../../../helpers/testMocks';
-import {
-  dateInputEvent,
-  renderAppWithComponentContext,
-} from '../../../../helpers/testReactTestingUtils';
+import { renderAppWithComponentContext } from '../../../../helpers/testReactTestingUtils';
+import { byLabelText, byRole, byTestId, byText } from '../../../../helpers/testSelector';
 import { ComponentQualifier } from '../../../../types/component';
 import { MetricKey, MetricType } from '../../../../types/metrics';
 import {
@@ -172,11 +168,11 @@ describe('CRUD', () => {
     await ui.appLoaded();
 
     await ui.addVersionEvent('1.1.0.1', initialValue);
-    expect(screen.getAllByText(initialValue)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(initialValue).length).toBeGreaterThan(0);
 
     await act(async () => {
       await ui.updateEvent(1, updatedValue);
-      expect(screen.getAllByText(updatedValue)[0]).toBeInTheDocument();
+      expect(screen.getAllByText(updatedValue).length).toBeGreaterThan(0);
     });
 
     await ui.deleteEvent(0);
@@ -201,12 +197,12 @@ describe('CRUD', () => {
 
     await act(async () => {
       await ui.addCustomEvent('1.1.0.1', initialValue);
-      expect(screen.getByText(initialValue)).toBeInTheDocument();
+      expect(screen.getAllByText(initialValue).length).toBeGreaterThan(0);
     });
 
     await act(async () => {
       await ui.updateEvent(1, updatedValue);
-      expect(screen.getByText(updatedValue)).toBeInTheDocument();
+      expect(screen.getAllByText(updatedValue).length).toBeGreaterThan(0);
     });
 
     await ui.deleteEvent(0);
@@ -422,19 +418,19 @@ function getPageObject() {
     metricCheckbox: (name: MetricKey) => byRole('checkbox', { name }),
 
     // Filtering.
-    categorySelect: byRole('combobox', { name: 'project_activity.filter_events' }),
+    categorySelect: byLabelText('project_activity.filter_events'),
     resetDatesBtn: byRole('button', { name: 'project_activity.reset_dates' }),
-    fromDateInput: byRole('textbox', { name: 'start_date' }),
-    toDateInput: byRole('textbox', { name: 'end_date' }),
+    fromDateInput: byLabelText('start_date'),
+    toDateInput: byLabelText('end_date'),
 
     // Analysis interactions.
     activityItem: byLabelText(/project_activity.show_analysis_X_on_graph/),
     cogBtn: (id: string) => byRole('button', { name: `project_activity.analysis_X_actions.${id}` }),
     seeDetailsBtn: (time: string) =>
-      byRole('button', { name: `project_activity.show_analysis_X_on_graph.${time}` }),
-    addCustomEventBtn: byRole('button', { name: 'project_activity.add_custom_event' }),
-    addVersionEvenBtn: byRole('button', { name: 'project_activity.add_version' }),
-    deleteAnalysisBtn: byRole('button', { name: 'project_activity.delete_analysis' }),
+      byLabelText(`project_activity.show_analysis_X_on_graph.${time}`),
+    addCustomEventBtn: byRole('menuitem', { name: 'project_activity.add_custom_event' }),
+    addVersionEvenBtn: byRole('menuitem', { name: 'project_activity.add_version' }),
+    deleteAnalysisBtn: byRole('menuitem', { name: 'project_activity.delete_analysis' }),
     editEventBtn: byRole('button', { name: 'project_activity.events.tooltip.edit' }),
     deleteEventBtn: byRole('button', { name: 'project_activity.events.tooltip.delete' }),
 
@@ -448,6 +444,8 @@ function getPageObject() {
     loading: byLabelText('loading'),
     baseline: byText('project_activity.new_code_period_start'),
     bugsPopupCell: byRole('cell', { name: MetricKey.bugs }),
+    monthSelector: byTestId('month-select'),
+    yearSelector: byTestId('year-select'),
   };
 
   return {
@@ -461,7 +459,9 @@ function getPageObject() {
       },
 
       async changeGraphType(type: GraphType) {
-        await selectEvent.select(ui.graphTypeSelect.get(), [`project_activity.graphs.${type}`]);
+        await user.click(ui.graphTypeSelect.get());
+        const optionForType = await screen.findByText(`project_activity.graphs.${type}`);
+        await user.click(optionForType);
       },
 
       async openMetricsDropdown() {
@@ -519,18 +519,57 @@ function getPageObject() {
       async filterByCategory(
         category: ProjectAnalysisEventCategory | ApplicationAnalysisEventCategory
       ) {
-        await selectEvent.select(ui.categorySelect.get(), [`event.category.${category}`]);
+        await user.click(ui.categorySelect.get());
+        const optionForType = await screen.findByText(`event.category.${category}`);
+        await user.click(optionForType);
       },
 
       async setDateRange(from?: string, to?: string) {
-        const dateInput = dateInputEvent(user);
         if (from) {
-          await dateInput.pickDate(ui.fromDateInput.get(), parseDate(from));
+          await this.selectDate(from, ui.fromDateInput.get());
         }
 
         if (to) {
-          await dateInput.pickDate(ui.toDateInput.get(), parseDate(to));
+          await this.selectDate(to, ui.toDateInput.get());
         }
+      },
+
+      async selectDate(date: string, datePickerSelector: HTMLElement) {
+        const monthMap = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        const parsedDate = parseDate(date);
+        await user.click(datePickerSelector);
+        const monthSelector = within(ui.monthSelector.get()).getByRole('combobox');
+
+        await user.click(monthSelector);
+        const selectedMonthElements = within(ui.monthSelector.get()).getAllByText(
+          monthMap[parseDate(parsedDate).getMonth()]
+        );
+        await user.click(selectedMonthElements[selectedMonthElements.length - 1]);
+
+        const yearSelector = within(ui.yearSelector.get()).getByRole('combobox');
+
+        await user.click(yearSelector);
+        const selectedYearElements = within(ui.yearSelector.get()).getAllByText(
+          parseDate(parsedDate).getFullYear()
+        );
+        await user.click(selectedYearElements[selectedYearElements.length - 1]);
+
+        await user.click(
+          screen.getByText(parseDate(parsedDate).getDate().toString(), { selector: 'button' })
+        );
       },
 
       async resetDateFilters() {

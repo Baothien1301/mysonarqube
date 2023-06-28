@@ -17,15 +17,16 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
 import * as React from 'react';
 import withCurrentUserContext from '../../../app/components/current-user/withCurrentUserContext';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
 import { fillBranchLike } from '../../../helpers/branch-like';
+import { Standards } from '../../../types/security';
 import { Hotspot, HotspotStatusOption } from '../../../types/security-hotspots';
 import { Component } from '../../../types/types';
 import { CurrentUser } from '../../../types/users';
 import { RuleDescriptionSection } from '../../coding-rules/rule';
-import { HotspotHeader } from './HotspotHeader';
 import HotspotReviewHistoryAndComments from './HotspotReviewHistoryAndComments';
 import HotspotSnippetContainer from './HotspotSnippetContainer';
 import './HotspotViewer.css';
@@ -36,18 +37,18 @@ export interface HotspotViewerRendererProps {
   component: Component;
   currentUser: CurrentUser;
   hotspot?: Hotspot;
-  ruleDescriptionSections?: RuleDescriptionSection[];
   hotspotsReviewedMeasure?: string;
   lastStatusChangedTo?: HotspotStatusOption;
   loading: boolean;
-  commentTextRef: React.RefObject<HTMLTextAreaElement>;
   onCloseStatusUpdateSuccessModal: () => void;
-  onUpdateHotspot: (statusUpdate?: boolean, statusOption?: HotspotStatusOption) => Promise<void>;
-  onShowCommentForm: () => void;
-  onSwitchFilterToStatusOfUpdatedHotspot: () => void;
   onLocationClick: (index: number) => void;
-  showStatusUpdateSuccessModal: boolean;
+  onSwitchFilterToStatusOfUpdatedHotspot: () => void;
+  onUpdateHotspot: (statusUpdate?: boolean, statusOption?: HotspotStatusOption) => Promise<void>;
+  ruleDescriptionSections?: RuleDescriptionSection[];
+  ruleLanguage?: string;
   selectedHotspotLocation?: number;
+  showStatusUpdateSuccessModal: boolean;
+  standards?: Standards;
 }
 
 export function HotspotViewerRenderer(props: HotspotViewerRendererProps) {
@@ -56,16 +57,21 @@ export function HotspotViewerRenderer(props: HotspotViewerRendererProps) {
     currentUser,
     hotspot,
     hotspotsReviewedMeasure,
-    loading,
     lastStatusChangedTo,
-    showStatusUpdateSuccessModal,
-    commentTextRef,
-    selectedHotspotLocation,
+    loading,
     ruleDescriptionSections,
+    ruleLanguage,
+    selectedHotspotLocation,
+    showStatusUpdateSuccessModal,
+    standards,
   } = props;
 
+  const branchLike = hotspot && fillBranchLike(hotspot.project.branch, hotspot.project.pullRequest);
+
   return (
-    <DeferredSpinner className="big-spacer-left big-spacer-top" loading={loading}>
+    <>
+      <DeferredSpinner className="sw-ml-4 sw-mt-4" loading={loading} />
+
       {showStatusUpdateSuccessModal && (
         <StatusUpdateSuccessModal
           hotspotsReviewedMeasure={hotspotsReviewedMeasure}
@@ -76,32 +82,35 @@ export function HotspotViewerRenderer(props: HotspotViewerRendererProps) {
       )}
 
       {hotspot && (
-        <div className="big-padded hotspot-content">
-          <HotspotHeader hotspot={hotspot} onUpdateHotspot={props.onUpdateHotspot} />
+        <div className="sw-box-border sw-p-6">
           <HotspotViewerTabs
+            activityTabContent={
+              <HotspotReviewHistoryAndComments
+                currentUser={currentUser}
+                hotspot={hotspot}
+                onCommentUpdate={props.onUpdateHotspot}
+              />
+            }
+            branchLike={branchLike}
             codeTabContent={
               <HotspotSnippetContainer
-                branchLike={fillBranchLike(hotspot.project.branch, hotspot.project.pullRequest)}
+                branchLike={branchLike}
                 component={component}
                 hotspot={hotspot}
-                onCommentButtonClick={props.onShowCommentForm}
                 onLocationSelect={props.onLocationClick}
                 selectedHotspotLocation={selectedHotspotLocation}
               />
             }
+            component={component}
             hotspot={hotspot}
+            onUpdateHotspot={props.onUpdateHotspot}
             ruleDescriptionSections={ruleDescriptionSections}
-            selectedHotspotLocation={selectedHotspotLocation}
-          />
-          <HotspotReviewHistoryAndComments
-            commentTextRef={commentTextRef}
-            currentUser={currentUser}
-            hotspot={hotspot}
-            onCommentUpdate={props.onUpdateHotspot}
+            ruleLanguage={ruleLanguage}
+            standards={standards}
           />
         </div>
       )}
-    </DeferredSpinner>
+    </>
   );
 }
 

@@ -29,10 +29,10 @@ import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.property.PropertyDto;
 import org.sonar.db.property.PropertyQuery;
 import org.sonar.db.user.UserDto;
-import org.sonar.server.component.TestComponentFinder;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.exceptions.UnauthorizedException;
@@ -47,7 +47,6 @@ import static java.net.HttpURLConnection.HTTP_NO_CONTENT;
 import static java.util.Optional.ofNullable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.sonar.api.resources.Qualifiers.UNIT_TEST_FILE;
 import static org.sonar.api.web.UserRole.USER;
 import static org.sonar.db.component.ComponentTesting.newDirectory;
 import static org.sonar.db.component.ComponentTesting.newFileDto;
@@ -58,16 +57,16 @@ public class AddActionIT {
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public DbTester db = DbTester.create();
+  public DbTester db = DbTester.create(true);
 
   private final DbClient dbClient = db.getDbClient();
   private final DbSession dbSession = db.getSession();
   private final FavoriteUpdater favoriteUpdater = new FavoriteUpdater(dbClient);
-  private final WsActionTester ws = new WsActionTester(new AddAction(userSession, dbClient, favoriteUpdater, TestComponentFinder.from(db)));
+  private final WsActionTester ws = new WsActionTester(new AddAction(userSession, dbClient, favoriteUpdater));
 
   @Test
   public void add_a_project() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
     UserDto user = db.users().insertUser();
     userSession.logIn(user).addProjectPermission(USER, project);
 
@@ -81,8 +80,8 @@ public class AddActionIT {
     assertThat(favorites).hasSize(1);
     PropertyDto favorite = favorites.get(0);
     assertThat(favorite)
-      .extracting(PropertyDto::getComponentUuid, PropertyDto::getUserUuid, PropertyDto::getKey)
-      .containsOnly(project.uuid(), user.getUuid(), "favourite");
+      .extracting(PropertyDto::getEntityUuid, PropertyDto::getUserUuid, PropertyDto::getKey)
+      .containsOnly(project.getUuid(), user.getUuid(), "favourite");
   }
 
   @Test
@@ -104,22 +103,10 @@ public class AddActionIT {
 
   @Test
   public void fail_when_user_is_not_authenticated() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
 
     assertThatThrownBy(() -> call(project.getKey()))
       .isInstanceOf(UnauthorizedException.class);
-  }
-
-  @Test
-  public void fail_on_directory() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
-    ComponentDto directory = db.components().insertComponent(newDirectory(project, "dir"));
-    UserDto user = db.users().insertUser();
-    userSession.logIn(user).addProjectPermission(USER, project);
-
-    assertThatThrownBy(() -> call(directory.getKey()))
-      .isInstanceOf(IllegalArgumentException.class)
-      .hasMessage("Only components with qualifiers TRK, VW, SVW, APP are supported");
   }
 
   @Test
@@ -130,20 +117,8 @@ public class AddActionIT {
     userSession.logIn(user).addProjectPermission(USER, project);
 
     assertThatThrownBy(() -> call(file.getKey()))
-      .isInstanceOf(IllegalArgumentException.class)
-      .hasMessage("Only components with qualifiers TRK, VW, SVW, APP are supported");
-  }
-
-  @Test
-  public void fail_on_unit_test_file() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
-    ComponentDto unitTestFile = db.components().insertComponent(newFileDto(project).setQualifier(UNIT_TEST_FILE));
-    UserDto user = db.users().insertUser();
-    userSession.logIn(user).addProjectPermission(USER, project);
-
-    assertThatThrownBy(() -> call(unitTestFile.getKey()))
-      .isInstanceOf(IllegalArgumentException.class)
-      .hasMessage("Only components with qualifiers TRK, VW, SVW, APP are supported");
+      .isInstanceOf(NotFoundException.class)
+      .hasMessage("Entity with key '" + file.getKey() + "' not found");
   }
 
   @Test

@@ -17,8 +17,18 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
 import styled from '@emotion/styled';
-import classNames from 'classnames';
+import {
+  ButtonSecondary,
+  Checkbox,
+  FlagMessage,
+  LargeCenteredLayout,
+  PageContentFontWrapper,
+  ToggleButton,
+  themeBorder,
+  themeColor,
+} from 'design-system';
 import { debounce, keyBy, omit, without } from 'lodash';
 import * as React from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -31,19 +41,13 @@ import withCurrentUserContext from '../../../app/components/current-user/withCur
 import { PageContext } from '../../../app/components/indexation/PageUnavailableDueToIndexation';
 import A11ySkipTarget from '../../../components/a11y/A11ySkipTarget';
 import EmptySearch from '../../../components/common/EmptySearch';
-import FiltersHeader from '../../../components/common/FiltersHeader';
 import ScreenPositionHelper from '../../../components/common/ScreenPositionHelper';
-import ButtonToggle from '../../../components/controls/ButtonToggle';
-import Checkbox from '../../../components/controls/Checkbox';
-import HelpTooltip from '../../../components/controls/HelpTooltip';
 import ListFooter from '../../../components/controls/ListFooter';
-import { Button } from '../../../components/controls/buttons';
 import Suggestions from '../../../components/embed-docs-modal/Suggestions';
 import withIndexationGuard from '../../../components/hoc/withIndexationGuard';
 import { Location, Router, withRouter } from '../../../components/hoc/withRouter';
-import RuleTabViewer from '../../../components/rules/RuleTabViewer';
+import IssueTabViewer from '../../../components/rules/IssueTabViewer';
 import '../../../components/search-navigator.css';
-import { Alert } from '../../../components/ui/Alert';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
 import {
   fillBranchLike,
@@ -64,7 +68,7 @@ import {
 } from '../../../helpers/pages';
 import { serializeDate } from '../../../helpers/query';
 import { BranchLike } from '../../../types/branch-like';
-import { ComponentQualifier, isPortfolioLike } from '../../../types/component';
+import { ComponentQualifier, isPortfolioLike, isProject } from '../../../types/component';
 import {
   ASSIGNEE_ME,
   Facet,
@@ -77,9 +81,9 @@ import { SecurityStandard } from '../../../types/security';
 import { Component, Dict, Issue, Paging, RawQuery, RuleDetails } from '../../../types/types';
 import { CurrentUser, UserBase } from '../../../types/users';
 import * as actions from '../actions';
-import ConciseIssuesList from '../conciseIssuesList/ConciseIssuesList';
-import ConciseIssuesListHeader from '../conciseIssuesList/ConciseIssuesListHeader';
-import Sidebar from '../sidebar/Sidebar';
+import SubnavigationIssuesList from '../issues-subnavigation/SubnavigationIssuesList';
+import { FiltersHeader } from '../sidebar/FiltersHeader';
+import { Sidebar } from '../sidebar/Sidebar';
 import '../styles.css';
 import {
   Query,
@@ -98,6 +102,7 @@ import {
 } from '../utils';
 import BulkChangeModal, { MAX_PAGE_SIZE } from './BulkChangeModal';
 import IssueHeader from './IssueHeader';
+import IssueReviewHistoryAndComments from './IssueReviewHistoryAndComments';
 import IssuesList from './IssuesList';
 import IssuesSourceViewer from './IssuesSourceViewer';
 import NoIssues from './NoIssues';
@@ -128,6 +133,7 @@ export interface State {
   locationsNavigator: boolean;
   myIssues: boolean;
   openFacets: Dict<boolean>;
+  showVariantsFilter: boolean;
   openIssue?: Issue;
   openPopup?: { issue: string; name: string };
   openRuleDetails?: RuleDetails;
@@ -146,6 +152,7 @@ export interface State {
 const DEFAULT_QUERY = { resolved: 'false' };
 const MAX_INITAL_FETCH = 1000;
 const BRANCH_STATUS_REFRESH_INTERVAL = 1000;
+const VARIANTS_FACET = 'codeVariants';
 
 export class App extends React.PureComponent<Props, State> {
   mounted = false;
@@ -155,6 +162,7 @@ export class App extends React.PureComponent<Props, State> {
     super(props);
     const query = parseQuery(props.location.query);
     this.bulkButtonRef = React.createRef();
+
     this.state = {
       bulkChangeModal: false,
       checked: [],
@@ -178,6 +186,7 @@ export class App extends React.PureComponent<Props, State> {
         standards: shouldOpenStandardsFacet({}, query),
         types: true,
       },
+      showVariantsFilter: false,
       query,
       referencedComponentsById: {},
       referencedComponentsByKey: {},
@@ -186,6 +195,7 @@ export class App extends React.PureComponent<Props, State> {
       referencedUsers: {},
       selected: getOpen(props.location.query),
     };
+
     this.refreshBranchStatus = debounce(this.refreshBranchStatus, BRANCH_STATUS_REFRESH_INTERVAL);
   }
 
@@ -212,7 +222,7 @@ export class App extends React.PureComponent<Props, State> {
     addWhitePageClass();
     addSideBarClass();
     this.attachShortcuts();
-    this.fetchFirstIssues();
+    this.fetchFirstIssues(true).catch(() => undefined);
   }
 
   componentDidUpdate(prevProps: Props, prevState: State) {
@@ -226,7 +236,7 @@ export class App extends React.PureComponent<Props, State> {
       !areQueriesEqual(prevQuery, query) ||
       areMyIssuesSelected(prevQuery) !== areMyIssuesSelected(query)
     ) {
-      this.fetchFirstIssues();
+      this.fetchFirstIssues(false).catch(() => undefined);
       this.setState({ checkAll: false });
     } else if (openIssue && openIssue.key !== this.state.selected) {
       this.setState({
@@ -236,14 +246,16 @@ export class App extends React.PureComponent<Props, State> {
         selectedLocationIndex: undefined,
       });
     }
+
     if (this.state.openIssue && this.state.openIssue.key !== prevState.openIssue?.key) {
-      this.loadRule();
+      this.loadRule().catch(() => undefined);
     }
   }
 
   componentWillUnmount() {
     this.detachShortcuts();
     this.mounted = false;
+
     removeWhitePageClass();
     removeSideBarClass();
   }
@@ -282,38 +294,46 @@ export class App extends React.PureComponent<Props, State> {
     switch (event.key) {
       case KeyboardKeys.DownArrow: {
         event.preventDefault();
+
         if (event.altKey) {
           this.selectNextLocation();
         } else {
           this.selectNextIssue();
         }
+
         break;
       }
       case KeyboardKeys.UpArrow: {
         event.preventDefault();
+
         if (event.altKey) {
           this.selectPreviousLocation();
         } else {
           this.selectPreviousIssue();
         }
+
         break;
       }
       case KeyboardKeys.LeftArrow: {
         event.preventDefault();
+
         if (event.altKey) {
           this.selectPreviousFlow();
         } else {
           this.closeIssue();
         }
+
         break;
       }
       case KeyboardKeys.RightArrow: {
         event.preventDefault();
+
         if (event.altKey) {
           this.selectNextFlow();
         } else {
           this.openSelectedIssue();
         }
+
         break;
       }
     }
@@ -328,12 +348,14 @@ export class App extends React.PureComponent<Props, State> {
   getSelectedIndex() {
     const { issues = [], selected } = this.state;
     const index = issues.findIndex((issue) => issue.key === selected);
+
     return index !== -1 ? index : undefined;
   }
 
   selectNextIssue = () => {
     const { issues } = this.state;
     const selectedIndex = this.getSelectedIndex();
+
     if (selectedIndex !== undefined && selectedIndex < issues.length - 1) {
       if (this.state.openIssue) {
         this.openIssue(issues[selectedIndex + 1].key);
@@ -349,13 +371,17 @@ export class App extends React.PureComponent<Props, State> {
 
   async loadRule() {
     const { openIssue } = this.state;
+
     if (openIssue === undefined) {
       return;
     }
+
     this.setState({ loadingRule: true });
+
     const openRuleDetails = await getRuleDetails({ key: openIssue.rule })
       .then((response) => response.rule)
       .catch(() => undefined);
+
     if (this.mounted) {
       this.setState({ loadingRule: false, openRuleDetails });
     }
@@ -364,6 +390,7 @@ export class App extends React.PureComponent<Props, State> {
   selectPreviousIssue = () => {
     const { issues } = this.state;
     const selectedIndex = this.getSelectedIndex();
+
     if (selectedIndex !== undefined && selectedIndex > 0) {
       if (this.state.openIssue) {
         this.openIssue(issues[selectedIndex - 1].key);
@@ -383,11 +410,12 @@ export class App extends React.PureComponent<Props, State> {
       query: {
         ...serializeQuery(this.state.query),
         ...getBranchLikeQuery(this.props.branchLike),
-        id: this.props.component && this.props.component.key,
+        id: this.props.component?.key,
         myIssues: this.state.myIssues ? 'true' : undefined,
         open: issueKey,
       },
     };
+
     if (this.state.openIssue) {
       if (path.query.open && path.query.open === this.state.openIssue.key) {
         this.setState({
@@ -402,6 +430,14 @@ export class App extends React.PureComponent<Props, State> {
     }
   };
 
+  selectIssue = (issueKey: string) => {
+    this.setState({
+      selected: issueKey,
+      selectedFlowIndex: undefined,
+      selectedLocationIndex: undefined,
+    });
+  };
+
   closeIssue = () => {
     if (this.state.query) {
       this.props.router.push({
@@ -409,7 +445,7 @@ export class App extends React.PureComponent<Props, State> {
         query: {
           ...serializeQuery(this.state.query),
           ...getBranchLikeQuery(this.props.branchLike),
-          id: this.props.component && this.props.component.key,
+          id: this.props.component?.key,
           myIssues: this.state.myIssues ? 'true' : undefined,
           open: undefined,
         },
@@ -419,6 +455,7 @@ export class App extends React.PureComponent<Props, State> {
 
   openSelectedIssue = () => {
     const { selected } = this.state;
+
     if (selected) {
       this.openIssue(selected);
     }
@@ -435,23 +472,32 @@ export class App extends React.PureComponent<Props, State> {
       const parsedIssues = response.issues.map((issue) =>
         parseIssueFromResponse(issue, response.components, response.users, response.rules)
       );
+
       return { ...response, issues: parsedIssues } as FetchIssuesPromise;
     });
   };
 
-  fetchIssues = (additional: RawQuery, requestFacets = false): Promise<FetchIssuesPromise> => {
+  fetchIssues = (
+    additional: RawQuery,
+    requestFacets = false,
+    firstRequest = false
+  ): Promise<FetchIssuesPromise> => {
     const { component } = this.props;
     const { myIssues, openFacets, query } = this.state;
 
-    const facets = requestFacets
+    let facets = requestFacets
       ? Object.keys(openFacets)
           .filter((facet) => facet !== STANDARDS && openFacets[facet])
           .join(',')
       : undefined;
 
+    if (firstRequest && isProject(component?.qualifier)) {
+      facets = facets ? `${facets},${VARIANTS_FACET}` : VARIANTS_FACET;
+    }
+
     const parameters: Dict<string | undefined> = {
       ...getBranchLikeQuery(this.props.branchLike),
-      componentKeys: component && component.key,
+      componentKeys: component?.key,
       s: 'FILE_LINE',
       ...serializeQuery(query),
       ps: '100',
@@ -475,12 +521,13 @@ export class App extends React.PureComponent<Props, State> {
     return this.fetchIssuesHelper(parameters);
   };
 
-  fetchFirstIssues() {
+  fetchFirstIssues(firstRequest: boolean) {
     const prevQuery = this.props.location.query;
     const openIssueKey = getOpen(this.props.location.query);
     let fetchPromise;
 
     this.setState({ checked: [], loading: true });
+
     if (openIssueKey !== undefined) {
       fetchPromise = this.fetchIssuesUntil(1, (pageIssues: Issue[], paging: Paging) => {
         if (
@@ -489,10 +536,11 @@ export class App extends React.PureComponent<Props, State> {
         ) {
           return true;
         }
+
         return pageIssues.some((issue) => issue.key === openIssueKey);
       });
     } else {
-      fetchPromise = this.fetchIssues({}, true);
+      fetchPromise = this.fetchIssues({}, true, firstRequest);
     }
 
     return fetchPromise.then(
@@ -500,13 +548,18 @@ export class App extends React.PureComponent<Props, State> {
         if (this.mounted && areQueriesEqual(prevQuery, this.props.location.query)) {
           const openIssue = getOpenIssue(this.props, issues);
           let selected: string | undefined = undefined;
+
           if (issues.length > 0) {
             selected = openIssue ? openIssue.key : issues[0].key;
           }
-          this.setState({
+
+          this.setState(({ showVariantsFilter }) => ({
             cannotShowOpenIssue: Boolean(openIssueKey && !openIssue),
             effortTotal,
             facets: parseFacets(facets),
+            showVariantsFilter: firstRequest
+              ? Boolean(facets.find((f) => f.property === VARIANTS_FACET)?.values.length)
+              : showVariantsFilter,
             loading: false,
             locationsNavigator: true,
             issues,
@@ -520,14 +573,16 @@ export class App extends React.PureComponent<Props, State> {
             selected,
             selectedFlowIndex: 0,
             selectedLocationIndex: undefined,
-          });
+          }));
         }
+
         return issues;
       },
       () => {
         if (this.mounted && areQueriesEqual(prevQuery, this.props.location.query)) {
           this.setState({ loading: false });
         }
+
         return [];
       }
     );
@@ -544,6 +599,8 @@ export class App extends React.PureComponent<Props, State> {
     const recursiveFetch = (p: number, prevIssues: Issue[]): Promise<FetchIssuesPromise> => {
       return this.fetchIssuesPage(p).then(({ issues: pageIssues, paging, ...other }) => {
         const issues = [...prevIssues, ...pageIssues];
+
+        // eslint-disable-next-line promise/no-callback-in-promise
         return done(pageIssues, paging)
           ? { issues, paging, ...other }
           : recursiveFetch(p + 1, issues);
@@ -563,6 +620,7 @@ export class App extends React.PureComponent<Props, State> {
     const p = paging.pageIndex + 1;
 
     this.setState({ checkAll: false, loadingMore: true });
+
     return this.fetchIssuesPage(p).then(
       (response) => {
         if (this.mounted) {
@@ -613,6 +671,7 @@ export class App extends React.PureComponent<Props, State> {
 
   isFiltered = () => {
     const serialized = serializeQuery(this.state.query);
+
     return !areQueriesEqual(serialized, DEFAULT_QUERY);
   };
 
@@ -620,7 +679,9 @@ export class App extends React.PureComponent<Props, State> {
     const issues = this.state.checked
       .map((checked) => this.state.issues.find((issue) => issue.key === checked))
       .filter((issue): issue is Issue => issue !== undefined);
+
     const paging = { pageIndex: 1, pageSize: issues.length, total: issues.length };
+
     return Promise.resolve({ issues, paging });
   };
 
@@ -630,6 +691,7 @@ export class App extends React.PureComponent<Props, State> {
     }
 
     let count;
+
     if (checkAll && paging) {
       count = paging.total > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : paging.total;
     } else {
@@ -645,10 +707,11 @@ export class App extends React.PureComponent<Props, State> {
       query: {
         ...serializeQuery({ ...this.state.query, ...changes }),
         ...getBranchLikeQuery(this.props.branchLike),
-        id: this.props.component && this.props.component.key,
+        id: this.props.component?.key,
         myIssues: this.state.myIssues ? 'true' : undefined,
       },
     });
+
     this.setState(({ openFacets }) => ({
       openFacets: {
         ...openFacets,
@@ -660,15 +723,17 @@ export class App extends React.PureComponent<Props, State> {
 
   handleMyIssuesChange = (myIssues: boolean) => {
     this.closeFacet('assignees');
+
     if (!this.props.component) {
       saveMyIssues(myIssues);
     }
+
     this.props.router.push({
       pathname: this.props.location.pathname,
       query: {
         ...serializeQuery({ ...this.state.query, assigned: true, assignees: [] }),
         ...getBranchLikeQuery(this.props.branchLike),
-        id: this.props.component && this.props.component.key,
+        id: this.props.component?.key,
         myIssues: myIssues ? 'true' : undefined,
       },
     });
@@ -680,7 +745,7 @@ export class App extends React.PureComponent<Props, State> {
 
     const parameters = {
       ...getBranchLikeQuery(this.props.branchLike),
-      componentKeys: component && component.key,
+      componentKeys: component?.key,
       facets: property,
       s: 'FILE_LINE',
       ...serializeQuery({ ...query, ...changes }),
@@ -703,6 +768,7 @@ export class App extends React.PureComponent<Props, State> {
   handleFacetToggle = (property: string) => {
     this.setState((state) => {
       const willOpenProperty = !state.openFacets[property];
+
       const newState = {
         loadingFacets: state.loadingFacets,
         openFacets: { ...state.openFacets, [property]: willOpenProperty },
@@ -714,6 +780,7 @@ export class App extends React.PureComponent<Props, State> {
           newState.openFacets,
           state.query
         );
+
         // Force loading of sonarsource security facet data
         property = newState.openFacets.sonarsourceSecurity ? 'sonarsourceSecurity' : property;
       }
@@ -721,7 +788,8 @@ export class App extends React.PureComponent<Props, State> {
       // No need to load facets data for standard facet
       if (property !== STANDARDS && !state.facets[property]) {
         newState.loadingFacets[property] = true;
-        this.fetchFacet(property);
+
+        this.fetchFacet(property).catch(() => undefined);
       }
 
       return newState;
@@ -734,7 +802,7 @@ export class App extends React.PureComponent<Props, State> {
       query: {
         ...DEFAULT_QUERY,
         ...getBranchLikeQuery(this.props.branchLike),
-        id: this.props.component && this.props.component.key,
+        id: this.props.component?.key,
         myIssues: this.state.myIssues ? 'true' : undefined,
       },
     });
@@ -766,6 +834,7 @@ export class App extends React.PureComponent<Props, State> {
 
   handleIssueChange = (issue: Issue) => {
     this.refreshBranchStatus();
+
     this.setState((state) => ({
       issues: state.issues.map((candidate) => (candidate.key === issue.key ? issue : candidate)),
     }));
@@ -786,12 +855,13 @@ export class App extends React.PureComponent<Props, State> {
   handleBulkChangeDone = () => {
     this.setState({ checkAll: false });
     this.refreshBranchStatus();
-    this.fetchFirstIssues();
+    this.fetchFirstIssues(false).catch(() => undefined);
     this.handleCloseBulkChange();
   };
 
   selectLocation = (index: number) => {
     const { selectedLocationIndex } = this.state;
+
     if (index === selectedLocationIndex) {
       this.setState({ selectedLocationIndex: undefined }, () => {
         this.setState({ selectedLocationIndex: index });
@@ -801,6 +871,7 @@ export class App extends React.PureComponent<Props, State> {
         if (openIssue) {
           return { locationsNavigator: true, selectedLocationIndex: index };
         }
+
         return null;
       });
     }
@@ -839,13 +910,14 @@ export class App extends React.PureComponent<Props, State> {
 
   refreshBranchStatus = () => {
     const { branchLike, component } = this.props;
+
     if (branchLike && component && isPullRequest(branchLike)) {
       this.props.fetchBranchStatus(branchLike, component.key);
     }
   };
 
   renderBulkChange() {
-    const { component, currentUser } = this.props;
+    const { currentUser } = this.props;
     const { checkAll, bulkChangeModal, checked, issues, paging } = this.state;
 
     const isAllChecked = checked.length > 0 && issues.length === checked.length;
@@ -867,19 +939,18 @@ export class App extends React.PureComponent<Props, State> {
           thirdState={thirdState}
           title={translate('issues.select_all_issues')}
         />
-        <Button
+
+        <ButtonSecondary
           innerRef={this.bulkButtonRef}
           disabled={checked.length === 0}
           id="issues-bulk-change"
           onClick={this.handleOpenBulkChange}
         >
           {this.getButtonLabel(checked, checkAll, paging)}
-        </Button>
+        </ButtonSecondary>
 
         {bulkChangeModal && (
           <BulkChangeModal
-            component={component}
-            currentUser={currentUser}
             fetchIssues={checkAll ? this.fetchIssues : this.getCheckedIssues}
             onClose={this.handleCloseBulkChange}
             onDone={this.handleBulkChangeDone}
@@ -889,120 +960,139 @@ export class App extends React.PureComponent<Props, State> {
     );
   }
 
-  renderFacets() {
+  renderFacets(warning?: React.ReactNode) {
     const { component, currentUser, branchLike } = this.props;
-    const { query } = this.state;
+    const {
+      query,
+      facets,
+      loadingFacets,
+      myIssues,
+      openFacets,
+      showVariantsFilter,
+      referencedComponentsById,
+      referencedComponentsByKey,
+      referencedLanguages,
+      referencedRules,
+      referencedUsers,
+    } = this.state;
 
     return (
-      <div className="layout-page-filters">
+      <div
+        className={
+          'it__layout-page-filters sw-bg-white sw-box-border sw-h-full ' +
+          'sw-py-6 sw-pl-3 sw-pr-4 sw-w-[300px] lg:sw-w-[390px]'
+        }
+      >
+        {warning && <div className="sw-pb-6">{warning}</div>}
+
         {currentUser.isLoggedIn && (
-          <div className="display-flex-justify-center big-spacer-bottom">
-            <ButtonToggle
+          <div className="sw-flex sw-justify-start sw-mb-8">
+            <ToggleButton
+              onChange={this.handleMyIssuesChange}
               options={[
                 { value: true, label: translate('issues.my_issues') },
                 { value: false, label: translate('all') },
               ]}
               value={this.state.myIssues}
-              onCheck={this.handleMyIssuesChange}
             />
           </div>
         )}
+
         <FiltersHeader displayReset={this.isFiltered()} onReset={this.handleReset} />
+
         <Sidebar
           branchLike={branchLike}
           component={component}
           createdAfterIncludesTime={this.createdAfterIncludesTime()}
-          facets={this.state.facets}
+          facets={facets}
           loadSearchResultCount={this.loadSearchResultCount}
-          loadingFacets={this.state.loadingFacets}
-          myIssues={this.state.myIssues}
+          loadingFacets={loadingFacets}
+          myIssues={myIssues}
           onFacetToggle={this.handleFacetToggle}
           onFilterChange={this.handleFilterChange}
-          openFacets={this.state.openFacets}
+          openFacets={openFacets}
+          showVariantsFilter={showVariantsFilter}
           query={query}
-          referencedComponentsById={this.state.referencedComponentsById}
-          referencedComponentsByKey={this.state.referencedComponentsByKey}
-          referencedLanguages={this.state.referencedLanguages}
-          referencedRules={this.state.referencedRules}
-          referencedUsers={this.state.referencedUsers}
+          referencedComponentsById={referencedComponentsById}
+          referencedComponentsByKey={referencedComponentsByKey}
+          referencedLanguages={referencedLanguages}
+          referencedRules={referencedRules}
+          referencedUsers={referencedUsers}
         />
-      </div>
-    );
-  }
-
-  renderConciseIssuesList() {
-    const { issues, loadingMore, paging, query } = this.state;
-
-    return (
-      <div className="layout-page-filters">
-        <ConciseIssuesListHeader
-          displayBackButton={query.issues.length !== 1}
-          loading={this.state.loading}
-          onBackClick={this.closeIssue}
-        />
-        <ConciseIssuesList
-          issues={issues}
-          onFlowSelect={this.selectFlow}
-          onIssueSelect={this.openIssue}
-          onLocationSelect={this.selectLocation}
-          selected={this.state.selected}
-          selectedFlowIndex={this.state.selectedFlowIndex}
-          selectedLocationIndex={this.state.selectedLocationIndex}
-        />
-        {paging && paging.total > 0 && (
-          <ListFooter
-            count={issues.length}
-            loadMore={this.fetchMoreIssues}
-            loading={loadingMore}
-            total={paging.total}
-          />
-        )}
       </div>
     );
   }
 
   renderSide(openIssue: Issue | undefined) {
     const { canBrowseAllChildProjects, qualifier = ComponentQualifier.Project } =
-      this.props.component || {};
-    return (
-      <ScreenPositionHelper className="layout-page-side-outer">
-        {({ top }) => (
-          <nav
-            aria-label={openIssue ? translate('list_of_issues') : translate('filters')}
-            className="layout-page-side"
-            style={{ top }}
-          >
-            <div className="layout-page-side-inner">
-              <A11ySkipTarget
-                anchor="issues_sidebar"
-                label={
-                  openIssue ? translate('issues.skip_to_list') : translate('issues.skip_to_filters')
-                }
-                weight={10}
-              />
-              {!canBrowseAllChildProjects && isPortfolioLike(qualifier) && (
-                <div
-                  className={classNames('not-all-issue-warning', {
-                    'open-issue-list': openIssue,
-                  })}
-                >
-                  <Alert className={classNames('it__portfolio_warning')} variant="warning">
-                    <AlertContent>
-                      {translate('issues.not_all_issue_show')}
-                      <HelpTooltip
-                        className="spacer-left"
-                        overlay={translate('issues.not_all_issue_show_why')}
-                      />
-                    </AlertContent>
-                  </Alert>
-                </div>
-              )}
+      this.props.component ?? {};
 
-              {openIssue ? this.renderConciseIssuesList() : this.renderFacets()}
-            </div>
-          </nav>
-        )}
-      </ScreenPositionHelper>
+    const {
+      issues,
+      loading,
+      loadingMore,
+      paging,
+      selected,
+      selectedFlowIndex,
+      selectedLocationIndex,
+    } = this.state;
+
+    const warning = !canBrowseAllChildProjects && isPortfolioLike(qualifier) && (
+      <FlagMessage
+        className="it__portfolio_warning sw-flex"
+        title={translate('issues.not_all_issue_show_why')}
+        variant="warning"
+      >
+        {translate('issues.not_all_issue_show')}
+      </FlagMessage>
+    );
+
+    return (
+      <SideBarStyle>
+        <ScreenPositionHelper className="sw-z-filterbar">
+          {({ top }) => (
+            <nav
+              aria-label={openIssue ? translate('list_of_issues') : translate('filters')}
+              className="it__issues-nav-bar sw-overflow-y-auto"
+              style={{ height: `calc((100vh - ${top}px) - 60px)` }} // 60px (footer)
+            >
+              <div className="sw-w-[300px] lg:sw-w-[390px]">
+                <A11ySkipTarget
+                  anchor="issues_sidebar"
+                  label={
+                    openIssue
+                      ? translate('issues.skip_to_list')
+                      : translate('issues.skip_to_filters')
+                  }
+                  weight={10}
+                />
+
+                {openIssue ? (
+                  <div>
+                    {warning && <div className="sw-py-4">{warning}</div>}
+
+                    <SubnavigationIssuesList
+                      fetchMoreIssues={this.fetchMoreIssues}
+                      issues={issues}
+                      loading={loading}
+                      loadingMore={loadingMore}
+                      onFlowSelect={this.selectFlow}
+                      onIssueSelect={this.openIssue}
+                      onLocationSelect={this.selectLocation}
+                      paging={paging}
+                      selected={selected}
+                      selectedFlowIndex={selectedFlowIndex}
+                      selectedLocationIndex={selectedLocationIndex}
+                    />
+                  </div>
+                ) : (
+                  this.renderFacets(warning)
+                )}
+              </div>
+            </nav>
+          )}
+        </ScreenPositionHelper>
+      </SideBarStyle>
     );
   }
 
@@ -1017,6 +1107,7 @@ export class App extends React.PureComponent<Props, State> {
     }
 
     let noIssuesMessage = null;
+
     if (paging.total === 0 && !loading) {
       if (this.isFiltered()) {
         noIssuesMessage = <EmptySearch />;
@@ -1030,6 +1121,7 @@ export class App extends React.PureComponent<Props, State> {
     return (
       <div>
         <h2 className="a11y-hidden">{translate('list_of_issues')}</h2>
+
         {paging.total > 0 && (
           <IssuesList
             branchLike={branchLike}
@@ -1040,6 +1132,7 @@ export class App extends React.PureComponent<Props, State> {
             onIssueChange={this.handleIssueChange}
             onIssueCheck={currentUser.isLoggedIn ? this.handleIssueCheck : undefined}
             onIssueClick={this.openIssue}
+            onIssueSelect={this.selectIssue}
             onPopupToggle={this.handlePopupToggle}
             openPopup={this.state.openPopup}
             selectedIssue={selectedIssue}
@@ -1049,9 +1142,12 @@ export class App extends React.PureComponent<Props, State> {
         {paging.total > 0 && (
           <ListFooter
             count={issues.length}
-            loadMore={this.fetchMoreIssues}
+            loadMore={() => {
+              this.fetchMoreIssues().catch(() => undefined);
+            }}
             loading={loadingMore}
             total={paging.total}
+            useMIUIButtons
           />
         )}
 
@@ -1072,12 +1168,12 @@ export class App extends React.PureComponent<Props, State> {
     return openIssue ? (
       <A11ySkipTarget anchor="issues_main" />
     ) : (
-      <div className="layout-page-header-panel layout-page-main-header issues-main-header">
-        <div className="layout-page-header-panel-inner layout-page-main-header-inner">
-          <div className="layout-page-main-inner">
-            <A11ySkipTarget anchor="issues_main" />
-
+      <>
+        <A11ySkipTarget anchor="issues_main" />
+        <div className="sw-flex sw-mb-6 sw-gap-4">
+          <div className="sw-flex sw-w-full sw-items-center sw-justify-between">
             {this.renderBulkChange()}
+
             <PageActions
               canSetHome={!this.props.component}
               effortTotal={this.state.effortTotal}
@@ -1086,7 +1182,7 @@ export class App extends React.PureComponent<Props, State> {
             />
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1101,106 +1197,145 @@ export class App extends React.PureComponent<Props, State> {
       paging,
       loadingRule,
     } = this.state;
+    const topMargin = openIssue ? '120px' : '150px'; // 60px(footer) + 90px(bulk change)/60px(navbar)
+
     return (
-      <div className="layout-page-main-inner">
-        <DeferredSpinner loading={loadingRule}>
-          {openIssue && openRuleDetails ? (
-            <>
-              <IssueHeader
-                issue={openIssue}
-                ruleDetails={openRuleDetails}
-                branchLike={fillBranchLike(openIssue.branch, openIssue.pullRequest)}
-                onIssueChange={this.handleIssueChange}
-              />
-              <RuleTabViewer
-                ruleDetails={openRuleDetails}
-                extendedDescription={openRuleDetails.htmlNote}
-                ruleDescriptionContextKey={openIssue.ruleDescriptionContextKey}
-                codeTabContent={
-                  <IssuesSourceViewer
+      <ScreenPositionHelper>
+        {({ top }) => (
+          <div
+            className="it__layout-page-main-inner sw-overflow-y-auto"
+            style={{ height: `calc((100vh - ${top}px) - ${topMargin})` }}
+          >
+            <DeferredSpinner loading={loadingRule}>
+              {/* eslint-disable-next-line local-rules/no-conditional-rendering-of-deferredspinner */}
+              {openIssue && openRuleDetails ? (
+                <>
+                  <IssueHeader
+                    issue={openIssue}
+                    ruleDetails={openRuleDetails}
                     branchLike={fillBranchLike(openIssue.branch, openIssue.pullRequest)}
-                    issues={issues}
-                    locationsNavigator={this.state.locationsNavigator}
-                    onIssueSelect={this.openIssue}
-                    onLocationSelect={this.selectLocation}
-                    openIssue={openIssue}
+                    onIssueChange={this.handleIssueChange}
+                  />
+
+                  <IssueTabViewer
+                    ruleDetails={openRuleDetails}
+                    extendedDescription={openRuleDetails.htmlNote}
+                    ruleDescriptionContextKey={openIssue.ruleDescriptionContextKey}
+                    issue={openIssue}
                     selectedFlowIndex={this.state.selectedFlowIndex}
                     selectedLocationIndex={this.state.selectedLocationIndex}
+                    codeTabContent={
+                      <IssuesSourceViewer
+                        branchLike={fillBranchLike(openIssue.branch, openIssue.pullRequest)}
+                        issues={issues}
+                        locationsNavigator={this.state.locationsNavigator}
+                        onIssueSelect={this.openIssue}
+                        onLocationSelect={this.selectLocation}
+                        openIssue={openIssue}
+                        selectedFlowIndex={this.state.selectedFlowIndex}
+                        selectedLocationIndex={this.state.selectedLocationIndex}
+                      />
+                    }
+                    scrollInTab
+                    activityTabContent={
+                      <IssueReviewHistoryAndComments
+                        issue={openIssue}
+                        onChange={this.handleIssueChange}
+                      />
+                    }
                   />
-                }
-                scrollInTab={true}
-              />
-            </>
-          ) : (
-            <DeferredSpinner loading={loading} ariaLabel={translate('issues.loading_issues')}>
-              {checkAll && paging && paging.total > MAX_PAGE_SIZE && (
-                <Alert className="big-spacer-bottom" variant="warning">
-                  <FormattedMessage
-                    defaultMessage={translate('issue_bulk_change.max_issues_reached')}
-                    id="issue_bulk_change.max_issues_reached"
-                    values={{ max: <strong>{MAX_PAGE_SIZE}</strong> }}
-                  />
-                </Alert>
-              )}
-              {cannotShowOpenIssue && (!paging || paging.total > 0) && (
-                <Alert className="big-spacer-bottom" variant="warning">
-                  {translateWithParameters(
-                    'issues.cannot_open_issue_max_initial_X_fetched',
-                    MAX_INITAL_FETCH
+                </>
+              ) : (
+                <DeferredSpinner loading={loading} ariaLabel={translate('issues.loading_issues')}>
+                  {checkAll && paging && paging.total > MAX_PAGE_SIZE && (
+                    <FlagMessage variant="warning">
+                      <span>
+                        <FormattedMessage
+                          defaultMessage={translate('issue_bulk_change.max_issues_reached')}
+                          id="issue_bulk_change.max_issues_reached"
+                          values={{ max: <strong>{MAX_PAGE_SIZE}</strong> }}
+                        />
+                      </span>
+                    </FlagMessage>
                   )}
-                </Alert>
+
+                  {cannotShowOpenIssue && (!paging || paging.total > 0) && (
+                    <FlagMessage className="sw-mb-4" variant="warning">
+                      {translateWithParameters(
+                        'issues.cannot_open_issue_max_initial_X_fetched',
+                        MAX_INITAL_FETCH
+                      )}
+                    </FlagMessage>
+                  )}
+
+                  {this.renderList()}
+                </DeferredSpinner>
               )}
-              {this.renderList()}
             </DeferredSpinner>
-          )}
-        </DeferredSpinner>
-      </div>
+          </div>
+        )}
+      </ScreenPositionHelper>
     );
   }
 
   render() {
-    const { component } = this.props;
     const { openIssue, paging } = this.state;
     const selectedIndex = this.getSelectedIndex();
+
     return (
-      <div
-        className={classNames('layout-page issues', { 'project-level': component !== undefined })}
-        id="issues-page"
-      >
-        <Suggestions suggestions="issues" />
-        {openIssue ? (
-          <Helmet
-            defer={false}
-            title={openIssue.message}
-            titleTemplate={translateWithParameters(
-              'page_title.template.with_category',
-              translate('issues.page')
-            )}
-          />
-        ) : (
-          <Helmet defer={false} title={translate('issues.page')} />
-        )}
+      <PageWrapperStyle id="issues-page">
+        <LargeCenteredLayout>
+          <PageContentFontWrapper className="sw-body-sm">
+            <div className="sw-w-full sw-flex" id="issues-page">
+              <Suggestions suggestions="issues" />
 
-        <h1 className="a11y-hidden">{translate('issues.page')}</h1>
+              {openIssue ? (
+                <Helmet
+                  defer={false}
+                  title={openIssue.message}
+                  titleTemplate={translateWithParameters(
+                    'page_title.template.with_category',
+                    translate('issues.page')
+                  )}
+                />
+              ) : (
+                <Helmet defer={false} title={translate('issues.page')} />
+              )}
 
-        {this.renderSide(openIssue)}
+              <h1 className="a11y-hidden">{translate('issues.page')}</h1>
 
-        <div role="main" className={classNames('layout-page-main', { 'open-issue': !!openIssue })}>
-          {this.renderHeader({ openIssue, paging, selectedIndex })}
+              {this.renderSide(openIssue)}
 
-          {this.renderPage()}
-        </div>
-      </div>
+              <MainContentStyle role="main" className="sw-relative sw-ml-12 sw-p-6 sw-flex-1">
+                {this.renderHeader({ openIssue, paging, selectedIndex })}
+
+                {this.renderPage()}
+              </MainContentStyle>
+            </div>
+          </PageContentFontWrapper>
+        </LargeCenteredLayout>
+      </PageWrapperStyle>
     );
   }
 }
-
-const AlertContent = styled.div`
-  display: flex;
-  align-items: center;
-`;
 
 export default withIndexationGuard(
   withRouter(withCurrentUserContext(withBranchStatusActions(withComponentContext(App)))),
   PageContext.Issues
 );
+
+const PageWrapperStyle = styled.div`
+  background-color: ${themeColor('backgroundPrimary')};
+`;
+
+const MainContentStyle = styled.div`
+  background-color: ${themeColor('subnavigation')};
+  border-left: ${themeBorder('default', 'filterbarBorder')};
+  border-right: ${themeBorder('default', 'filterbarBorder')};
+`;
+
+const SideBarStyle = styled.div`
+  border-left: ${themeBorder('default', 'filterbarBorder')};
+  border-right: ${themeBorder('default', 'filterbarBorder')};
+  background-color: ${themeColor('backgroundSecondary')};
+`;

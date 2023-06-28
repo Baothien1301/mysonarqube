@@ -20,7 +20,7 @@
 package org.sonar.server.ce.ws;
 
 import java.util.Collections;
-import java.util.Random;
+import java.util.List;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import org.junit.Before;
@@ -39,7 +39,9 @@ import org.sonar.db.ce.CeTaskMessageDto;
 import org.sonar.db.ce.CeTaskMessageType;
 import org.sonar.db.ce.CeTaskTypes;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.permission.GlobalPermission;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.UserDto;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
@@ -74,13 +76,16 @@ public class TaskActionIT {
   private final WsActionTester ws = new WsActionTester(underTest);
 
   private ComponentDto privateProject;
-  private ComponentDto publicProject;
+  private ComponentDto publicProjectMainBranch;
+  private ProjectDto publicProject;
 
   @Before
   public void setUp() {
     privateProject = db.components().insertPrivateProject().getMainBranchComponent();
     userSession.logIn().addProjectPermission(ADMIN, privateProject);
-    publicProject = db.components().insertPublicProject().getMainBranchComponent();
+    ProjectData publicProjectData = db.components().insertPublicProject();
+    publicProject = publicProjectData.getProjectDto();
+    publicProjectMainBranch = publicProjectData.getMainBranchComponent();
   }
 
   @Test
@@ -115,7 +120,7 @@ public class TaskActionIT {
     UserDto user = db.users().insertUser();
     userSession.logIn(user).setSystemAdministrator();
     CeQueueDto queueDto = createAndPersistQueueTask(null, user);
-    IntStream.range(0, 1 + new Random().nextInt(5))
+    IntStream.range(0, 6)
       .forEach(i -> db.getDbClient().ceTaskMessageDao().insert(db.getSession(),
         new CeTaskMessageDto()
           .setUuid("u_" + i)
@@ -181,7 +186,7 @@ public class TaskActionIT {
   public void branch_in_queue_analysis() {
     UserDto user = db.users().insertUser();
     userSession.logIn(user).setSystemAdministrator();
-    ;
+
     String branch = "my_branch";
     CeQueueDto queueDto = createAndPersistQueueTask(null, user);
     insertCharacteristic(queueDto, BRANCH_KEY, branch);
@@ -307,8 +312,8 @@ public class TaskActionIT {
   @Test
   public void getting_project_queue_task_of_public_project_fails_with_ForbiddenException() {
     UserDto user = db.users().insertUser();
-    userSession.logIn().registerComponents(publicProject);
-    CeQueueDto task = createAndPersistQueueTask(publicProject, user);
+    userSession.logIn().registerProjects(publicProject);
+    CeQueueDto task = createAndPersistQueueTask(publicProjectMainBranch, user);
 
     String uuid = task.getUuid();
     assertThatThrownBy(() -> call(uuid))
@@ -340,6 +345,14 @@ public class TaskActionIT {
     UserDto user = db.users().insertUser();
     userSession.logIn(user).addPermission(GlobalPermission.SCAN);
     CeQueueDto task = createAndPersistQueueTask(privateProject, user);
+
+    call(task.getUuid());
+  }
+
+  @Test
+  public void get_project_queue_task_with_project_admin_permission() {
+    userSession.logIn().addProjectPermission(ADMIN, privateProject);
+    CeActivityDto task = createAndPersistArchivedTask(privateProject);
 
     call(task.getUuid());
   }
@@ -385,8 +398,8 @@ public class TaskActionIT {
 
   @Test
   public void getting_archived_task_of_public_project_fails_with_ForbiddenException() {
-    userSession.logIn().registerComponents(publicProject);
-    CeActivityDto task = createAndPersistArchivedTask(publicProject);
+    userSession.logIn().registerProjects(publicProject);
+    CeActivityDto task = createAndPersistArchivedTask(publicProjectMainBranch);
 
     String uuid = task.getUuid();
     assertThatThrownBy(() -> call(uuid))
@@ -433,15 +446,15 @@ public class TaskActionIT {
   public void get_warnings_on_global_archived_task_requires_to_be_system_administrator() {
     logInAsSystemAdministrator();
 
-    getWarningsImpl(createAndPersistArchivedTask(null));
+    insertWarningsCallEndpointAndAssertWarnings(createAndPersistArchivedTask(null));
   }
 
   @Test
   public void get_warnings_on_public_project_archived_task_if_not_admin_fails_with_ForbiddenException() {
-    userSession.logIn().registerComponents(publicProject);
+    userSession.logIn().registerProjects(publicProject);
 
-    CeActivityDto persistArchivedTask = createAndPersistArchivedTask(publicProject);
-    assertThatThrownBy(() -> getWarningsImpl(persistArchivedTask))
+    CeActivityDto persistArchivedTask = createAndPersistArchivedTask(publicProjectMainBranch);
+    assertThatThrownBy(() -> insertWarningsCallEndpointAndAssertWarnings(persistArchivedTask))
       .isInstanceOf(ForbiddenException.class);
   }
 
@@ -450,7 +463,7 @@ public class TaskActionIT {
     userSession.logIn().addProjectPermission(UserRole.USER, privateProject);
 
     CeActivityDto persistArchivedTask = createAndPersistArchivedTask(privateProject);
-    assertThatThrownBy(() -> getWarningsImpl(persistArchivedTask))
+    assertThatThrownBy(() -> insertWarningsCallEndpointAndAssertWarnings(persistArchivedTask))
       .isInstanceOf(ForbiddenException.class);
   }
 
@@ -458,33 +471,50 @@ public class TaskActionIT {
   public void get_warnings_on_private_project_archived_task_if_scan() {
     userSession.logIn().addProjectPermission(GlobalPermission.SCAN.getKey(), privateProject);
 
-    getWarningsImpl(createAndPersistArchivedTask(privateProject));
+    insertWarningsCallEndpointAndAssertWarnings(createAndPersistArchivedTask(privateProject));
   }
 
   @Test
   public void get_warnings_on_private_project_archived_task_if_global_scan_permission() {
     userSession.logIn().addPermission(GlobalPermission.SCAN);
 
-    getWarningsImpl(createAndPersistArchivedTask(privateProject));
+    insertWarningsCallEndpointAndAssertWarnings(createAndPersistArchivedTask(privateProject));
   }
 
-  private void getWarningsImpl(CeActivityDto task) {
-    String[] warnings = IntStream.range(0, 1 + new Random().nextInt(10))
-      .mapToObj(i -> insertWarning(task, i))
-      .map(CeTaskMessageDto::getMessage)
-      .toArray(String[]::new);
+  @Test
+  public void get_warnings_on_global_archived_task_requires_to_be_system_administrator2() {
+    logInAsSystemAdministrator();
 
+    CeActivityDto activityDto = persist(createActivityDto("uuid1"));
+    insertMessage(activityDto, 1, CeTaskMessageType.INFO);
+    CeTaskMessageDto warning = insertMessage(activityDto, 2, CeTaskMessageType.GENERIC);
+
+    callEndpointAndAssertWarnings(activityDto, List.of(warning));
+  }
+
+  private void insertWarningsCallEndpointAndAssertWarnings(CeActivityDto task) {
+    List<CeTaskMessageDto> warnings = IntStream.range(0, 6)
+      .mapToObj(i -> insertWarning(task, i))
+      .toList();
+    callEndpointAndAssertWarnings(task, warnings);
+  }
+
+  private void callEndpointAndAssertWarnings(CeActivityDto task, List<CeTaskMessageDto> warnings) {
     Ce.Task taskWithWarnings = callWithWarnings(task.getUuid());
-    assertThat(taskWithWarnings.getWarningCount()).isEqualTo(warnings.length);
-    assertThat(taskWithWarnings.getWarningsList()).containsExactly(warnings);
+    assertThat(taskWithWarnings.getWarningCount()).isEqualTo(warnings.size());
+    assertThat(taskWithWarnings.getWarningsList()).isEqualTo(warnings.stream().map(CeTaskMessageDto::getMessage).toList());
   }
 
   private CeTaskMessageDto insertWarning(CeActivityDto task, int i) {
+    return insertMessage(task, i, CeTaskMessageType.GENERIC);
+  }
+
+  private CeTaskMessageDto insertMessage(CeActivityDto task, int i, CeTaskMessageType ceTaskMessageType) {
     CeTaskMessageDto res = new CeTaskMessageDto()
       .setUuid(UuidFactoryFast.getInstance().create())
       .setTaskUuid(task.getUuid())
       .setMessage("msg_" + task.getUuid() + "_" + i)
-      .setType(CeTaskMessageType.GENERIC)
+      .setType(ceTaskMessageType)
       .setCreatedAt(task.getUuid().hashCode() + i);
     db.getDbClient().ceTaskMessageDao().insert(db.getSession(), res);
     db.getSession().commit();

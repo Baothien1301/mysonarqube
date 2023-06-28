@@ -26,8 +26,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.CheckForNull;
-import javax.annotation.Nullable;
 import org.apache.commons.lang.StringUtils;
 import org.sonar.api.resources.Qualifiers;
 import org.sonar.api.resources.Scopes;
@@ -97,25 +95,16 @@ public class PersistComponentsStep implements ComputationStep {
 
       Map<String, ComponentDto> existingDtosByUuids = indexExistingDtosByUuids(dbSession);
       boolean isRootPrivate = isRootPrivate(treeRootHolder.getRoot(), existingDtosByUuids);
-      String mainBranchProjectUuid = loadProjectUuidOfMainBranch();
 
       // Insert or update the components in database. They are removed from existingDtosByUuids
       // at the same time.
-      new PathAwareCrawler<>(new PersistComponentStepsVisitor(existingDtosByUuids, dbSession, mainBranchProjectUuid))
+      new PathAwareCrawler<>(new PersistComponentStepsVisitor(existingDtosByUuids, dbSession))
         .visit(treeRootHolder.getRoot());
 
       disableRemainingComponents(dbSession, existingDtosByUuids.values());
       dbClient.componentDao().setPrivateForBranchUuidWithoutAudit(dbSession, projectUuid, isRootPrivate);
       dbSession.commit();
     }
-  }
-
-  @CheckForNull
-  private String loadProjectUuidOfMainBranch() {
-    if (!analysisMetadataHolder.getBranch().isMain()) {
-      return analysisMetadataHolder.getProject().getUuid();
-    }
-    return null;
   }
 
   private void disableRemainingComponents(DbSession dbSession, Collection<ComponentDto> dtos) {
@@ -152,10 +141,8 @@ public class PersistComponentsStep implements ComputationStep {
 
     private final Map<String, ComponentDto> existingComponentDtosByUuids;
     private final DbSession dbSession;
-    @Nullable
-    private final String mainBranchProjectUuid;
 
-    PersistComponentStepsVisitor(Map<String, ComponentDto> existingComponentDtosByUuids, DbSession dbSession, @Nullable String mainBranchProjectUuid) {
+    PersistComponentStepsVisitor(Map<String, ComponentDto> existingComponentDtosByUuids, DbSession dbSession) {
       super(
         CrawlerDepthLimit.LEAVES,
         PRE_ORDER,
@@ -179,7 +166,6 @@ public class PersistComponentsStep implements ComputationStep {
         });
       this.existingComponentDtosByUuids = existingComponentDtosByUuids;
       this.dbSession = dbSession;
-      this.mainBranchProjectUuid = mainBranchProjectUuid;
     }
 
     @Override
@@ -345,7 +331,6 @@ public class PersistComponentsStep implements ComputationStep {
       ComponentDto componentDto = new ComponentDto();
       componentDto.setUuid(componentUuid);
       componentDto.setKey(componentKey);
-      componentDto.setMainBranchProjectUuid(mainBranchProjectUuid);
       componentDto.setEnabled(true);
       componentDto.setCreatedAt(new Date(system2.now()));
 

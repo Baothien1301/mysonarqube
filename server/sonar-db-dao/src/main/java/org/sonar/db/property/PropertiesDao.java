@@ -27,12 +27,10 @@ import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
 import org.sonar.api.utils.System2;
-import org.sonar.api.web.UserRole;
 import org.sonar.core.util.UuidFactory;
 import org.sonar.db.Dao;
 import org.sonar.db.DbSession;
@@ -46,7 +44,6 @@ import static java.util.Collections.singletonList;
 import static org.apache.commons.lang.StringUtils.repeat;
 import static org.sonar.db.DatabaseUtils.executeLargeInputs;
 import static org.sonar.db.DatabaseUtils.executeLargeInputsIntoSet;
-import static org.sonar.db.DatabaseUtils.executeLargeInputsWithoutOutput;
 
 public class PropertiesDao implements Dao {
 
@@ -63,20 +60,6 @@ public class PropertiesDao implements Dao {
     this.system2 = system2;
     this.uuidFactory = uuidFactory;
     this.auditPersister = auditPersister;
-  }
-
-  /**
-   * Returns the logins of users who have subscribed to the given notification dispatcher with the given notification channel.
-   * If a resource ID is passed, the search is made on users who have specifically subscribed for the given resource.
-   * Note that {@link  UserRole#USER} permission is not checked here, filter the results with
-   * {@link org.sonar.db.permission.AuthorizationDao#keepAuthorizedLoginsOnProject}
-   *
-   * @return the list of Subscriber (maybe be empty - obviously)
-   */
-  public Set<Subscriber> findUsersForNotification(String notificationDispatcherKey, String notificationChannelKey, @Nullable String projectKey) {
-    try (DbSession session = mybatis.openSession(false)) {
-      return getMapper(session).findUsersForNotification(NOTIFICATION_PREFIX + notificationDispatcherKey + "." + notificationChannelKey, projectKey);
-    }
   }
 
   public Set<EmailSubscriberDto> findEmailSubscribersForNotification(DbSession dbSession, String notificationDispatcherKey, String notificationChannelKey,
@@ -116,8 +99,8 @@ public class PropertiesDao implements Dao {
 
   private static PreparedStatement createStatement(String projectUuid, Collection<String> dispatcherKeys, Connection connection) throws SQLException {
     String sql = "SELECT count(1) FROM properties pp " +
-      "left outer join components pj on pp.component_uuid = pj.uuid " +
-      "where pp.user_uuid is not null and (pp.component_uuid is null or pj.uuid=?) " +
+      "left outer join components pj on pp.entity_uuid = pj.uuid " +
+      "where pp.user_uuid is not null and (pp.entity_uuid is null or pj.uuid=?) " +
       "and (" + repeat("pp.prop_key like ?", " or ", dispatcherKeys.size()) + ")";
     PreparedStatement res = connection.prepareStatement(sql);
     res.setString(1, projectUuid);
@@ -145,13 +128,13 @@ public class PropertiesDao implements Dao {
     }
   }
 
-  public List<PropertyDto> selectComponentProperties(DbSession session, String componentUuid) {
-    return getMapper(session).selectByComponentUuids(singletonList(componentUuid));
+  public List<PropertyDto> selectEntityProperties(DbSession session, String entityUuid) {
+    return getMapper(session).selectByEntityUuids(singletonList(entityUuid));
   }
 
   @CheckForNull
   public PropertyDto selectProjectProperty(DbSession dbSession, String projectUuid, String propertyKey) {
-    return getMapper(dbSession).selectByKey(new PropertyDto().setKey(propertyKey).setComponentUuid(projectUuid));
+    return getMapper(dbSession).selectByKey(new PropertyDto().setKey(propertyKey).setEntityUuid(projectUuid));
   }
 
   public List<PropertyDto> selectByQuery(PropertyQuery query, DbSession session) {
@@ -162,17 +145,17 @@ public class PropertiesDao implements Dao {
     return executeLargeInputs(keys, partitionKeys -> getMapper(session).selectByKeys(partitionKeys));
   }
 
-  public List<PropertyDto> selectPropertiesByKeysAndComponentUuids(DbSession session, Collection<String> keys, Collection<String> componentUuids) {
-    return executeLargeInputs(keys, partitionKeys -> executeLargeInputs(componentUuids,
-      partitionComponentUuids -> getMapper(session).selectByKeysAndComponentUuids(partitionKeys, partitionComponentUuids)));
+  public List<PropertyDto> selectPropertiesByKeysAndEntityUuids(DbSession session, Collection<String> keys, Collection<String> entityUuids) {
+    return executeLargeInputs(keys, partitionKeys -> executeLargeInputs(entityUuids,
+      partitionEntityUuids -> getMapper(session).selectByKeysAndEntityUuids(partitionKeys, partitionEntityUuids)));
   }
 
   public List<PropertyDto> selectByKeyAndMatchingValue(DbSession session, String key, String value) {
     return getMapper(session).selectByKeyAndMatchingValue(key, value);
   }
 
-  public List<PropertyDto> selectByKeyAndUserUuidAndComponentQualifier(DbSession session, String key, String userUuid, String qualifier) {
-    return getMapper(session).selectByKeyAndUserUuidAndComponentQualifier(key, userUuid, qualifier);
+  public List<PropertyDto> selectEntityPropertyByKeyAndUserUuid(DbSession session, String key, String userUuid) {
+    return getMapper(session).selectEntityPropertyByKeyAndUserUuid(key, userUuid);
   }
 
   /**
@@ -189,7 +172,7 @@ public class PropertiesDao implements Dao {
 
   public void saveProperty(DbSession session, PropertyDto property, @Nullable String userLogin, @Nullable String projectKey, @Nullable String projectName,
     @Nullable String qualifier) {
-    int affectedRows = save(getMapper(session), property.getKey(), property.getUserUuid(), property.getComponentUuid(), property.getValue());
+    int affectedRows = save(getMapper(session), property.getKey(), property.getUserUuid(), property.getEntityUuid(), property.getValue());
 
     if (affectedRows > 0) {
       auditPersister.updateProperty(session, new PropertyNewValue(property, userLogin, projectKey, projectName, qualifier), false);
@@ -198,18 +181,18 @@ public class PropertiesDao implements Dao {
     }
   }
 
-  private int save(PropertiesMapper mapper, String key, @Nullable String userUuid, @Nullable String componentUuid, @Nullable String value) {
+  private int save(PropertiesMapper mapper, String key, @Nullable String userUuid, @Nullable String entityUuids, @Nullable String value) {
     checkKey(key);
 
     long now = system2.now();
-    int affectedRows = mapper.delete(key, userUuid, componentUuid);
+    int affectedRows = mapper.delete(key, userUuid, entityUuids);
     String uuid = uuidFactory.create();
     if (isEmpty(value)) {
-      mapper.insertAsEmpty(uuid, key, userUuid, componentUuid, now);
+      mapper.insertAsEmpty(uuid, key, userUuid, entityUuids, now);
     } else if (mustBeStoredInClob(value)) {
-      mapper.insertAsClob(uuid, key, userUuid, componentUuid, value, now);
+      mapper.insertAsClob(uuid, key, userUuid, entityUuids, value, now);
     } else {
-      mapper.insertAsText(uuid, key, userUuid, componentUuid, value, now);
+      mapper.insertAsText(uuid, key, userUuid, entityUuids, value, now);
     }
     return affectedRows;
   }
@@ -234,7 +217,7 @@ public class PropertiesDao implements Dao {
   }
 
   /**
-   * Delete either global, user, component or component per user properties.
+   * Delete either global, user, entity or entity per user properties.
    * <p>Behaves in exactly the same way as {@link #selectByQuery(PropertyQuery, DbSession)} but deletes rather than
    * selects</p>
    * Used by Governance.
@@ -243,7 +226,7 @@ public class PropertiesDao implements Dao {
     int deletedRows = getMapper(dbSession).deleteByQuery(query);
 
     if (deletedRows > 0 && query.key() != null) {
-      auditPersister.deleteProperty(dbSession, new PropertyNewValue(query.key(), query.componentUuid(),
+      auditPersister.deleteProperty(dbSession, new PropertyNewValue(query.key(), query.entityUuid(),
         null, null, null, query.userUuid()), false);
     }
 
@@ -252,22 +235,19 @@ public class PropertiesDao implements Dao {
 
   public int delete(DbSession dbSession, PropertyDto dto, @Nullable String userLogin, @Nullable String projectKey,
     @Nullable String projectName, @Nullable String qualifier) {
-    int deletedRows = getMapper(dbSession).delete(dto.getKey(), dto.getUserUuid(), dto.getComponentUuid());
+    int deletedRows = getMapper(dbSession).delete(dto.getKey(), dto.getUserUuid(), dto.getEntityUuid());
 
     if (deletedRows > 0) {
-      auditPersister.deleteProperty(dbSession, new PropertyNewValue(dto, userLogin, projectKey, projectName, qualifier),
-        false);
+      auditPersister.deleteProperty(dbSession, new PropertyNewValue(dto, userLogin, projectKey, projectName, qualifier), false);
     }
     return deletedRows;
   }
 
-  public void deleteProjectProperty(DbSession session, String key, String projectUuid, String projectKey,
-    String projectName, String qualifier) {
+  public void deleteProjectProperty(DbSession session, String key, String projectUuid, String projectKey, String projectName, String qualifier) {
     int deletedRows = getMapper(session).deleteProjectProperty(key, projectUuid);
 
     if (deletedRows > 0) {
-      auditPersister.deleteProperty(session, new PropertyNewValue(key, projectUuid, projectKey, projectName, qualifier,
-        null), false);
+      auditPersister.deleteProperty(session, new PropertyNewValue(key, projectUuid, projectKey, projectName, qualifier, null), false);
     }
   }
 

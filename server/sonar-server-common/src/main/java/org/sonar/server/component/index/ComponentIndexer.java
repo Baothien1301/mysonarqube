@@ -25,15 +25,15 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
-import javax.annotation.Nullable;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.sonar.core.util.stream.MoreCollectors;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.es.EsQueueDto;
 import org.sonar.server.es.BaseDoc;
 import org.sonar.server.es.BulkIndexer;
@@ -70,11 +70,11 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
 
   @Override
   public void indexOnStartup(Set<IndexType> uninitializedIndexTypes) {
-    doIndexByProjectUuid(null, Size.LARGE);
+    doIndexByProjectUuid(Size.LARGE);
   }
 
   public void indexAll() {
-    doIndexByProjectUuid(null, Size.REGULAR);
+    doIndexByProjectUuid(Size.REGULAR);
   }
 
   @Override
@@ -83,8 +83,8 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
   }
 
   @Override
-  public void indexOnAnalysis(String branchUuid, Set<String> unchangedComponentUuids) {
-    doIndexByProjectUuid(branchUuid, Size.REGULAR);
+  public void indexOnAnalysis(String entityUuid, Set<String> unchangedComponentUuids) {
+    doIndexByProjectUuid(entityUuid);
   }
 
   @Override
@@ -100,7 +100,7 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
         return emptyList();
       case PROJECT_CREATION, PROJECT_DELETION, PROJECT_KEY_UPDATE:
         List<EsQueueDto> items = projectUuids.stream()
-          .map(branchUuid -> EsQueueDto.create(TYPE_COMPONENT.format(), branchUuid, null, branchUuid))
+          .map(projectUuid -> EsQueueDto.create(TYPE_COMPONENT.format(), projectUuid, null, projectUuid))
           .collect(MoreCollectors.toArrayList(projectUuids.size()));
         return dbClient.esQueueDao().insert(dbSession, items);
       default:
@@ -118,15 +118,14 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
     OneToManyResilientIndexingListener listener = new OneToManyResilientIndexingListener(dbClient, dbSession, items);
     BulkIndexer bulkIndexer = new BulkIndexer(esClient, TYPE_COMPONENT, Size.REGULAR, listener);
     bulkIndexer.start();
-    Set<String> branchUuids = items.stream().map(EsQueueDto::getDocId).collect(MoreCollectors.toHashSet(items.size()));
-    Set<String> remaining = new HashSet<>(branchUuids);
+    Set<String> entityUuids = items.stream().map(EsQueueDto::getDocId).collect(MoreCollectors.toHashSet(items.size()));
+    Set<String> remaining = new HashSet<>(entityUuids);
 
-    for (String branchUuid : branchUuids) {
-      // TODO allow scrolling multiple projects at the same time
-      dbClient.componentDao().scrollForIndexing(dbSession, branchUuid, context -> {
-        ComponentDto dto = context.getResultObject();
+    for (String entityUuid : entityUuids) {
+      dbClient.entityDao().scrollForIndexing(dbSession, entityUuid, context -> {
+        EntityDto dto = context.getResultObject();
+        remaining.remove(dto.getUuid());
         bulkIndexer.add(toDocument(dto).toIndexRequest());
-        remaining.remove(dto.branchUuid());
       });
     }
 
@@ -138,26 +137,48 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
   }
 
   /**
-   * @param projectUuid the uuid of the project to analyze, or {@code null} if all content should be indexed.<br/>
-   * <b>Warning:</b> only use {@code null} during startup.
+   * @param entityUuid the uuid of the project to analyze, or {@code null} if all content should be indexed.<br/>
+   *                   <b>Warning:</b> only use {@code null} during startup.
    */
-  private void doIndexByProjectUuid(@Nullable String projectUuid, Size bulkSize) {
-    BulkIndexer bulk = new BulkIndexer(esClient, TYPE_COMPONENT, bulkSize);
+  private void doIndexByProjectUuid(String entityUuid) {
+    BulkIndexer bulk = new BulkIndexer(esClient, TYPE_COMPONENT, Size.REGULAR);
+    bulk.start();
 
+    try (DbSession dbSession = dbClient.openSession(false)) {
+      Optional<EntityDto> entityDto = dbClient.entityDao().selectByUuid(dbSession, entityUuid);
+
+      if (entityDto.isEmpty()) {
+        return;
+      }
+      EntityDto entity = entityDto.get();
+
+      bulk.add(toDocument(entity).toIndexRequest());
+
+      if (entity.getQualifier().equals("VW")) {
+        dbClient.portfolioDao().selectTree(dbSession, entityUuid).forEach(sub ->
+          bulk.add(toDocument(sub).toIndexRequest()));
+      }
+    }
+
+    bulk.stop();
+  }
+
+  private void doIndexByProjectUuid(Size bulkSize) {
+    BulkIndexer bulk = new BulkIndexer(esClient, TYPE_COMPONENT, bulkSize);
     bulk.start();
     try (DbSession dbSession = dbClient.openSession(false)) {
-      dbClient.componentDao()
-        .scrollForIndexing(dbSession, projectUuid, context -> {
-          ComponentDto dto = context.getResultObject();
-          bulk.add(toDocument(dto).toIndexRequest());
-        });
+      dbClient.entityDao().scrollForIndexing(dbSession, null, context -> {
+        EntityDto dto = context.getResultObject();
+        bulk.add(toDocument(dto).toIndexRequest());
+      });
     }
+
     bulk.stop();
   }
 
   private static void addProjectDeletionToBulkIndexer(BulkIndexer bulkIndexer, String projectUuid) {
     SearchRequest searchRequest = EsClient.prepareSearch(TYPE_COMPONENT.getMainType())
-      .source(new SearchSourceBuilder().query(QueryBuilders.termQuery(ComponentIndexDefinition.FIELD_PROJECT_UUID, projectUuid)))
+      .source(new SearchSourceBuilder().query(QueryBuilders.termQuery(ComponentIndexDefinition.FIELD_UUID, projectUuid)))
       .routing(AuthorizationDoc.idOf(projectUuid));
     bulkIndexer.addDeletion(searchRequest);
   }
@@ -170,7 +191,7 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
   }
 
   @VisibleForTesting
-  void index(ComponentDto... docs) {
+  void index(EntityDto... docs) {
     BulkIndexer bulk = new BulkIndexer(esClient, TYPE_COMPONENT, Size.REGULAR);
     bulk.start();
     Arrays.stream(docs)
@@ -180,12 +201,12 @@ public class ComponentIndexer implements ProjectIndexer, NeedAuthorizationIndexe
     bulk.stop();
   }
 
-  public static ComponentDoc toDocument(ComponentDto component) {
+  public static ComponentDoc toDocument(EntityDto entity) {
     return new ComponentDoc()
-      .setId(component.uuid())
-      .setName(component.name())
-      .setKey(component.getKey())
-      .setProjectUuid(component.branchUuid())
-      .setQualifier(component.qualifier());
+      .setId(entity.getUuid())
+      .setAuthUuid(entity.getAuthUuid())
+      .setName(entity.getName())
+      .setKey(entity.getKey())
+      .setQualifier(entity.getQualifier());
   }
 }

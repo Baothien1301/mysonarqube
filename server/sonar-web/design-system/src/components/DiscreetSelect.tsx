@@ -17,6 +17,7 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
 import styled from '@emotion/styled';
 import tw from 'twin.macro';
 import { themeBorder, themeColor, themeContrast } from '../helpers/theme';
@@ -25,8 +26,13 @@ import { InputSelect, LabelValueSelectOption } from './InputSelect';
 
 interface Props<V> {
   className?: string;
+  components?: Parameters<typeof InputSelect>[0]['components'];
   customValue?: JSX.Element;
-  options: LabelValueSelectOption<V>[];
+  isDisabled?: boolean;
+  menuIsOpen?: boolean;
+  onMenuClose?: () => void;
+  onMenuOpen?: () => void;
+  options: Array<LabelValueSelectOption<V>>;
   setValue: ({ value }: LabelValueSelectOption<V>) => void;
   size?: InputSizeKeys;
   value: V;
@@ -35,6 +41,7 @@ interface Props<V> {
 export function DiscreetSelect<V>({
   className,
   customValue,
+  onMenuOpen,
   options,
   size = 'small',
   setValue,
@@ -45,6 +52,7 @@ export function DiscreetSelect<V>({
     <StyledSelect
       className={className}
       onChange={setValue}
+      onMenuOpen={onMenuOpen}
       options={options}
       placeholder={customValue}
       size={size}
@@ -73,6 +81,7 @@ const StyledSelect = styled(InputSelect)`
 
   & .react-select__control {
     height: auto;
+    min-height: inherit;
     color: ${themeContrast('discreetBackground')};
     background: none;
     outline: inherit;
@@ -104,7 +113,6 @@ const StyledSelect = styled(InputSelect)`
       color: ${themeColor('discreetButtonHover')};
       background: ${themeColor('discreetBackground')};
       outline: ${themeBorder('focus', 'discreetFocusBorder')};
-      outline: none;
       border-color: inherit;
       box-shadow: none;
     }
@@ -113,6 +121,5 @@ const StyledSelect = styled(InputSelect)`
   & .react-select__control--is-focused,
   & .react-select__control--menu-is-open {
     ${tw`sw-border-none`};
-    outline: none;
   }
 `;

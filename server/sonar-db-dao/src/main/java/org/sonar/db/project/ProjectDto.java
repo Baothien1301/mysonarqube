@@ -20,29 +20,19 @@
 package org.sonar.db.project;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
+import org.sonar.db.entity.EntityDto;
 
 import static org.apache.commons.lang.StringUtils.trimToNull;
 import static org.sonar.db.component.DbTagsReader.readDbTags;
 
-public class ProjectDto {
+public class ProjectDto extends EntityDto {
   private static final String TAGS_SEPARATOR = ",";
-  private String uuid;
-  private String kee;
-  private String qualifier;
-  private String name;
-  private String description;
-  private boolean isPrivate = false;
   private String tags;
   private long createdAt;
   private long updatedAt;
-
-  public ProjectDto() {
-    // nothing to do here
-  }
 
   public long getCreatedAt() {
     return createdAt;
@@ -62,24 +52,9 @@ public class ProjectDto {
     return this;
   }
 
-  public String getUuid() {
-    return uuid;
-  }
-
   public ProjectDto setUuid(String uuid) {
     this.uuid = uuid;
     return this;
-  }
-
-  /**
-   * This is the getter used by MyBatis mapper.
-   */
-  public String getKee() {
-    return kee;
-  }
-
-  public String getKey() {
-    return getKee();
   }
 
   /**
@@ -92,10 +67,6 @@ public class ProjectDto {
 
   public ProjectDto setKey(String key) {
     return setKee(key);
-  }
-
-  public boolean isPrivate() {
-    return isPrivate;
   }
 
   public ProjectDto setPrivate(boolean aPrivate) {
@@ -127,18 +98,9 @@ public class ProjectDto {
     return this;
   }
 
-  public String getName() {
-    return name;
-  }
-
   public ProjectDto setName(String name) {
     this.name = name;
     return this;
-  }
-
-  @CheckForNull
-  public String getDescription() {
-    return description;
   }
 
   public ProjectDto setDescription(@Nullable String description) {
@@ -146,30 +108,8 @@ public class ProjectDto {
     return this;
   }
 
-  public String getQualifier() {
-    return qualifier;
-  }
-
   public ProjectDto setQualifier(String qualifier) {
     this.qualifier = qualifier;
     return this;
   }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-    ProjectDto that = (ProjectDto) o;
-    return Objects.equals(uuid, that.uuid);
-  }
-
-  @Override
-  public int hashCode() {
-    return uuid != null ? uuid.hashCode() : 0;
-  }
-
 }

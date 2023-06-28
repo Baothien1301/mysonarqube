@@ -30,10 +30,10 @@ import org.sonar.api.web.UserRole;
 import org.sonar.core.util.SequenceUuidFactory;
 import org.sonar.core.util.Uuids;
 import org.sonar.db.DbTester;
-import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ResourceTypesRule;
 import org.sonar.db.permission.GlobalPermission;
 import org.sonar.db.permission.GroupPermissionDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDto;
 import org.sonar.server.exceptions.BadRequestException;
@@ -55,14 +55,15 @@ public class GroupPermissionChangerIT {
   private final PermissionService permissionService = new PermissionServiceImpl(resourceTypes);
   private final GroupPermissionChanger underTest = new GroupPermissionChanger(db.getDbClient(), new SequenceUuidFactory());
   private GroupDto group;
-  private ComponentDto privateProject;
-  private ComponentDto publicProject;
+
+  private ProjectDto privateProject;
+  private ProjectDto publicProject;
 
   @Before
   public void setUp() {
     group = db.users().insertGroup("a-group");
-    privateProject = db.components().insertPrivateProject().getMainBranchComponent();
-    publicProject = db.components().insertPublicProject().getMainBranchComponent();
+    privateProject = db.components().insertPrivateProject().getProjectDto();
+    publicProject = db.components().insertPublicProject().getProjectDto();
   }
 
   @Test
@@ -108,7 +109,7 @@ public class GroupPermissionChangerIT {
       .forEach(perm -> {
         apply(new GroupPermissionChange(PermissionChange.Operation.REMOVE, perm, privateProject, anyOneGroup, permissionService));
 
-        assertThat(db.users().selectAnyonePermissions(privateProject)).contains(perm);
+        assertThat(db.users().selectAnyonePermissions(privateProject.getUuid())).contains(perm);
       });
   }
 
@@ -173,7 +174,7 @@ public class GroupPermissionChangerIT {
 
   private void applyRemovesPermissionFromGroupOnPrivateProject(String permission) {
     GroupUuidOrAnyone groupUuid = GroupUuidOrAnyone.from(group);
-    db.users().insertProjectPermissionOnGroup(group, permission, privateProject);
+    db.users().insertEntityPermissionOnGroup(group, permission, privateProject);
 
     apply(new GroupPermissionChange(PermissionChange.Operation.ADD, permission, privateProject, groupUuid, permissionService));
 
@@ -186,7 +187,7 @@ public class GroupPermissionChangerIT {
 
     apply(new GroupPermissionChange(PermissionChange.Operation.ADD, UserRole.USER, publicProject, groupUuid, permissionService));
 
-    assertThat(db.users().selectAnyonePermissions(publicProject)).isEmpty();
+    assertThat(db.users().selectAnyonePermissions(publicProject.getUuid())).isEmpty();
   }
 
   @Test
@@ -195,7 +196,7 @@ public class GroupPermissionChangerIT {
 
     apply(new GroupPermissionChange(PermissionChange.Operation.ADD, UserRole.CODEVIEWER, publicProject, groupUuid, permissionService));
 
-    assertThat(db.users().selectAnyonePermissions(publicProject)).isEmpty();
+    assertThat(db.users().selectAnyonePermissions(publicProject.getUuid())).isEmpty();
   }
 
   @Test
@@ -213,7 +214,7 @@ public class GroupPermissionChangerIT {
 
     apply(new GroupPermissionChange(PermissionChange.Operation.ADD, UserRole.ISSUE_ADMIN, publicProject, groupUuid, permissionService));
 
-    assertThat(db.users().selectAnyonePermissions(publicProject)).containsOnly(UserRole.ISSUE_ADMIN);
+    assertThat(db.users().selectAnyonePermissions(publicProject.getUuid())).containsOnly(UserRole.ISSUE_ADMIN);
   }
 
   @Test
@@ -222,7 +223,7 @@ public class GroupPermissionChangerIT {
 
     apply(new GroupPermissionChange(PermissionChange.Operation.ADD, GlobalPermission.SCAN.getKey(), publicProject, groupUuid, permissionService));
 
-    assertThat(db.users().selectAnyonePermissions(publicProject)).containsOnly(GlobalPermission.SCAN.getKey());
+    assertThat(db.users().selectAnyonePermissions(publicProject.getUuid())).containsOnly(GlobalPermission.SCAN.getKey());
   }
 
   @Test
@@ -264,7 +265,7 @@ public class GroupPermissionChangerIT {
 
     apply(new GroupPermissionChange(PermissionChange.Operation.REMOVE, permission, publicProject, groupUuid, permissionService));
 
-    assertThat(db.users().selectAnyonePermissions(publicProject)).isEmpty();
+    assertThat(db.users().selectAnyonePermissions(publicProject.getUuid())).isEmpty();
   }
 
   @Test
@@ -373,8 +374,8 @@ public class GroupPermissionChangerIT {
   public void remove_project_permission_from_group() {
     GroupUuidOrAnyone groupUuid = GroupUuidOrAnyone.from(group);
     db.users().insertPermissionOnGroup(group, ADMINISTER_QUALITY_GATES);
-    db.users().insertProjectPermissionOnGroup(group, UserRole.ISSUE_ADMIN, privateProject);
-    db.users().insertProjectPermissionOnGroup(group, UserRole.CODEVIEWER, privateProject);
+    db.users().insertEntityPermissionOnGroup(group, UserRole.ISSUE_ADMIN, privateProject);
+    db.users().insertEntityPermissionOnGroup(group, UserRole.CODEVIEWER, privateProject);
 
     apply(new GroupPermissionChange(PermissionChange.Operation.REMOVE, UserRole.ISSUE_ADMIN, privateProject, groupUuid, permissionService));
 
@@ -424,8 +425,8 @@ public class GroupPermissionChangerIT {
       .setUuid(Uuids.createFast())
       .setGroupUuid(null)
       .setRole(perm)
-      .setComponentUuid(privateProject.uuid())
-      .setComponentName(privateProject.name());
+      .setEntityUuid(privateProject.getUuid())
+      .setEntityName(privateProject.getName());
     db.getDbClient().groupPermissionDao().insert(db.getSession(), dto, privateProject, null);
     db.commit();
   }

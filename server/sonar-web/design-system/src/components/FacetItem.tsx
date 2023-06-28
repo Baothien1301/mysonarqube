@@ -26,8 +26,9 @@ import { ButtonProps, ButtonSecondary } from './buttons';
 
 export type FacetItemProps = Omit<ButtonProps, 'name' | 'onClick'> & {
   active?: boolean;
-  name: string;
+  name: string | React.ReactNode;
   onClick: (x: string, multiple?: boolean) => void;
+  small?: boolean;
   stat?: React.ReactNode;
   /** Textual version of `name` */
   tooltip?: string;
@@ -41,11 +42,14 @@ export function FacetItem({
   icon,
   name,
   onClick,
+  small,
   stat,
   tooltip,
   value,
 }: FacetItemProps) {
-  const disabled = disabledProp || (stat as number) === 0;
+  // alow an active facet to be disabled even if it now has a "0" stat
+  // (it was activated when a different value of My issues/All/New code was selected)
+  const disabled = disabledProp || (!active && stat !== undefined && stat === 0);
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -56,12 +60,15 @@ export function FacetItem({
   return (
     <StyledButton
       active={active}
+      aria-checked={active}
+      aria-label={typeof name === 'string' ? name : undefined}
       className={className}
       data-facet={value}
       disabled={disabled}
       icon={icon}
       onClick={handleClick}
-      role="listitem"
+      role="checkbox"
+      small={small}
       title={tooltip}
     >
       <span className="container">
@@ -72,10 +79,17 @@ export function FacetItem({
   );
 }
 
-const StyledButton = styled(ButtonSecondary)<{ active?: boolean }>`
+FacetItem.displayName = 'FacetItem'; // so that tests don't see the obfuscated production name
+
+const StyledButton = styled(ButtonSecondary)<{ active?: boolean; small?: boolean }>`
   ${tw`sw-body-sm`};
-  ${tw`sw-p-1`};
+  ${tw`sw-box-border`};
+  ${tw`sw-h-7`};
+  ${tw`sw-px-1`};
   ${tw`sw-rounded-1`};
+  ${tw`sw-w-full`};
+
+  ${({ small }) => (small ? tw`sw-body-xs sw-pr-0` : '')};
 
   --background: ${({ active }) => (active ? themeColor('facetItemSelected') : 'transparent')};
   --backgroundHover: ${({ active }) => (active ? themeColor('facetItemSelected') : 'transparent')};
@@ -94,6 +108,16 @@ const StyledButton = styled(ButtonSecondary)<{ active?: boolean }>`
     ${tw`sw-flex`};
     ${tw`sw-items-center`};
     ${tw`sw-justify-between`};
+
+    & span.name {
+      ${tw`sw-pr-1`};
+      ${tw`sw-truncate`};
+
+      & mark {
+        background-color: ${themeColor('searchHighlight')};
+        font-weight: 400;
+      }
+    }
 
     & span.stat {
       color: ${themeColor('facetItemLight')};

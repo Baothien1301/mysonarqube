@@ -17,37 +17,37 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
+import { DiscreetSelect } from 'design-system';
 import * as React from 'react';
 import { setIssueSeverity } from '../../../api/issues';
-import Toggler from '../../../components/controls/Toggler';
-import { ButtonLink } from '../../../components/controls/buttons';
-import DropdownIcon from '../../../components/icons/DropdownIcon';
+import { SEVERITIES } from '../../../helpers/constants';
 import { translate, translateWithParameters } from '../../../helpers/l10n';
-import { IssueResponse } from '../../../types/issues';
+import { IssueResponse, IssueSeverity as IssueSeverityType } from '../../../types/issues';
 import { Issue, RawQuery } from '../../../types/types';
-import SeverityHelper from '../../shared/SeverityHelper';
-import SetSeverityPopup from '../popups/SetSeverityPopup';
+import IssueSeverityIcon from '../../icon-mappers/IssueSeverityIcon';
 
 interface Props {
   canSetSeverity: boolean;
   isOpen: boolean;
   issue: Pick<Issue, 'severity'>;
+  togglePopup: (popup: string, show?: boolean) => void;
   setIssueProperty: (
     property: keyof Issue,
     popup: string,
     apiCall: (query: RawQuery) => Promise<IssueResponse>,
     value: string
   ) => void;
-  togglePopup: (popup: string, show?: boolean) => void;
 }
 
 export default class IssueSeverity extends React.PureComponent<Props> {
-  toggleSetSeverity = (open?: boolean) => {
-    this.props.togglePopup('set-severity', open);
+  setSeverity = ({ value }: { value: string }) => {
+    this.props.setIssueProperty('severity', 'set-severity', setIssueSeverity, value);
+    this.toggleSetSeverity(false);
   };
 
-  setSeverity = (severity: string) => {
-    this.props.setIssueProperty('severity', 'set-severity', setIssueSeverity, severity);
+  toggleSetSeverity = (open: boolean) => {
+    this.props.togglePopup('set-severity', open);
   };
 
   handleClose = () => {
@@ -56,31 +56,37 @@ export default class IssueSeverity extends React.PureComponent<Props> {
 
   render() {
     const { issue } = this.props;
+
+    const typesOptions = SEVERITIES.map((severity) => ({
+      label: translate('severity', severity),
+      value: severity,
+      Icon: <IssueSeverityIcon severity={severity} aria-hidden />,
+    }));
+
     if (this.props.canSetSeverity) {
       return (
-        <div className="dropdown">
-          <Toggler
-            onRequestClose={this.handleClose}
-            open={this.props.isOpen && this.props.canSetSeverity}
-            overlay={<SetSeverityPopup issue={issue} onSelect={this.setSeverity} />}
-          >
-            <ButtonLink
-              aria-label={translateWithParameters(
-                'issue.severity.severity_x_click_to_change',
-                translate('severity', issue.severity)
-              )}
-              aria-expanded={this.props.isOpen}
-              className="issue-action issue-action-with-options js-issue-set-severity"
-              onClick={this.toggleSetSeverity}
-            >
-              <SeverityHelper className="issue-meta-label" severity={issue.severity} />
-              <DropdownIcon className="little-spacer-left" />
-            </ButtonLink>
-          </Toggler>
-        </div>
+        <DiscreetSelect
+          aria-label={translateWithParameters(
+            'issue.severity.severity_x_click_to_change',
+            translate('severity', issue.severity)
+          )}
+          menuIsOpen={this.props.isOpen && this.props.canSetSeverity}
+          className="it__issue-severity"
+          options={typesOptions}
+          onMenuClose={this.handleClose}
+          onMenuOpen={() => this.toggleSetSeverity(true)}
+          setValue={this.setSeverity}
+          value={issue.severity}
+        />
       );
     }
 
-    return <SeverityHelper className="issue-meta-label" severity={issue.severity} />;
+    return (
+      <span className="sw-flex sw-items-center sw-gap-1">
+        <IssueSeverityIcon severity={issue.severity as IssueSeverityType} aria-hidden />
+
+        {translate('severity', issue.severity)}
+      </span>
+    );
   }
 }

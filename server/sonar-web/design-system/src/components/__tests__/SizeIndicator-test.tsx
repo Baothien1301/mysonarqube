@@ -25,14 +25,17 @@ import { FCProps } from '../../types/misc';
 import { SizeLabel } from '../../types/measures';
 import { SizeIndicator } from '../SizeIndicator';
 
-it.each(['XS', 'S', 'M', 'L', 'XL'])(
-  'should display SizeIndicator with size',
-  (value: SizeLabel) => {
-    setupWithProps({ value });
-    expect(screen.getByText(value)).toBeInTheDocument();
-  }
-);
+it.each([
+  [100, 'XS'],
+  [1100, 'S'],
+  [20_000, 'M'],
+  [200_000, 'L'],
+  [1_000_000, 'XL'],
+])('should display SizeIndicator with size', (value: number, letter: SizeLabel) => {
+  setupWithProps({ value });
+  expect(screen.getByText(letter)).toBeInTheDocument();
+});
 
 function setupWithProps(props: Partial<FCProps<typeof SizeIndicator>> = {}) {
-  return render(<SizeIndicator value="XS" {...props} />);
+  return render(<SizeIndicator value={0} {...props} />);
 }

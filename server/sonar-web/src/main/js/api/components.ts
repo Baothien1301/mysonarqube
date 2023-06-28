@@ -18,7 +18,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import { throwGlobalError } from '../helpers/error';
-import { getJSON, post, postJSON, RequestData } from '../helpers/request';
+import { getJSON, post, RequestData } from '../helpers/request';
 import { BranchParameters } from '../types/branch-like';
 import {
   ComponentQualifier,
@@ -54,44 +54,16 @@ export interface ProjectBase {
   visibility: Visibility;
 }
 
-export interface Project extends ProjectBase {
-  id: string;
-  lastAnalysisDate?: string;
-}
-
-export interface SearchProjectsParameters extends BaseSearchProjectsParameters {
-  p?: number;
-  ps?: number;
-}
-
-export function getComponents(parameters: SearchProjectsParameters): Promise<{
-  components: Project[];
-  paging: Paging;
-}> {
-  return getJSON('/api/projects/search', parameters);
-}
-
-export function bulkDeleteProjects(
-  parameters: BaseSearchProjectsParameters
-): Promise<void | Response> {
-  return post('/api/projects/bulk_delete', parameters).catch(throwGlobalError);
-}
-
-export function deleteProject(project: string): Promise<void | Response> {
-  return post('/api/projects/delete', { project }).catch(throwGlobalError);
-}
-
-export function deletePortfolio(portfolio: string): Promise<void | Response> {
-  return post('/api/views/delete', { key: portfolio }).catch(throwGlobalError);
-}
-
-export function createProject(data: {
+export interface ComponentRaw {
+  key: string;
   name: string;
-  project: string;
-  mainBranch: string;
-  visibility?: Visibility;
-}): Promise<{ project: ProjectBase }> {
-  return postJSON('/api/projects/create', data).catch(throwGlobalError);
+  isFavorite?: boolean;
+  analysisDate?: string;
+  qualifier: ComponentQualifier;
+  tags: string[];
+  visibility: Visibility;
+  leakPeriodDate?: string;
+  needIssueSync?: boolean;
 }
 
 export function searchProjectTags(data?: { ps?: number; q?: string }): Promise<any> {
@@ -168,7 +140,10 @@ export function getDirectories(data: GetTreeParams) {
   return getTree<TreeComponentWithPath>({ ...data, qualifiers: 'DIR' });
 }
 
-export function getComponentData(data: { component: string } & BranchParameters): Promise<any> {
+export function getComponentData(data: { component: string } & BranchParameters): Promise<{
+  ancestors: Array<Omit<ComponentRaw, 'tags'>>;
+  component: Omit<ComponentRaw, 'tags'>;
+}> {
   return getJSON('/api/components/show', data);
 }
 
@@ -189,7 +164,9 @@ export function getParents(component: string): Promise<any> {
   return getComponentShow({ component }).then((r) => r.ancestors);
 }
 
-export function getBreadcrumbs(data: { component: string } & BranchParameters): Promise<any> {
+export function getBreadcrumbs(
+  data: { component: string } & BranchParameters
+): Promise<Array<Omit<ComponentRaw, 'tags'>>> {
   return getComponentShow(data).then((r) => {
     const reversedAncestors = [...r.ancestors].reverse();
     return [...reversedAncestors, r.component];
@@ -203,26 +180,13 @@ export function getMyProjects(data: {
   return getJSON('/api/projects/search_my_projects', data);
 }
 
-export interface Component {
-  id: string;
-  key: string;
-  name: string;
-  isFavorite?: boolean;
-  analysisDate?: string;
-  qualifier: ComponentQualifier;
-  tags: string[];
-  visibility: Visibility;
-  leakPeriodDate?: string;
-  needIssueSync?: boolean;
-}
-
 export interface Facet {
   property: string;
   values: Array<{ val: string; count: number }>;
 }
 
 export function searchProjects(data: RequestData): Promise<{
-  components: Component[];
+  components: ComponentRaw[];
   facets: Facet[];
   paging: Paging;
 }> {

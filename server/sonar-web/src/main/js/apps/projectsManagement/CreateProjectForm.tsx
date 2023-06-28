@@ -19,12 +19,12 @@
  */
 import * as React from 'react';
 import { FormattedMessage } from 'react-intl';
-import { createProject } from '../../api/components';
+import { createProject } from '../../api/project-management';
 import { getValue } from '../../api/settings';
 import Link from '../../components/common/Link';
 import VisibilitySelector from '../../components/common/VisibilitySelector';
-import { ResetButtonLink, SubmitButton } from '../../components/controls/buttons';
 import Modal from '../../components/controls/Modal';
+import { ResetButtonLink, SubmitButton } from '../../components/controls/buttons';
 import { Alert } from '../../components/ui/Alert';
 import MandatoryFieldMarker from '../../components/ui/MandatoryFieldMarker';
 import MandatoryFieldsExplanation from '../../components/ui/MandatoryFieldsExplanation';
@@ -130,13 +130,14 @@ export default class CreateProjectForm extends React.PureComponent<Props, State>
   render() {
     const { defaultProjectVisibility } = this.props;
     const { createdProject } = this.state;
+    const header = translate('qualifiers.create.TRK');
 
     return (
-      <Modal contentLabel="modal form" onRequestClose={this.props.onClose}>
+      <Modal contentLabel={header} onRequestClose={this.props.onClose}>
         {createdProject ? (
           <div>
             <header className="modal-head">
-              <h2>{translate('qualifiers.create.TRK')}</h2>
+              <h2>{header}</h2>
             </header>
 
             <div className="modal-body">
@@ -168,7 +169,7 @@ export default class CreateProjectForm extends React.PureComponent<Props, State>
         ) : (
           <form id="create-project-form" onSubmit={this.handleFormSubmit}>
             <header className="modal-head">
-              <h2>{translate('qualifiers.create.TRK')}</h2>
+              <h2>{header}</h2>
             </header>
 
             <div className="modal-body">
@@ -179,12 +180,12 @@ export default class CreateProjectForm extends React.PureComponent<Props, State>
                   <MandatoryFieldMarker />
                 </label>
                 <input
-                  autoFocus={true}
+                  autoFocus
                   id="create-project-name"
                   maxLength={2000}
                   name="name"
                   onChange={this.handleInputChange}
-                  required={true}
+                  required
                   type="text"
                   value={this.state.name}
                 />
@@ -199,7 +200,7 @@ export default class CreateProjectForm extends React.PureComponent<Props, State>
                   maxLength={400}
                   name="key"
                   onChange={this.handleInputChange}
-                  required={true}
+                  required
                   type="text"
                   value={this.state.key}
                 />
@@ -214,7 +215,7 @@ export default class CreateProjectForm extends React.PureComponent<Props, State>
                   maxLength={400}
                   name="mainBranchName"
                   onChange={this.handleInputChange}
-                  required={true}
+                  required
                   type="text"
                   value={this.state.mainBranchName}
                 />

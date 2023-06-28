@@ -64,7 +64,7 @@ public interface PurgeMapper {
 
   void deleteProjectLinksByProjectUuid(@Param("rootUuid") String rootUuid);
 
-  void deletePropertiesByComponentUuids(@Param("componentUuids") List<String> componentUuids);
+  void deletePropertiesByEntityUuids(@Param("entityUuids") List<String> entityUuids);
 
   void deleteComponentsByBranchUuid(@Param("rootUuid") String rootUuid);
 
@@ -74,9 +74,9 @@ public interface PurgeMapper {
 
   void deleteComponentsByUuids(@Param("componentUuids") List<String> componentUuids);
 
-  void deleteGroupRolesByComponentUuid(@Param("rootUuid") String rootUuid);
+  void deleteGroupRolesByEntityUuid(@Param("entityUuid") String entityUuid);
 
-  void deleteUserRolesByComponentUuid(@Param("rootUuid") String rootUuid);
+  void deleteUserRolesByEntityUuid(@Param("entityUuid") String entityUuid);
 
   void deleteEventsByComponentUuid(@Param("componentUuid") String componentUuid);
 
@@ -143,8 +143,6 @@ public interface PurgeMapper {
 
   void deleteWebhookDeliveriesByProjectUuid(@Param("projectUuid") String projectUuid);
 
-  void deleteProjectMappingsByProjectUuid(@Param("projectUuid") String projectUuid);
-
   void deleteAppProjectsByAppUuid(@Param("applicationUuid") String applicationUuid);
 
   void deleteAppProjectsByProjectUuid(@Param("projectUuid") String projectUuid);
@@ -178,4 +176,12 @@ public interface PurgeMapper {
   void deleteUserDismissedMessagesByProjectUuid(@Param("projectUuid") String projectUuid);
 
   void deleteScannerAnalysisCacheByBranchUuid(@Param("branchUuid") String branchUuid);
+
+  void deleteReportSchedulesByBranchUuid(@Param("branchUuid") String branchUuid);
+
+  void deleteReportSubscriptionsByBranchUuid(@Param("branchUuid") String branchUuid);
+
+  void deleteReportSchedulesByPortfolioUuids(@Param("portfolioUuids") List<String> portfolioUuids);
+
+  void deleteReportSubscriptionsByPortfolioUuids(@Param("portfolioUuids") List<String>  portfolioUuids);
 }

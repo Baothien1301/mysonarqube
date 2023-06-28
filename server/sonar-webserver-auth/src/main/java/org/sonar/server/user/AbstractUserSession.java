@@ -28,8 +28,8 @@ import javax.annotation.Nullable;
 import org.sonar.api.web.UserRole;
 import org.sonar.core.util.stream.MoreCollectors;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.permission.GlobalPermission;
-import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.UserDto;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.UnauthorizedException;
@@ -88,33 +88,32 @@ public abstract class AbstractUserSession implements UserSession {
 
   @Override
   public boolean hasComponentPermission(String permission, ComponentDto component) {
-
-    Optional<String> projectUuid1 = componentUuidToProjectUuid(component.uuid());
+    Optional<String> projectUuid1 = componentUuidToEntityUuid(component.uuid());
 
     return projectUuid1
-      .map(projectUuid -> hasProjectUuidPermission(permission, projectUuid))
+      .map(projectUuid -> hasEntityUuidPermission(permission, projectUuid))
       .orElse(false);
   }
 
   @Override
-  public final boolean hasProjectPermission(String permission, ProjectDto project) {
-    return hasProjectUuidPermission(permission, project.getUuid());
+  public final boolean hasEntityPermission(String permission, EntityDto entity) {
+    return hasEntityUuidPermission(permission, entity.getAuthUuid());
   }
 
   @Override
-  public final boolean hasProjectPermission(String permission, String projectUuid) {
-    return hasProjectUuidPermission(permission, projectUuid);
+  public final boolean hasEntityPermission(String permission, String entityUuid) {
+    return hasEntityUuidPermission(permission, entityUuid);
   }
 
   @Override
   public final boolean hasChildProjectsPermission(String permission, ComponentDto component) {
-    return componentUuidToProjectUuid(component.uuid())
+    return componentUuidToEntityUuid(component.uuid())
       .map(applicationUuid -> hasChildProjectsPermission(permission, applicationUuid)).orElse(false);
   }
 
   @Override
-  public final boolean hasChildProjectsPermission(String permission, ProjectDto project) {
-    return hasChildProjectsPermission(permission, project.getUuid());
+  public final boolean hasChildProjectsPermission(String permission, EntityDto application) {
+    return hasChildProjectsPermission(permission, application.getUuid());
   }
 
   @Override
@@ -124,15 +123,15 @@ public abstract class AbstractUserSession implements UserSession {
 
   @Override
   public boolean hasComponentUuidPermission(String permission, String componentUuid) {
-    Optional<String> projectUuid = componentUuidToProjectUuid(componentUuid);
-    return projectUuid
-      .map(s -> hasProjectUuidPermission(permission, s))
+    Optional<String> entityUuid = componentUuidToEntityUuid(componentUuid);
+    return entityUuid
+      .map(s -> hasEntityUuidPermission(permission, s))
       .orElse(false);
   }
 
-  protected abstract Optional<String> componentUuidToProjectUuid(String componentUuid);
+  protected abstract Optional<String> componentUuidToEntityUuid(String componentUuid);
 
-  protected abstract boolean hasProjectUuidPermission(String permission, String projectUuid);
+  protected abstract boolean hasEntityUuidPermission(String permission, String entityUuid);
 
   protected abstract boolean hasChildProjectsPermission(String permission, String applicationUuid);
 
@@ -144,18 +143,18 @@ public abstract class AbstractUserSession implements UserSession {
   }
 
   @Override
-  public List<ProjectDto> keepAuthorizedProjects(String permission, Collection<ProjectDto> projects) {
-    return doKeepAuthorizedProjects(permission, projects);
+  public  <T extends EntityDto>  List<T> keepAuthorizedEntities(String permission, Collection<T> projects) {
+    return doKeepAuthorizedEntities(permission, projects);
   }
 
   /**
    * Naive implementation, to be overridden if needed
    */
-  protected List<ProjectDto> doKeepAuthorizedProjects(String permission, Collection<ProjectDto> projects) {
+  protected  <T extends EntityDto> List<T> doKeepAuthorizedEntities(String permission, Collection<T> entities) {
     boolean allowPublicComponent = PUBLIC_PERMISSIONS.contains(permission);
-    return projects.stream()
-      .filter(c -> (allowPublicComponent && !c.isPrivate()) || hasProjectPermission(permission, c))
-      .collect(MoreCollectors.toList());
+    return entities.stream()
+      .filter(c -> (allowPublicComponent && !c.isPrivate()) || hasEntityPermission(permission, c.getUuid()))
+      .toList();
   }
 
   /**
@@ -193,8 +192,8 @@ public abstract class AbstractUserSession implements UserSession {
   }
 
   @Override
-  public UserSession checkProjectPermission(String projectPermission, ProjectDto project) {
-    if (hasProjectUuidPermission(projectPermission, project.getUuid())) {
+  public UserSession checkEntityPermission(String projectPermission, EntityDto entity) {
+    if (hasEntityPermission(projectPermission, entity)) {
       return this;
     }
 
@@ -211,7 +210,7 @@ public abstract class AbstractUserSession implements UserSession {
   }
 
   @Override
-  public UserSession checkChildProjectsPermission(String projectPermission, ProjectDto application) {
+  public UserSession checkChildProjectsPermission(String projectPermission, EntityDto application) {
     if (!APP.equals(application.getQualifier()) || hasChildProjectsPermission(projectPermission, application)) {
       return this;
     }

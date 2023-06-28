@@ -20,19 +20,19 @@
 import * as React from 'react';
 import RadioCard from '../../../components/controls/RadioCard';
 import { translate } from '../../../helpers/l10n';
-import { NewCodePeriodSettingType } from '../../../types/types';
+import { NewCodeDefinitionType } from '../../../types/new-code-definition';
 
 export interface Props {
-  disabled?: boolean;
-  onSelect: (selection: NewCodePeriodSettingType) => void;
+  onSelect: (selection: NewCodeDefinitionType) => void;
   selected: boolean;
 }
 
-export default function BaselineSettingAnalysis({ disabled, onSelect, selected }: Props) {
+export default function BaselineSettingAnalysis({ onSelect, selected }: Props) {
   return (
     <RadioCard
-      disabled={disabled}
-      onClick={() => onSelect(NewCodePeriodSettingType.SPECIFIC_ANALYSIS)}
+      noRadio
+      disabled
+      onClick={() => onSelect(NewCodeDefinitionType.SpecificAnalysis)}
       selected={selected}
       title={translate('baseline.specific_analysis')}
     >

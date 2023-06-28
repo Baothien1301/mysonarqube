@@ -17,23 +17,30 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import classNames from 'classnames';
+
+import styled from '@emotion/styled';
+import {
+  CodeSyntaxHighlighter,
+  FlagMessage,
+  HtmlFormatter,
+  ToggleButton,
+  themeBorder,
+  themeColor,
+} from 'design-system';
 import * as React from 'react';
 import { RuleDescriptionSection } from '../../apps/coding-rules/rule';
 import applyCodeDifferences from '../../helpers/code-difference';
 import { translate, translateWithParameters } from '../../helpers/l10n';
 import { sanitizeString } from '../../helpers/sanitize';
-import ButtonToggle from '../controls/ButtonToggle';
-import { Alert } from '../ui/Alert';
 import OtherContextOption from './OtherContextOption';
 
 const OTHERS_KEY = 'others';
 
 interface Props {
-  isDefault?: boolean;
-  sections: RuleDescriptionSection[];
-  defaultContextKey?: string;
   className?: string;
+  defaultContextKey?: string;
+  language?: string;
+  sections: RuleDescriptionSection[];
 }
 
 interface State {
@@ -104,13 +111,14 @@ export default class RuleDescription extends React.PureComponent<Props, State> {
     const { contexts } = this.state;
 
     const selected = contexts.find((ctxt) => ctxt.displayName === value);
+
     if (selected) {
       this.setState({ selectedContext: selected });
     }
   };
 
   render() {
-    const { className, sections, isDefault } = this.props;
+    const { className, language, sections } = this.props;
     const { contexts, defaultContext, selectedContext } = this.state;
 
     const options = contexts.map((ctxt) => ({
@@ -120,70 +128,104 @@ export default class RuleDescription extends React.PureComponent<Props, State> {
 
     if (contexts.length > 0 && selectedContext) {
       return (
-        <div
-          className={classNames(className, {
-            markdown: isDefault,
-            'rule-desc': !isDefault,
-          })}
-          ref={(node) => {
+        <StyledHtmlFormatter
+          className={className}
+          ref={(node: HTMLDivElement) => {
             applyCodeDifferences(node);
           }}
         >
-          <div className="rules-context-description">
-            <h2 className="rule-contexts-title">
-              {translate('coding_rules.description_context.title')}
-            </h2>
-            {defaultContext && (
-              <Alert variant="info" display="inline" className="big-spacer-bottom">
-                {translateWithParameters(
-                  'coding_rules.description_context.default_information',
-                  defaultContext.displayName
-                )}
-              </Alert>
-            )}
-            <div className="big-spacer-bottom">
-              <ButtonToggle
-                label={translate('coding_rules.description_context.title')}
-                onCheck={this.handleToggleContext}
-                options={options}
-                value={selectedContext.displayName}
-              />
-              {selectedContext.key !== OTHERS_KEY && (
-                <h2>
-                  {translateWithParameters(
-                    'coding_rules.description_context.sub_title',
-                    selectedContext.displayName
-                  )}
-                </h2>
+          <h2 className="sw-body-sm-highlight sw-mb-4">
+            {translate('coding_rules.description_context.title')}
+          </h2>
+
+          {defaultContext && (
+            <FlagMessage variant="info" className="sw-mb-4">
+              {translateWithParameters(
+                'coding_rules.description_context.default_information',
+                defaultContext.displayName
               )}
-            </div>
-            {selectedContext.key === OTHERS_KEY ? (
-              <OtherContextOption />
-            ) : (
-              <div
-                /* eslint-disable-next-line react/no-danger */
-                dangerouslySetInnerHTML={{ __html: sanitizeString(selectedContext.content) }}
-              />
+            </FlagMessage>
+          )}
+
+          <div className="sw-mb-4">
+            <ToggleButton
+              label={translate('coding_rules.description_context.title')}
+              onChange={this.handleToggleContext}
+              options={options}
+              value={selectedContext.displayName}
+            />
+
+            {selectedContext.key !== OTHERS_KEY && (
+              <h2>
+                {translateWithParameters(
+                  'coding_rules.description_context.sub_title',
+                  selectedContext.displayName
+                )}
+              </h2>
             )}
           </div>
-        </div>
+
+          {selectedContext.key === OTHERS_KEY ? (
+            <OtherContextOption />
+          ) : (
+            <CodeSyntaxHighlighter
+              htmlAsString={sanitizeString(selectedContext.content)}
+              language={language}
+            />
+          )}
+        </StyledHtmlFormatter>
       );
     }
 
     return (
-      <div
-        className={classNames(className, {
-          markdown: isDefault,
-          'rule-desc': !isDefault,
-        })}
-        ref={(node) => {
+      <StyledHtmlFormatter
+        className={className}
+        ref={(node: HTMLDivElement) => {
           applyCodeDifferences(node);
         }}
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{
-          __html: sanitizeString(sections[0].content),
-        }}
-      />
+      >
+        <CodeSyntaxHighlighter
+          htmlAsString={sanitizeString(sections[0].content)}
+          language={language}
+        />
+      </StyledHtmlFormatter>
     );
   }
 }
+
+const StyledHtmlFormatter = styled(HtmlFormatter)`
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+
+  .code-difference-container {
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    min-width: 100%;
+  }
+
+  .code-difference-scrollable {
+    background-color: ${themeColor('codeSnippetBackground')};
+    border: ${themeBorder('default', 'codeSnippetBorder')};
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    overflow-x: auto;
+  }
+
+  .code-difference-scrollable .code-added,
+  .code-difference-scrollable .code-removed {
+    padding-left: 1.5rem;
+    margin-left: -1.5rem;
+    padding-right: 1.5rem;
+    margin-right: -1.5rem;
+    border-radius: 0;
+  }
+
+  .code-difference-scrollable .code-added {
+    background-color: ${themeColor('codeLineCoveredUnderline')};
+  }
+
+  .code-difference-scrollable .code-removed {
+    background-color: ${themeColor('codeLineUncoveredUnderline')};
+  }
+`;

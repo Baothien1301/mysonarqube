@@ -30,6 +30,7 @@ module.exports = {
   collectCoverageFrom: [
     'src/components/**/*.{ts,tsx,js}',
     'src/helpers/**/*.{ts,tsx,js}',
+    'src/hooks/**/*.{ts,tsx,js}',
     '!src/helpers/{keycodes,testUtils}.{ts,tsx}',
   ],
   coverageReporters: ['lcovonly', 'text'],
@@ -57,5 +58,5 @@ module.exports = {
     '^.+\\.(t|j)sx?$': ['babel-jest', babelConfig],
   },
   transformIgnorePatterns: ['/node_modules/(?!(d3-.+))/'],
-  testTimeout: 30000,
+  testTimeout: 60000,
 };

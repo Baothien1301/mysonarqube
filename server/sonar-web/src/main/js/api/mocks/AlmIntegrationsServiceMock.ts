@@ -57,6 +57,11 @@ import {
   searchForBitbucketCloudRepositories,
   searchForBitbucketServerRepositories,
   setAlmPersonalAccessToken,
+  setupAzureProjectCreation,
+  setupBitbucketCloudProjectCreation,
+  setupBitbucketServerProjectCreation,
+  setupGitlabProjectCreation,
+  setupGithubProjectCreation,
 } from '../alm-integrations';
 
 export default class AlmIntegrationsServiceMock {
@@ -184,7 +189,9 @@ export default class AlmIntegrationsServiceMock {
       .mockImplementation(this.checkPersonalAccessTokenIsValid);
     jest.mocked(setAlmPersonalAccessToken).mockImplementation(this.setAlmPersonalAccessToken);
     jest.mocked(getGitlabProjects).mockImplementation(this.getGitlabProjects);
+    jest.mocked(setupGitlabProjectCreation).mockReturnValue(() => this.importProject());
     jest.mocked(importGitlabProject).mockImplementation(this.importProject);
+    jest.mocked(setupBitbucketCloudProjectCreation).mockReturnValue(() => this.importProject());
     jest.mocked(importBitbucketCloudRepository).mockImplementation(this.importProject);
     jest.mocked(getGithubClientId).mockImplementation(this.getGithubClientId);
     jest.mocked(getGithubOrganizations).mockImplementation(this.getGithubOrganizations);
@@ -192,7 +199,9 @@ export default class AlmIntegrationsServiceMock {
     jest.mocked(getAzureRepositories).mockImplementation(this.getAzureRepositories);
     jest.mocked(getGithubRepositories).mockImplementation(this.getGithubRepositories);
     jest.mocked(searchAzureRepositories).mockImplementation(this.searchAzureRepositories);
+    jest.mocked(setupAzureProjectCreation).mockReturnValue(() => this.importAzureRepository());
     jest.mocked(importAzureRepository).mockImplementation(this.importAzureRepository);
+    jest.mocked(setupGithubProjectCreation).mockReturnValue(() => this.importGithubRepository());
     jest.mocked(importGithubRepository).mockImplementation(this.importGithubRepository);
     jest
       .mocked(searchForBitbucketCloudRepositories)
@@ -202,6 +211,9 @@ export default class AlmIntegrationsServiceMock {
       .mocked(getBitbucketServerRepositories)
       .mockImplementation(this.getBitbucketServerRepositories);
     jest.mocked(importBitbucketServerProject).mockImplementation(this.importBitbucketServerProject);
+    jest
+      .mocked(setupBitbucketServerProjectCreation)
+      .mockReturnValue(() => this.importBitbucketServerProject());
     jest
       .mocked(searchForBitbucketServerRepositories)
       .mockImplementation(this.searchForBitbucketServerRepositories);

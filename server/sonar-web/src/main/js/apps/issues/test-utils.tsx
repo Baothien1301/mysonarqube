@@ -19,27 +19,31 @@
  */
 import { waitFor } from '@testing-library/react';
 import React from 'react';
-import { byLabelText, byRole } from 'testing-library-selector';
 import ComponentsServiceMock from '../../api/mocks/ComponentsServiceMock';
 import IssuesServiceMock from '../../api/mocks/IssuesServiceMock';
 import { mockComponent } from '../../helpers/mocks/component';
 import { mockCurrentUser } from '../../helpers/testMocks';
 import { renderApp, renderAppWithComponentContext } from '../../helpers/testReactTestingUtils';
+import { byLabelText, byPlaceholderText, byRole, byTestId } from '../../helpers/testSelector';
 import { Component } from '../../types/types';
 import { CurrentUser } from '../../types/users';
 import IssuesApp from './components/IssuesApp';
 import { projectIssuesRoutes } from './routes';
-
-jest.mock('../../api/issues');
-jest.mock('../../api/rules');
-jest.mock('../../api/components');
-jest.mock('../../api/users');
 
 export const issuesHandler = new IssuesServiceMock();
 export const componentsHandler = new ComponentsServiceMock();
 
 export const ui = {
   loading: byLabelText('loading'),
+  issueItemAction1: byRole('link', { name: 'Issue with no location message' }),
+  issueItemAction2: byRole('link', { name: 'FlowIssue' }),
+  issueItemAction3: byRole('link', { name: 'Issue on file' }),
+  issueItemAction4: byRole('link', { name: 'Fix this' }),
+  issueItemAction5: byRole('link', { name: 'Fix that' }),
+  issueItemAction6: byRole('link', { name: 'Second issue' }),
+  issueItemAction7: byRole('link', { name: 'Issue with tags' }),
+  issueItemAction8: byRole('link', { name: 'Issue on page 2' }),
+
   issueItems: byRole('region'),
 
   issueItem1: byRole('region', { name: 'Issue with no location message' }),
@@ -50,45 +54,52 @@ export const ui = {
   issueItem6: byRole('region', { name: 'Second issue' }),
   issueItem7: byRole('region', { name: 'Issue with tags' }),
   issueItem8: byRole('region', { name: 'Issue on page 2' }),
+  projectIssueItem6: byRole('button', { name: 'Second issue', exact: false }),
 
-  clearIssueTypeFacet: byRole('button', { name: 'clear_x_filter.issues.facet.types' }),
-  codeSmellIssueTypeFilter: byRole('checkbox', { name: 'issue.type.CODE_SMELL' }),
-  vulnerabilityIssueTypeFilter: byRole('checkbox', { name: 'issue.type.VULNERABILITY' }),
-  clearSeverityFacet: byRole('button', { name: 'clear_x_filter.issues.facet.severities' }),
-  majorSeverityFilter: byRole('checkbox', { name: 'severity.MAJOR' }),
-  scopeFacet: byRole('button', { name: 'issues.facet.scopes' }),
-  clearScopeFacet: byRole('button', { name: 'clear_x_filter.issues.facet.scopes' }),
-  mainScopeFilter: byRole('checkbox', { name: 'issue.scope.MAIN' }),
-  resolutionFacet: byRole('button', { name: 'issues.facet.resolutions' }),
-  clearResolutionFacet: byRole('button', { name: 'clear_x_filter.issues.facet.resolutions' }),
-  fixedResolutionFilter: byRole('checkbox', { name: 'issue.resolution.FIXED' }),
-  statusFacet: byRole('button', { name: 'issues.facet.statuses' }),
-  creationDateFacet: byRole('button', { name: 'issues.facet.createdAt' }),
-  clearCreationDateFacet: byRole('button', { name: 'clear_x_filter.issues.facet.createdAt' }),
-  clearStatusFacet: byRole('button', { name: 'clear_x_filter.issues.facet.statuses' }),
-  openStatusFilter: byRole('checkbox', { name: 'issue.status.OPEN' }),
-  confirmedStatusFilter: byRole('checkbox', { name: 'issue.status.CONFIRMED' }),
-  languageFacet: byRole('button', { name: 'issues.facet.languages' }),
-  ruleFacet: byRole('button', { name: 'issues.facet.rules' }),
-  clearRuleFacet: byRole('button', { name: 'clear_x_filter.issues.facet.rules' }),
-  tagFacet: byRole('button', { name: 'issues.facet.tags' }),
-  clearTagFacet: byRole('button', { name: 'clear_x_filter.issues.facet.tags' }),
-  projectFacet: byRole('button', { name: 'issues.facet.projects' }),
-  clearProjectFacet: byRole('button', { name: 'clear_x_filter.issues.facet.projects' }),
   assigneeFacet: byRole('button', { name: 'issues.facet.assignees' }),
-  clearAssigneeFacet: byRole('button', { name: 'clear_x_filter.issues.facet.assignees' }),
   authorFacet: byRole('button', { name: 'issues.facet.authors' }),
-  clearAuthorFacet: byRole('button', { name: 'clear_x_filter.issues.facet.authors' }),
+  codeVariantsFacet: byRole('button', { name: 'issues.facet.codeVariants' }),
+  creationDateFacet: byRole('button', { name: 'issues.facet.createdAt' }),
+  languageFacet: byRole('button', { name: 'issues.facet.languages' }),
+  projectFacet: byRole('button', { name: 'issues.facet.projects' }),
+  resolutionFacet: byRole('button', { name: 'issues.facet.resolutions' }),
+  ruleFacet: byRole('button', { name: 'issues.facet.rules' }),
+  scopeFacet: byRole('button', { name: 'issues.facet.scopes' }),
+  statusFacet: byRole('button', { name: 'issues.facet.statuses' }),
+  tagFacet: byRole('button', { name: 'issues.facet.tags' }),
 
-  dateInputMonthSelect: byRole('combobox', { name: 'Month:' }),
-  dateInputYearSelect: byRole('combobox', { name: 'Year:' }),
+  clearAssigneeFacet: byTestId('clear-issues.facet.assignees'),
+  clearAuthorFacet: byTestId('clear-issues.facet.authors'),
+  clearCodeVariantsFacet: byTestId('clear-issues.facet.codeVariants'),
+  clearCreationDateFacet: byTestId('clear-issues.facet.createdAt'),
+  clearIssueTypeFacet: byTestId('clear-issues.facet.types'),
+  clearProjectFacet: byTestId('clear-issues.facet.projects'),
+  clearResolutionFacet: byTestId('clear-issues.facet.resolutions'),
+  clearRuleFacet: byTestId('clear-issues.facet.rules'),
+  clearScopeFacet: byTestId('clear-issues.facet.scopes'),
+  clearSeverityFacet: byTestId('clear-issues.facet.severities'),
+  clearStatusFacet: byTestId('clear-issues.facet.statuses'),
+  clearTagFacet: byTestId('clear-issues.facet.tags'),
+
+  codeSmellIssueTypeFilter: byRole('checkbox', { name: 'issue.type.CODE_SMELL' }),
+  confirmedStatusFilter: byRole('checkbox', { name: 'issue.status.CONFIRMED' }),
+  fixedResolutionFilter: byRole('checkbox', { name: 'issue.resolution.FIXED' }),
+  mainScopeFilter: byRole('checkbox', { name: 'issue.scope.MAIN' }),
+  majorSeverityFilter: byRole('checkbox', { name: 'severity.MAJOR' }),
+  openStatusFilter: byRole('checkbox', { name: 'issue.status.OPEN' }),
+  vulnerabilityIssueTypeFilter: byRole('checkbox', { name: 'issue.type.VULNERABILITY' }),
 
   clearAllFilters: byRole('button', { name: 'clear_all_filters' }),
 
-  ruleFacetList: byRole('list', { name: 'issues.facet.rules' }),
-  languageFacetList: byRole('list', { name: 'issues.facet.languages' }),
-  ruleFacetSearch: byRole('searchbox', { name: 'search.search_for_rules' }),
+  dateInputMonthSelect: byTestId('month-select'),
+  dateInputYearSelect: byTestId('year-select'),
+
+  authorFacetSearch: byPlaceholderText('search.search_for_authors'),
   inNewCodeFilter: byRole('checkbox', { name: 'issues.new_code' }),
+  languageFacetList: byRole('list', { name: 'issues.facet.languages' }),
+  ruleFacetList: byRole('list', { name: 'issues.facet.rules' }),
+  ruleFacetSearch: byPlaceholderText('search.search_for_rules'),
+  tagFacetSearch: byPlaceholderText('search.search_for_tags'),
 };
 
 export async function waitOnDataLoaded() {

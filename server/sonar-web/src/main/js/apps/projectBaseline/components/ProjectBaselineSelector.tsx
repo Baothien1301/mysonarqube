@@ -18,19 +18,23 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import classNames from 'classnames';
+import { RadioButton } from 'design-system';
 import * as React from 'react';
-import Radio from '../../../components/controls/Radio';
+import Tooltip from '../../../components/controls/Tooltip';
 import { ResetButtonLink, SubmitButton } from '../../../components/controls/buttons';
+import GlobalNewCodeDefinitionDescription from '../../../components/new-code-definition/GlobalNewCodeDefinitionDescription';
+import NewCodeDefinitionDaysOption from '../../../components/new-code-definition/NewCodeDefinitionDaysOption';
+import NewCodeDefinitionPreviousVersionOption from '../../../components/new-code-definition/NewCodeDefinitionPreviousVersionOption';
+import NewCodeDefinitionWarning from '../../../components/new-code-definition/NewCodeDefinitionWarning';
 import { Alert } from '../../../components/ui/Alert';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
-import { translate, translateWithParameters } from '../../../helpers/l10n';
+import { translate } from '../../../helpers/l10n';
+import { isNewCodeDefinitionCompliant } from '../../../helpers/new-code-definition';
 import { Branch } from '../../../types/branch-like';
+import { NewCodeDefinition, NewCodeDefinitionType } from '../../../types/new-code-definition';
 import { ParsedAnalysis } from '../../../types/project-activity';
-import { NewCodePeriod, NewCodePeriodSettingType } from '../../../types/types';
 import { validateSetting } from '../utils';
 import BaselineSettingAnalysis from './BaselineSettingAnalysis';
-import BaselineSettingDays from './BaselineSettingDays';
-import BaselineSettingPreviousVersion from './BaselineSettingPreviousVersion';
 import BaselineSettingReferenceBranch from './BaselineSettingReferenceBranch';
 import BranchAnalysisList from './BranchAnalysisList';
 
@@ -39,49 +43,23 @@ export interface ProjectBaselineSelectorProps {
   branch: Branch;
   branchList: Branch[];
   branchesEnabled?: boolean;
+  canAdmin: boolean | undefined;
   component: string;
-  currentSetting?: NewCodePeriodSettingType;
+  currentSetting?: NewCodeDefinitionType;
   currentSettingValue?: string;
   days: string;
-  generalSetting: NewCodePeriod;
+  generalSetting: NewCodeDefinition;
   onCancel: () => void;
   onSelectAnalysis: (analysis: ParsedAnalysis) => void;
   onSelectDays: (value: string) => void;
   onSelectReferenceBranch: (value: string) => void;
-  onSelectSetting: (value?: NewCodePeriodSettingType) => void;
+  onSelectSetting: (value?: NewCodeDefinitionType) => void;
   onSubmit: (e: React.SyntheticEvent<HTMLFormElement>) => void;
   onToggleSpecificSetting: (selection: boolean) => void;
   referenceBranch?: string;
   saving: boolean;
-  selected?: NewCodePeriodSettingType;
+  selected?: NewCodeDefinitionType;
   overrideGeneralSetting: boolean;
-}
-
-function renderGeneralSetting(generalSetting: NewCodePeriod) {
-  let setting: string;
-  let description: string;
-  let useCase: string;
-  if (generalSetting.type === NewCodePeriodSettingType.NUMBER_OF_DAYS) {
-    setting = `${translate('baseline.number_days')} (${translateWithParameters(
-      'duration.days',
-      generalSetting.value || '?'
-    )})`;
-    description = translate('baseline.number_days.description');
-    useCase = translate('baseline.number_days.usecase');
-  } else {
-    setting = translate('baseline.previous_version');
-    description = translate('baseline.previous_version.description');
-    useCase = translate('baseline.previous_version.usecase');
-  }
-
-  return (
-    <div className="general-setting display-flex-start">
-      <span className="sw-font-bold flex-0">{setting}:&nbsp;</span>
-      <span>
-        {description} {useCase}
-      </span>
-    </div>
-  );
 }
 
 function branchToOption(b: Branch) {
@@ -94,6 +72,7 @@ export default function ProjectBaselineSelector(props: ProjectBaselineSelectorPr
     branch,
     branchList,
     branchesEnabled,
+    canAdmin,
     component,
     currentSetting,
     currentSettingValue,
@@ -104,6 +83,8 @@ export default function ProjectBaselineSelector(props: ProjectBaselineSelectorPr
     saving,
     selected,
   } = props;
+
+  const isGlobalNcdCompliant = isNewCodeDefinitionCompliant(generalSetting);
 
   const { isChanged, isValid } = validateSetting({
     analysis,
@@ -118,47 +99,65 @@ export default function ProjectBaselineSelector(props: ProjectBaselineSelectorPr
   return (
     <form className="project-baseline-selector" onSubmit={props.onSubmit}>
       <div className="big-spacer-top spacer-bottom" role="radiogroup">
-        <Radio
+        <RadioButton
           checked={!overrideGeneralSetting}
           className="big-spacer-bottom"
+          disabled={!isGlobalNcdCompliant}
           onCheck={() => props.onToggleSpecificSetting(false)}
           value="general"
         >
-          {translate('project_baseline.general_setting')}
-        </Radio>
-        <div className="big-spacer-left">{renderGeneralSetting(generalSetting)}</div>
+          <Tooltip
+            overlay={
+              isGlobalNcdCompliant
+                ? null
+                : translate('project_baseline.compliance.warning.title.global')
+            }
+          >
+            <span>{translate('project_baseline.global_setting')}</span>
+          </Tooltip>
+        </RadioButton>
 
-        <Radio
+        <div className="sw-ml-4">
+          <GlobalNewCodeDefinitionDescription
+            globalNcd={generalSetting}
+            isGlobalNcdCompliant={isGlobalNcdCompliant}
+            canAdmin={canAdmin}
+          />
+        </div>
+
+        <RadioButton
           checked={overrideGeneralSetting}
           className="huge-spacer-top"
           onCheck={() => props.onToggleSpecificSetting(true)}
           value="specific"
         >
           {translate('project_baseline.specific_setting')}
-        </Radio>
+        </RadioButton>
       </div>
 
       <div className="big-spacer-left big-spacer-right project-baseline-setting">
+        <NewCodeDefinitionWarning
+          newCodeDefinitionType={currentSetting}
+          newCodeDefinitionValue={currentSettingValue}
+          isBranchSupportEnabled={branchesEnabled}
+          level="project"
+        />
         <div className="display-flex-row big-spacer-bottom" role="radiogroup">
-          <BaselineSettingPreviousVersion
+          <NewCodeDefinitionPreviousVersionOption
             disabled={!overrideGeneralSetting}
             onSelect={props.onSelectSetting}
-            selected={
-              overrideGeneralSetting && selected === NewCodePeriodSettingType.PREVIOUS_VERSION
-            }
+            selected={overrideGeneralSetting && selected === NewCodeDefinitionType.PreviousVersion}
           />
-          <BaselineSettingDays
+          <NewCodeDefinitionDaysOption
             days={days}
             disabled={!overrideGeneralSetting}
             isChanged={isChanged}
             isValid={isValid}
             onChangeDays={props.onSelectDays}
             onSelect={props.onSelectSetting}
-            selected={
-              overrideGeneralSetting && selected === NewCodePeriodSettingType.NUMBER_OF_DAYS
-            }
+            selected={overrideGeneralSetting && selected === NewCodeDefinitionType.NumberOfDays}
           />
-          {branchesEnabled ? (
+          {branchesEnabled && (
             <BaselineSettingReferenceBranch
               branchList={branchList.map(branchToOption)}
               disabled={!overrideGeneralSetting}
@@ -166,28 +165,30 @@ export default function ProjectBaselineSelector(props: ProjectBaselineSelectorPr
               onSelect={props.onSelectSetting}
               referenceBranch={referenceBranch || ''}
               selected={
-                overrideGeneralSetting && selected === NewCodePeriodSettingType.REFERENCE_BRANCH
+                overrideGeneralSetting && selected === NewCodeDefinitionType.ReferenceBranch
               }
               settingLevel="project"
             />
-          ) : (
+          )}
+          {!branchesEnabled && currentSetting === NewCodeDefinitionType.SpecificAnalysis && (
             <BaselineSettingAnalysis
-              disabled={!overrideGeneralSetting}
-              onSelect={props.onSelectSetting}
+              onSelect={() => {}}
               selected={
-                overrideGeneralSetting && selected === NewCodePeriodSettingType.SPECIFIC_ANALYSIS
+                overrideGeneralSetting && selected === NewCodeDefinitionType.SpecificAnalysis
               }
             />
           )}
         </div>
-        {selected === NewCodePeriodSettingType.SPECIFIC_ANALYSIS && (
-          <BranchAnalysisList
-            analysis={analysis || ''}
-            branch={branch.name}
-            component={component}
-            onSelectAnalysis={props.onSelectAnalysis}
-          />
-        )}
+        {!branchesEnabled &&
+          overrideGeneralSetting &&
+          selected === NewCodeDefinitionType.SpecificAnalysis && (
+            <BranchAnalysisList
+              analysis={analysis || ''}
+              branch={branch.name}
+              component={component}
+              onSelectAnalysis={props.onSelectAnalysis}
+            />
+          )}
       </div>
       <div className={classNames('big-spacer-top', { invisible: !isChanged })}>
         <Alert variant="info" className="spacer-bottom">

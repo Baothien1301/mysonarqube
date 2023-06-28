@@ -31,6 +31,7 @@ import org.sonar.api.utils.System2;
 import org.sonar.api.web.UserRole;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.ProjectData;
 import org.sonar.server.component.TestComponentFinder;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
@@ -65,7 +66,7 @@ public class ShowActionIT {
   @Rule
   public final UserSessionRule userSession = UserSessionRule.standalone().logIn();
   @Rule
-  public final DbTester db = DbTester.create(System2.INSTANCE);
+  public final DbTester db = DbTester.create(System2.INSTANCE, true);
 
   private final WsActionTester ws = new WsActionTester(new ShowAction(userSession, db.getDbClient(), TestComponentFinder.from(db),
     new IssueIndexSyncProgressChecker(db.getDbClient())));
@@ -213,8 +214,11 @@ public class ShowActionIT {
 
   @Test
   public void should_return_visibility_for_public_project() {
-    ComponentDto publicProject = db.components().insertPublicProject().getMainBranchComponent();
-    userSession.registerComponents(publicProject);
+    ProjectData projectData = db.components().insertPublicProject();
+    ComponentDto publicProject = projectData.getMainBranchComponent();
+
+    userSession.registerProjects(projectData.getProjectDto())
+      .registerBranches(projectData.getMainBranchDto());
 
     ShowWsResponse result = newRequest(publicProject.getKey());
     assertThat(result.getComponent().hasVisibility()).isTrue();
@@ -318,33 +322,38 @@ public class ShowActionIT {
     ComponentDto subview = db.components().insertSubView(portfolio1);
 
     String pullRequestKey1 = randomAlphanumeric(100);
-    ComponentDto project1 = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectData projectData1 = db.components().insertPrivateProject();
+    ComponentDto project1 = projectData1.getMainBranchComponent();
     ComponentDto branch1 = db.components().insertProjectBranch(project1, b -> b.setBranchType(PULL_REQUEST).setKey(pullRequestKey1)
       .setNeedIssueSync(true));
     ComponentDto directory = db.components().insertComponent(newDirectoryOnBranch(branch1, "dir", project1.uuid()));
     ComponentDto file = db.components().insertComponent(newFileDto(project1.uuid(), branch1, directory));
-    userSession.addProjectBranchMapping(project1.uuid(), branch1);
+    userSession.addProjectBranchMapping(projectData1.projectUuid(), branch1);
 
-    ComponentDto project2 = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectData projectData2 = db.components().insertPrivateProject();
+    ComponentDto project2 = projectData2.getMainBranchComponent();
     String branchName2 = randomAlphanumeric(248);
     ComponentDto branch2 = db.components().insertProjectBranch(project2, b -> b.setBranchType(BRANCH).setNeedIssueSync(true).setKey(branchName2));
     String branchName3 = randomAlphanumeric(248);
     ComponentDto branch3 = db.components().insertProjectBranch(project2, b -> b.setBranchType(BRANCH).setNeedIssueSync(false).setKey(branchName3));
-    userSession.addProjectBranchMapping(project2.uuid(), branch2);
-    userSession.addProjectBranchMapping(project2.uuid(), branch3);
+    userSession.addProjectBranchMapping(projectData2.projectUuid(), branch2);
+    userSession.addProjectBranchMapping(projectData2.projectUuid(), branch3);
 
-    ComponentDto project3 = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectData projectData3 = db.components().insertPrivateProject();
+    ComponentDto project3 = projectData3.getMainBranchComponent();
     String pullRequestKey4 = randomAlphanumeric(100);
     ComponentDto branch4 = db.components().insertProjectBranch(project3, b -> b.setBranchType(PULL_REQUEST).setKey(pullRequestKey4).setNeedIssueSync(false));
     ComponentDto directoryOfBranch4 = db.components().insertComponent(newDirectoryOnBranch(branch4, "dir", project3.uuid()));
     ComponentDto fileOfBranch4 = db.components().insertComponent(newFileDto(project3.uuid(), branch4, directoryOfBranch4));
     String branchName5 = randomAlphanumeric(248);
     ComponentDto branch5 = db.components().insertProjectBranch(project3, b -> b.setBranchType(BRANCH).setNeedIssueSync(false).setKey(branchName5));
-    userSession.addProjectBranchMapping(project3.uuid(), branch4);
-    userSession.addProjectBranchMapping(project3.uuid(), branch5);
+    userSession.addProjectBranchMapping(projectData3.projectUuid(), branch4);
+    userSession.addProjectBranchMapping(projectData3.projectUuid(), branch5);
 
-    userSession.addProjectPermission(UserRole.USER, project1, project2, project3);
-    userSession.registerComponents(portfolio1, portfolio2, subview, project1, project2, project3);
+    userSession.addProjectPermission(UserRole.USER, projectData1.getProjectDto(), projectData2.getProjectDto(), projectData3.getProjectDto())
+        .registerBranches(projectData1.getMainBranchDto(), projectData2.getMainBranchDto(), projectData3.getMainBranchDto());
+    userSession.registerPortfolios(portfolio1, portfolio2, subview);
+    userSession.registerProjects(projectData1.getProjectDto(), projectData2.getProjectDto(), projectData3.getProjectDto());
 
     // for portfolios, sub-views need issue sync flag is set to true if any project need sync
     assertNeedIssueSyncEqual(null, null, portfolio1, true);

@@ -67,7 +67,7 @@ public class ReportPersistComponentsStepIT extends BaseStepTest {
   private static final String PROJECT_KEY = "PROJECT_KEY";
 
   @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
+  public DbTester db = DbTester.create(System2.INSTANCE, true);
   @Rule
   public TreeRootHolderRule treeRootHolder = new TreeRootHolderRule();
   @Rule
@@ -464,7 +464,7 @@ public class ReportPersistComponentsStepIT extends BaseStepTest {
     Stream.of(project.uuid(), dir.uuid())
       .forEach(uuid -> assertThat(dbClient.componentDao().selectByUuid(db.getSession(), uuid).get().isPrivate())
         .describedAs("for uuid " + uuid)
-        .isEqualTo(true));
+        .isTrue());
   }
 
   private ReportComponent createSampleProjectComponentTree(ComponentDto project) {

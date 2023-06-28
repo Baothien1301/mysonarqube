@@ -17,6 +17,8 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
+import { uniqueId } from 'lodash';
 import { ComponentQualifier } from '../../types/component';
 import { Task, TaskStatuses, TaskTypes, TaskWarning } from '../../types/tasks';
 
@@ -36,7 +38,7 @@ export function mockTask(overrides: Partial<Task> = {}): Task {
 
 export function mockTaskWarning(overrides: Partial<TaskWarning> = {}): TaskWarning {
   return {
-    key: 'foo',
+    key: uniqueId('foo'),
     message: 'Lorem ipsum',
     dismissable: false,
     ...overrides,

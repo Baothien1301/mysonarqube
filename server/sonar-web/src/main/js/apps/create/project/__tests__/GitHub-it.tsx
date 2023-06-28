@@ -22,11 +22,12 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import selectEvent from 'react-select-event';
-import { byLabelText, byText } from 'testing-library-selector';
 import { getGithubRepositories } from '../../../../api/alm-integrations';
 import AlmIntegrationsServiceMock from '../../../../api/mocks/AlmIntegrationsServiceMock';
 import AlmSettingsServiceMock from '../../../../api/mocks/AlmSettingsServiceMock';
+import NewCodePeriodsServiceMock from '../../../../api/mocks/NewCodePeriodsServiceMock';
 import { renderApp } from '../../../../helpers/testReactTestingUtils';
+import { byLabelText, byText } from '../../../../helpers/testSelector';
 import CreateProjectPage from '../CreateProjectPage';
 
 jest.mock('../../../../api/alm-integrations');
@@ -36,6 +37,7 @@ const original = window.location;
 
 let almIntegrationHandler: AlmIntegrationsServiceMock;
 let almSettingsHandler: AlmSettingsServiceMock;
+let newCodePeriodHandler: NewCodePeriodsServiceMock;
 
 const ui = {
   githubCreateProjectButton: byText('onboarding.create_project.select_method.github'),
@@ -50,12 +52,14 @@ beforeAll(() => {
   });
   almIntegrationHandler = new AlmIntegrationsServiceMock();
   almSettingsHandler = new AlmSettingsServiceMock();
+  newCodePeriodHandler = new NewCodePeriodsServiceMock();
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
   almIntegrationHandler.reset();
   almSettingsHandler.reset();
+  newCodePeriodHandler.reset();
 });
 
 afterAll(() => {
@@ -135,6 +139,17 @@ it('should show import project feature when the authentication is successfull', 
   await user.click(repoItem);
   expect(importButton).toBeEnabled();
   await user.click(importButton);
+
+  expect(
+    screen.getByRole('heading', { name: 'onboarding.create_project.new_code_definition.title' })
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByRole('radio', { name: 'new_code_definition.global_setting' }));
+  await user.click(
+    screen.getByRole('button', {
+      name: 'onboarding.create_project.new_code_definition.create_project',
+    })
+  );
 
   expect(await screen.findByText('/dashboard?id=key')).toBeInTheDocument();
 });

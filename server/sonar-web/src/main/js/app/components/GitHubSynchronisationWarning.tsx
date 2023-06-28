@@ -17,102 +17,129 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import { isEmpty } from 'lodash';
+import { formatDistance } from 'date-fns';
 import * as React from 'react';
-import { useContext, useEffect, useState } from 'react';
-import { WrappedComponentProps, injectIntl } from 'react-intl';
-import { getActivity } from '../../api/ce';
-import { formatterOption } from '../../components/intl/DateTimeFormatter';
-import { Alert, AlertVariant } from '../../components/ui/Alert';
-import { translateWithParameters } from '../../helpers/l10n';
-import { Feature } from '../../types/features';
-import { ActivityRequestParameters, TaskStatuses, TaskTypes } from '../../types/tasks';
+import { FormattedMessage } from 'react-intl';
+import Link from '../../components/common/Link';
+import CheckIcon from '../../components/icons/CheckIcon';
+import { Alert } from '../../components/ui/Alert';
+import { translate, translateWithParameters } from '../../helpers/l10n';
+import { useSyncStatusQuery } from '../../queries/github-sync';
+import { GithubStatusEnabled } from '../../types/provisioning';
+import { TaskStatuses } from '../../types/tasks';
 import './SystemAnnouncement.css';
-import { AvailableFeaturesContext } from './available-features/AvailableFeaturesContext';
 
-function GitHubSynchronisationWarning(props: WrappedComponentProps) {
-  const { formatDate } = props.intl;
-  const [displayMessage, setDisplayMessage] = useState(false);
-  const [activityStatus, setActivityStatus] = useState<AlertVariant>('info');
-  const [message, setMessage] = useState('');
-  const hasGithubProvisioning = useContext(AvailableFeaturesContext).includes(
-    Feature.GithubProvisioning
-  );
+interface LastSyncProps {
+  short?: boolean;
+  info: GithubStatusEnabled['lastSync'];
+}
 
-  useEffect(() => {
-    (async () => {
-      const lastActivity = await getLatestGithubSynchronisationTask();
+interface GitHubSynchronisationWarningProps {
+  short?: boolean;
+}
 
-      if (lastActivity === undefined) {
-        return;
-      }
-      const { status, errorMessage, executedAt } = lastActivity;
-
-      if (executedAt === undefined) {
-        return;
-      }
-      const formattedDate = formatDate(new Date(executedAt), formatterOption);
-
-      switch (status) {
-        case TaskStatuses.Failed:
-          setMessage(
-            translateWithParameters(
-              'settings.authentication.github.background_task.synchronization_failed',
-              formattedDate,
-              errorMessage ?? ''
-            )
-          );
-          setActivityStatus('error');
-          break;
-        case TaskStatuses.Success:
-          setMessage(
-            translateWithParameters(
-              'settings.authentication.github.background_task.synchronization_successful',
-              formattedDate
-            )
-          );
-          setActivityStatus('success');
-          break;
-        case TaskStatuses.InProgress:
-          setMessage(
-            translateWithParameters(
-              'settings.authentication.github.background_task.synchronization_in_progress',
-              formattedDate
-            )
-          );
-          setActivityStatus('loading');
-          break;
-        default:
-          return;
-      }
-      setDisplayMessage(true);
-    })();
-  }, []);
-
-  if (!displayMessage || !hasGithubProvisioning) {
+function LastSyncAlert({ info, short }: LastSyncProps) {
+  if (info === undefined) {
     return null;
+  }
+  const { finishedAt, errorMessage, status, summary } = info;
+
+  const formattedDate = finishedAt ? formatDistance(new Date(finishedAt), new Date()) : '';
+
+  if (short) {
+    return status === TaskStatuses.Success ? (
+      <div>
+        <span className="authentication-enabled spacer-left">
+          <CheckIcon className="spacer-right" />
+        </span>
+        <i>
+          {translateWithParameters(
+            'settings.authentication.github.synchronization_successful',
+            formattedDate
+          )}
+        </i>
+      </div>
+    ) : (
+      <Alert variant="error">
+        <FormattedMessage
+          id="settings.authentication.github.synchronization_failed_short"
+          defaultMessage={translate('settings.authentication.github.synchronization_failed_short')}
+          values={{
+            details: (
+              <Link to="../settings?category=authentication&tab=github">
+                {translate('settings.authentication.github.synchronization_failed_link')}
+              </Link>
+            ),
+          }}
+        />
+      </Alert>
+    );
   }
 
   return (
-    <Alert title={message} variant={activityStatus}>
-      {message}
+    <Alert
+      variant={status === TaskStatuses.Success ? 'success' : 'error'}
+      role="alert"
+      aria-live="assertive"
+    >
+      {status === TaskStatuses.Success ? (
+        <>
+          {translateWithParameters(
+            'settings.authentication.github.synchronization_successful',
+            formattedDate
+          )}
+          <br />
+          {summary ?? ''}
+        </>
+      ) : (
+        <React.Fragment key={`synch-alert-${finishedAt}`}>
+          <div>
+            {translateWithParameters(
+              'settings.authentication.github.synchronization_failed',
+              formattedDate
+            )}
+          </div>
+          <br />
+          {errorMessage ?? ''}
+        </React.Fragment>
+      )}
     </Alert>
   );
 }
 
-const getLatestGithubSynchronisationTask = async () => {
-  const data: ActivityRequestParameters = {
-    type: TaskTypes.GithubProvisioning,
-    onlyCurrents: true,
-    status: [TaskStatuses.InProgress, TaskStatuses.Success, TaskStatuses.Failed].join(','),
-  };
-  const activity = await getActivity(data);
+function GitHubSynchronisationWarning({ short }: GitHubSynchronisationWarningProps) {
+  const { data } = useSyncStatusQuery();
 
-  if (isEmpty(activity.tasks)) {
-    return undefined;
+  if (!data) {
+    return null;
   }
 
-  return activity.tasks[0];
-};
+  return (
+    <>
+      <Alert
+        variant="loading"
+        className="spacer-bottom"
+        aria-atomic
+        role="alert"
+        aria-live="assertive"
+        aria-label={
+          data.nextSync === undefined
+            ? translate('settings.authentication.github.synchronization_finish')
+            : ''
+        }
+      >
+        {!short &&
+          data?.nextSync &&
+          translate(
+            data.nextSync.status === TaskStatuses.Pending
+              ? 'settings.authentication.github.synchronization_pending'
+              : 'settings.authentication.github.synchronization_in_progress'
+          )}
+      </Alert>
 
-export default injectIntl(GitHubSynchronisationWarning);
+      <LastSyncAlert short={short} info={data.lastSync} />
+    </>
+  );
+}
+
+export default GitHubSynchronisationWarning;

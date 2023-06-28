@@ -64,6 +64,8 @@ import org.sonar.db.component.UuidWithBranchUuidDto;
 import org.sonar.db.component.ViewsSnapshotDto;
 import org.sonar.db.duplication.DuplicationMapper;
 import org.sonar.db.duplication.DuplicationUnitDto;
+import org.sonar.db.entity.EntityDto;
+import org.sonar.db.entity.EntityMapper;
 import org.sonar.db.es.EsQueueMapper;
 import org.sonar.db.event.EventComponentChangeMapper;
 import org.sonar.db.event.EventDto;
@@ -74,8 +76,6 @@ import org.sonar.db.issue.IssueDto;
 import org.sonar.db.issue.IssueMapper;
 import org.sonar.db.issue.NewCodeReferenceIssueDto;
 import org.sonar.db.issue.PrIssueDto;
-import org.sonar.db.mapping.ProjectMappingDto;
-import org.sonar.db.mapping.ProjectMappingsMapper;
 import org.sonar.db.measure.LargestBranchNclocDto;
 import org.sonar.db.measure.LiveMeasureMapper;
 import org.sonar.db.measure.MeasureDto;
@@ -136,6 +136,8 @@ import org.sonar.db.qualityprofile.QProfileEditUsersMapper;
 import org.sonar.db.qualityprofile.QualityProfileExportMapper;
 import org.sonar.db.qualityprofile.QualityProfileMapper;
 import org.sonar.db.report.RegulatoryReportMapper;
+import org.sonar.db.report.ReportScheduleMapper;
+import org.sonar.db.report.ReportSubscriptionMapper;
 import org.sonar.db.rule.RuleMapper;
 import org.sonar.db.rule.RuleParamDto;
 import org.sonar.db.rule.RuleRepositoryMapper;
@@ -195,6 +197,7 @@ public class MyBatis {
     confBuilder.loadAlias("CeTaskCharacteristic", CeTaskCharacteristicDto.class);
     confBuilder.loadAlias("Component", ComponentDto.class);
     confBuilder.loadAlias("DuplicationUnit", DuplicationUnitDto.class);
+    confBuilder.loadAlias("Entity", EntityDto.class);
     confBuilder.loadAlias("Event", EventDto.class);
     confBuilder.loadAlias("ExternalGroup", ExternalGroupDto.class);
     confBuilder.loadAlias("FilePathWithHash", FilePathWithHashDto.class);
@@ -226,7 +229,6 @@ public class MyBatis {
     confBuilder.loadAlias("AnalysisPropertyValuePerProject", AnalysisPropertyValuePerProject.class);
     confBuilder.loadAlias("ProjectAlmKeyAndProject", ProjectAlmKeyAndProject.class);
     confBuilder.loadAlias("PrAndBranchCountByProjectDto", PrBranchAnalyzedLanguageCountByProjectDto.class);
-    confBuilder.loadAlias("ProjectMapping", ProjectMappingDto.class);
     confBuilder.loadAlias("ProjectLocDistribution", ProjectLocDistributionDto.class);
     confBuilder.loadAlias("PurgeableAnalysis", PurgeableAnalysisDto.class);
     confBuilder.loadAlias("PushEvent", PushEventDto.class);
@@ -269,6 +271,7 @@ public class MyBatis {
       LiveMeasureMapper.class,
       DefaultQProfileMapper.class,
       DuplicationMapper.class,
+      EntityMapper.class,
       EsQueueMapper.class,
       EventMapper.class,
       EventComponentChangeMapper.class,
@@ -295,7 +298,6 @@ public class MyBatis {
       ProjectMapper.class,
       ProjectBadgeTokenMapper.class,
       ProjectExportMapper.class,
-      ProjectMappingsMapper.class,
       ProjectQgateAssociationMapper.class,
       PropertiesMapper.class,
       PurgeMapper.class,
@@ -310,6 +312,8 @@ public class MyBatis {
       QualityProfileMapper.class,
       QualityProfileExportMapper.class,
       RegulatoryReportMapper.class,
+      ReportScheduleMapper.class,
+      ReportSubscriptionMapper.class,
       RoleMapper.class,
       RuleMapper.class,
       RuleRepositoryMapper.class,

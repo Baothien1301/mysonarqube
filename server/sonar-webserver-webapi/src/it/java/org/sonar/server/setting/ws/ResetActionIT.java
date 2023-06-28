@@ -32,15 +32,14 @@ import org.sonar.api.utils.System2;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
-import org.sonar.db.component.ComponentDto;
-import org.sonar.db.component.ComponentTesting;
+import org.sonar.db.entity.EntityDto;
+import org.sonar.db.portfolio.PortfolioDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.property.PropertyDbTester;
 import org.sonar.db.property.PropertyQuery;
 import org.sonar.db.user.UserDto;
 import org.sonar.db.user.UserTesting;
 import org.sonar.process.ProcessProperties;
-import org.sonar.server.component.ComponentFinder;
-import org.sonar.server.component.TestComponentFinder;
 import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
@@ -53,7 +52,6 @@ import org.sonarqube.ws.MediaTypes;
 
 import static java.lang.String.format;
 import static java.net.HttpURLConnection.HTTP_NO_CONTENT;
-import static org.apache.commons.lang.RandomStringUtils.randomAlphanumeric;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.sonar.api.resources.Qualifiers.PROJECT;
@@ -75,17 +73,16 @@ public class ResetActionIT {
   private final PropertyDbTester propertyDb = new PropertyDbTester(db);
   private final DbClient dbClient = db.getDbClient();
   private final DbSession dbSession = db.getSession();
-  private final ComponentFinder componentFinder = TestComponentFinder.from(db);
   private final PropertyDefinitions definitions = new PropertyDefinitions(System2.INSTANCE);
   private final SettingsUpdater settingsUpdater = new SettingsUpdater(dbClient, definitions);
   private final SettingValidations settingValidations = new SettingValidations(definitions, dbClient, i18n);
-  private ComponentDto project;
-  private final ResetAction underTest = new ResetAction(dbClient, componentFinder, settingsUpdater, userSession, definitions, settingValidations);
+  private ProjectDto project;
+  private final ResetAction underTest = new ResetAction(dbClient, settingsUpdater, userSession, definitions, settingValidations);
   private final WsActionTester ws = new WsActionTester(underTest);
 
   @Before
   public void setUp() {
-    project = db.components().insertPrivateProject().getMainBranchComponent();
+    project = db.components().insertPrivateProject().getProjectDto();
   }
 
   @Test
@@ -141,7 +138,7 @@ public class ResetActionIT {
     logInAsSystemAdministrator();
     propertyDb.insertProperties(null, null, null, null,
       newGlobalPropertyDto().setKey("foo").setValue("one"));
-    propertyDb.insertProperties(null, project.getKey(), project.name(), project.qualifier(),
+    propertyDb.insertProperties(null, project.getKey(), project.getName(), project.getQualifier(),
       newComponentPropertyDto(project).setKey("foo").setValue("value"));
 
     executeRequestOnGlobalSetting("foo");
@@ -154,7 +151,7 @@ public class ResetActionIT {
   public void ignore_global_setting_when_removing_project_setting() {
     logInAsProjectAdmin();
     propertyDb.insertProperties(null, null, null, null, newGlobalPropertyDto().setKey("foo").setValue("one"));
-    propertyDb.insertProperties(null, project.getKey(), project.name(), project.qualifier(),
+    propertyDb.insertProperties(null, project.getKey(), project.getName(), project.getQualifier(),
       newComponentPropertyDto(project).setKey("foo").setValue("value"));
 
     executeRequestOnProjectSetting("foo");
@@ -201,26 +198,6 @@ public class ResetActionIT {
   }
 
   @Test
-  public void remove_setting_on_branch() {
-    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
-    String branchName = randomAlphanumeric(248);
-    ComponentDto branch = db.components().insertProjectBranch(project, b -> b.setKey(branchName));
-    definitions.addComponent(PropertyDefinition.builder("foo").onQualifiers(PROJECT).build());
-    propertyDb.insertProperties(null, branch.name(), null, null, newComponentPropertyDto(branch).setKey("foo").setValue("value"));
-    userSession.logIn().addProjectPermission(ADMIN, project);
-    userSession.addProjectBranchMapping(project.uuid(), branch);
-
-    ws.newRequest()
-      .setMediaType(MediaTypes.PROTOBUF)
-      .setParam("keys", "foo")
-      .setParam("component", branch.getKey())
-      .setParam("branch", branchName)
-      .execute();
-
-    assertProjectPropertyDoesNotExist(branch, "foo");
-  }
-
-  @Test
   public void empty_204_response() {
     logInAsSystemAdministrator();
     TestResponse result = ws.newRequest()
@@ -238,7 +215,7 @@ public class ResetActionIT {
     assertThat(action.isInternal()).isFalse();
     assertThat(action.isPost()).isTrue();
     assertThat(action.responseExampleAsString()).isNull();
-    assertThat(action.params()).extracting(Param::key).containsExactlyInAnyOrder("keys", "component", "branch", "pullRequest");
+    assertThat(action.params()).extracting(Param::key).containsExactlyInAnyOrder("keys", "component");
   }
 
   @Test
@@ -256,9 +233,7 @@ public class ResetActionIT {
     userSession.logIn().addProjectPermission(USER, project);
     definitions.addComponent(PropertyDefinition.builder("foo").build());
 
-    assertThatThrownBy(() -> {
-      executeRequestOnComponentSetting("foo", project);
-    })
+    assertThatThrownBy(() -> executeRequestOnComponentSetting("foo", project))
       .isInstanceOf(ForbiddenException.class)
       .hasMessage("Insufficient privileges");
   }
@@ -268,9 +243,7 @@ public class ResetActionIT {
     logInAsSystemAdministrator();
     definitions.addComponent(PropertyDefinition.builder("foo").build());
 
-    assertThatThrownBy(() -> {
-      executeRequestOnComponentSetting("foo", project);
-    })
+    assertThatThrownBy(() -> executeRequestOnComponentSetting("foo", project))
       .isInstanceOf(ForbiddenException.class)
       .hasMessage("Insufficient privileges");
   }
@@ -282,9 +255,7 @@ public class ResetActionIT {
       .onlyOnQualifiers(VIEW)
       .build());
 
-    assertThatThrownBy(() -> {
-      executeRequestOnGlobalSetting("foo");
-    })
+    assertThatThrownBy(() -> executeRequestOnGlobalSetting("foo"))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'foo' cannot be global");
   }
@@ -297,9 +268,7 @@ public class ResetActionIT {
       .build());
     i18n.put("qualifier." + PROJECT, "project");
 
-    assertThatThrownBy(() -> {
-      executeRequestOnComponentSetting("foo", project);
-    })
+    assertThatThrownBy(() -> executeRequestOnComponentSetting("foo", project))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'foo' cannot be set on a project");
   }
@@ -311,115 +280,56 @@ public class ResetActionIT {
     definitions.addComponent(PropertyDefinition.builder("foo").build());
     i18n.put("qualifier." + PROJECT, "project");
 
-    assertThatThrownBy(() -> {
-      executeRequestOnComponentSetting("foo", project);
-    })
+    assertThatThrownBy(() -> executeRequestOnComponentSetting("foo", project))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'foo' cannot be set on a project");
   }
 
   @Test
   public void succeed_for_property_without_definition_when_set_on_project_component() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    succeedForPropertyWithoutDefinitionAndValidComponent(project, project);
-  }
-
-  @Test
-  public void fail_for_property_without_definition_when_set_on_directory_component() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    ComponentDto directory = db.components().insertComponent(ComponentTesting.newDirectory(project, "A/B"));
-    failForPropertyWithoutDefinitionOnUnsupportedComponent(project, directory);
-  }
-
-  @Test
-  public void fail_for_property_without_definition_when_set_on_file_component() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    ComponentDto file = db.components().insertComponent(ComponentTesting.newFileDto(project));
-    failForPropertyWithoutDefinitionOnUnsupportedComponent(project, file);
+    ProjectDto project = randomPublicOrPrivateProject();
+    succeedForPropertyWithoutDefinitionAndValidComponent(project);
   }
 
   @Test
   public void succeed_for_property_without_definition_when_set_on_view_component() {
-    ComponentDto view = db.components().insertPublicPortfolio();
-    succeedForPropertyWithoutDefinitionAndValidComponent(view, view);
-  }
-
-  @Test
-  public void succeed_for_property_without_definition_when_set_on_subview_component() {
-    ComponentDto view = db.components().insertPublicPortfolio();
-    ComponentDto subview = db.components().insertComponent(ComponentTesting.newSubPortfolio(view));
-    succeedForPropertyWithoutDefinitionAndValidComponent(view, subview);
-  }
-
-  @Test
-  public void fail_for_property_without_definition_when_set_on_projectCopy_component() {
-    ComponentDto view = db.components().insertPublicPortfolio();
-    ComponentDto projectCopy = db.components().insertComponent(ComponentTesting.newProjectCopy("a", db.components().insertPrivateProject().getMainBranchComponent(), view));
-
-    failForPropertyWithoutDefinitionOnUnsupportedComponent(view, projectCopy);
+    PortfolioDto view = db.components().insertPublicPortfolioDto();
+    succeedForPropertyWithoutDefinitionAndValidComponent(view);
   }
 
   @Test
   public void fail_when_component_not_found() {
-    assertThatThrownBy(() -> {
-      ws.newRequest()
-        .setParam("keys", "foo")
-        .setParam("component", "unknown")
-        .execute();
-    })
+    TestRequest request = ws.newRequest()
+      .setParam("keys", "foo")
+      .setParam("component", "unknown");
+
+    assertThatThrownBy(() -> request.execute())
       .isInstanceOf(NotFoundException.class)
       .hasMessage("Component key 'unknown' not found");
   }
 
   @Test
-  public void fail_when_branch_not_found() {
-    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
-    logInAsProjectAdmin(project);
-    ComponentDto branch = db.components().insertProjectBranch(project);
-    String settingKey = "not_allowed_on_branch";
-
-    assertThatThrownBy(() -> {
-      ws.newRequest()
-        .setParam("keys", settingKey)
-        .setParam("component", branch.getKey())
-        .setParam("branch", "unknown")
-        .execute();
-    })
-      .isInstanceOf(NotFoundException.class)
-      .hasMessage(format("Component '%s' on branch 'unknown' not found", branch.getKey()));
-  }
-
-  @Test
   public void fail_when_setting_key_is_defined_in_sonar_properties() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
     logInAsProjectAdmin(project);
     String settingKey = ProcessProperties.Property.JDBC_URL.getKey();
 
-    assertThatThrownBy(() -> {
-      ws.newRequest()
-        .setParam("keys", settingKey)
-        .setParam("component", project.getKey())
-        .execute();
-    })
+    TestRequest request = ws.newRequest()
+      .setParam("keys", settingKey)
+      .setParam("component", project.getKey());
+    assertThatThrownBy(() -> request.execute())
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessage(format("Setting '%s' can only be used in sonar.properties", settingKey));
   }
 
-  private void succeedForPropertyWithoutDefinitionAndValidComponent(ComponentDto root, ComponentDto module) {
-    logInAsProjectAdmin(root);
-
-    executeRequestOnComponentSetting("foo", module);
+  private void succeedForPropertyWithoutDefinitionAndValidComponent(ProjectDto project) {
+    logInAsProjectAdmin(project);
+    executeRequestOnComponentSetting("foo", project);
   }
 
-  private void failForPropertyWithoutDefinitionOnUnsupportedComponent(ComponentDto root, ComponentDto component) {
-    i18n.put("qualifier." + component.qualifier(), "QualifierLabel");
-    logInAsProjectAdmin(root);
-
-    assertThatThrownBy(() -> {
-      executeRequestOnComponentSetting("foo", component);
-    })
-      .isInstanceOf(BadRequestException.class)
-      .hasMessage("Setting 'foo' cannot be set on a QualifierLabel");
+  private void succeedForPropertyWithoutDefinitionAndValidComponent(PortfolioDto project) {
+    logInAsProjectAdmin(project);
+    executeRequestOnComponentSetting("foo", project);
   }
 
   private void executeRequestOnGlobalSetting(String key) {
@@ -430,8 +340,8 @@ public class ResetActionIT {
     executeRequest(key, project.getKey());
   }
 
-  private void executeRequestOnComponentSetting(String key, ComponentDto componentDto) {
-    executeRequest(key, componentDto.getKey());
+  private void executeRequestOnComponentSetting(String key, EntityDto entity) {
+    executeRequest(key, entity.getKey());
   }
 
   private void executeRequest(String key, @Nullable String componentKey) {
@@ -452,8 +362,12 @@ public class ResetActionIT {
     userSession.logIn().addProjectPermission(ADMIN, project);
   }
 
-  private void logInAsProjectAdmin(ComponentDto root) {
+  private void logInAsProjectAdmin(ProjectDto root) {
     userSession.logIn().addProjectPermission(ADMIN, root);
+  }
+
+  private void logInAsProjectAdmin(PortfolioDto root) {
+    userSession.logIn().addPortfolioPermission(ADMIN, root);
   }
 
   private void assertGlobalPropertyDoesNotExist(String key) {
@@ -464,8 +378,8 @@ public class ResetActionIT {
     assertThat(dbClient.propertiesDao().selectGlobalProperty(dbSession, key)).isNotNull();
   }
 
-  private void assertProjectPropertyDoesNotExist(ComponentDto component, String key) {
-    assertThat(dbClient.propertiesDao().selectByQuery(PropertyQuery.builder().setComponentUuid(component.uuid()).setKey(key).build(), dbSession)).isEmpty();
+  private void assertProjectPropertyDoesNotExist(EntityDto entity, String key) {
+    assertThat(dbClient.propertiesDao().selectByQuery(PropertyQuery.builder().setEntityUuid(entity.getUuid()).setKey(key).build(), dbSession)).isEmpty();
   }
 
   private void assertProjectPropertyDoesNotExist(String key) {
@@ -473,19 +387,19 @@ public class ResetActionIT {
   }
 
   private void assertProjectPropertyExists(String key) {
-    assertThat(dbClient.propertiesDao().selectByQuery(PropertyQuery.builder().setComponentUuid(project.uuid()).setKey(key).build(), dbSession)).isNotEmpty();
+    assertThat(dbClient.propertiesDao().selectByQuery(PropertyQuery.builder().setEntityUuid(project.getUuid()).setKey(key).build(), dbSession)).isNotEmpty();
   }
 
   private void assertUserPropertyExists(String key, UserDto user) {
     assertThat(dbClient.propertiesDao().selectByQuery(PropertyQuery.builder()
-      .setKey(key)
-      .setUserUuid(user.getUuid())
-      .build(),
+        .setKey(key)
+        .setUserUuid(user.getUuid())
+        .build(),
       dbSession)).isNotEmpty();
   }
 
-  private ComponentDto randomPublicOrPrivateProject() {
-    return new Random().nextBoolean() ? db.components().insertPrivateProject().getMainBranchComponent() : db.components().insertPublicProject().getMainBranchComponent();
+  private ProjectDto randomPublicOrPrivateProject() {
+    return new Random().nextBoolean() ? db.components().insertPrivateProject().getProjectDto() : db.components().insertPublicProject().getProjectDto();
   }
 
 }

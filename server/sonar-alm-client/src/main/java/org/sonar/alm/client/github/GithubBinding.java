@@ -21,13 +21,41 @@ package org.sonar.alm.client.github;
 
 import com.google.gson.annotations.SerializedName;
 import java.util.List;
+import javax.annotation.CheckForNull;
+import javax.annotation.Nullable;
 
 import static org.sonar.alm.client.github.GithubApplicationClient.Repository;
 
 public class GithubBinding {
 
   private GithubBinding() {
-    //nothing to do
+    // nothing to do
+  }
+
+  public static class GsonApp {
+
+    @SerializedName("installations_count")
+    private long installationsCount;
+
+    @SerializedName("permissions")
+    Permissions permissions;
+
+    public GsonApp(long installationsCount, Permissions permissions) {
+      this.installationsCount = installationsCount;
+      this.permissions = permissions;
+    }
+
+    public GsonApp() {
+      // http://stackoverflow.com/a/18645370/229031
+    }
+
+    public Permissions getPermissions() {
+      return permissions;
+    }
+
+    public long getInstallationsCount() {
+      return installationsCount;
+    }
   }
 
   public static class GsonInstallations {
@@ -52,12 +80,15 @@ public class GithubBinding {
     Permissions permissions;
     @SerializedName("account")
     GsonAccount account;
+    @SerializedName("suspended_at")
+    String suspendedAt;
 
-    public GsonInstallation(long id, String targetType, Permissions permissions, GsonAccount account) {
+    public GsonInstallation(long id, String targetType, Permissions permissions, GsonAccount account, String suspendedAt) {
       this.id = id;
       this.targetType = targetType;
       this.permissions = permissions;
       this.account = account;
+      this.suspendedAt = suspendedAt;
     }
 
     public GsonInstallation() {
@@ -82,30 +113,8 @@ public class GithubBinding {
       return account;
     }
 
-    public static class Permissions {
-      @SerializedName("checks")
-      String checks;
-      @SerializedName("members")
-      String members;
-
-      public Permissions(String checks, String members) {
-        this.checks = checks;
-        this.members = members;
-      }
-
-      public Permissions() {
-        // even if empty constructor is not required for Gson, it is strongly
-        // recommended:
-        // http://stackoverflow.com/a/18645370/229031
-      }
-
-      public String getMembers() {
-        return members;
-      }
-
-      public String getChecks() {
-        return checks;
-      }
+    public String getSuspendedAt() {
+      return suspendedAt;
     }
 
     public static class GsonAccount {
@@ -129,6 +138,50 @@ public class GithubBinding {
       public String getType() {
         return type;
       }
+    }
+  }
+
+  public static class Permissions {
+    @SerializedName("checks")
+    String checks;
+    @SerializedName("members")
+    String members;
+    @SerializedName("emails")
+    String emails;
+    @SerializedName("contents")
+    String contents;
+
+    public Permissions(@Nullable String checks, @Nullable String members, @Nullable String emails, @Nullable String contents) {
+      this.checks = checks;
+      this.members = members;
+      this.emails = emails;
+      this.contents = contents;
+    }
+
+    public Permissions() {
+      // even if empty constructor is not required for Gson, it is strongly
+      // recommended:
+      // http://stackoverflow.com/a/18645370/229031
+    }
+
+    @CheckForNull
+    public String getMembers() {
+      return members;
+    }
+
+    @CheckForNull
+    public String getChecks() {
+      return checks;
+    }
+
+    @CheckForNull
+    public String getEmails() {
+      return emails;
+    }
+
+    @CheckForNull
+    public String getContents() {
+      return contents;
     }
   }
 

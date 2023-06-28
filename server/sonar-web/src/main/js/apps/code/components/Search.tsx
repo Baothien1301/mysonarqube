@@ -17,22 +17,23 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import classNames from 'classnames';
+import { InputSearch, ToggleButton } from 'design-system';
 import { isEmpty, omit } from 'lodash';
 import * as React from 'react';
 import { getTree } from '../../../api/components';
-import ButtonToggle from '../../../components/controls/ButtonToggle';
-import SearchBox from '../../../components/controls/SearchBox';
 import { Location, Router, withRouter } from '../../../components/hoc/withRouter';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
 import { getBranchLikeQuery } from '../../../helpers/branch-like';
 import { KeyboardKeys } from '../../../helpers/keycodes';
 import { translate } from '../../../helpers/l10n';
 import { BranchLike } from '../../../types/branch-like';
-import { ComponentQualifier, isView } from '../../../types/component';
+import { ComponentQualifier, isPortfolioLike, isView } from '../../../types/component';
 import { ComponentMeasure } from '../../../types/types';
 
 interface Props {
   branchLike?: BranchLike;
+  className?: string;
   component: ComponentMeasure;
   location: Location;
   newCodeSelected: boolean;
@@ -138,15 +139,17 @@ class Search extends React.PureComponent<Props, State> {
   };
 
   render() {
-    const { component, newCodeSelected } = this.props;
+    const { className, component, newCodeSelected } = this.props;
     const { loading, query } = this.state;
-    const isViewLike = isView(component.qualifier);
+    const isPortfolio = isPortfolioLike(component.qualifier);
+
+    const searchPlaceholder = getSearchPlaceholderLabel(component.qualifier as ComponentQualifier);
 
     return (
-      <div className="code-search" id="code-search">
-        {isViewLike && (
-          <span className="big-spacer-right">
-            <ButtonToggle
+      <div className={classNames('sw-flex sw-items-center', className)} id="code-search">
+        {isPortfolio && (
+          <div className="sw-mr-4">
+            <ToggleButton
               disabled={!isEmpty(query)}
               options={[
                 {
@@ -159,23 +162,38 @@ class Search extends React.PureComponent<Props, State> {
                 },
               ]}
               value={newCodeSelected}
-              onCheck={this.props.onNewCodeToggle}
+              onChange={this.props.onNewCodeToggle}
             />
-          </span>
+          </div>
         )}
-        <SearchBox
+        <InputSearch
+          clearIconAriaLabel={translate('clear')}
+          searchInputAriaLabel={searchPlaceholder}
           minLength={3}
           onChange={this.handleQueryChange}
           onKeyDown={this.handleKeyDown}
-          placeholder={translate(
-            isViewLike ? 'code.search_placeholder.portfolio' : 'code.search_placeholder'
-          )}
+          placeholder={searchPlaceholder}
+          size="large"
           value={this.state.query}
         />
-        <DeferredSpinner className="spacer-left" loading={loading} />
+        <DeferredSpinner className="sw-ml-2" loading={loading} />
       </div>
     );
   }
 }
 
 export default withRouter(Search);
+
+function getSearchPlaceholderLabel(qualifier: ComponentQualifier) {
+  switch (qualifier) {
+    case ComponentQualifier.Portfolio:
+    case ComponentQualifier.SubPortfolio:
+      return translate('code.search_placeholder.portfolio');
+
+    case ComponentQualifier.Application:
+      return translate('code.search_placeholder.application');
+
+    default:
+      return translate('code.search_placeholder.portfolio');
+  }
+}

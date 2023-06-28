@@ -18,8 +18,8 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import * as React from 'react';
-import MetaLink from '../../../app/components/nav/component/projectInformation/meta/MetaLink';
 import Link from '../../../components/common/Link';
+import MetaLink from '../../../components/common/MetaLink';
 import HelpTooltip from '../../../components/controls/HelpTooltip';
 import DateFromNow from '../../../components/intl/DateFromNow';
 import Level from '../../../components/ui/Level';
@@ -85,7 +85,7 @@ export default function ProjectCard({ project }: Props) {
         <div className="account-project-links">
           <ul className="list-inline">
             {orderedLinks.map((link) => (
-              <MetaLink iconOnly={true} key={link.id} link={link} />
+              <MetaLink iconOnly key={link.id} link={link} />
             ))}
           </ul>
         </div>

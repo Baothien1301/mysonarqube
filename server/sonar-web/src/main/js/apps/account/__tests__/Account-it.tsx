@@ -21,7 +21,6 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserEvent } from '@testing-library/user-event/dist/types/setup/setup';
 import selectEvent from 'react-select-event';
-import { byRole, byText } from 'testing-library-selector';
 import { getMyProjects, getScannableProjects } from '../../../api/components';
 import NotificationsMock from '../../../api/mocks/NotificationsMock';
 import UserTokensMock from '../../../api/mocks/UserTokensMock';
@@ -29,6 +28,7 @@ import { mockUserToken } from '../../../helpers/mocks/token';
 import { setKeyboardShortcutEnabled } from '../../../helpers/preferences';
 import { mockCurrentUser, mockLoggedInUser } from '../../../helpers/testMocks';
 import { renderAppRoutes } from '../../../helpers/testReactTestingUtils';
+import { byRole, byText } from '../../../helpers/testSelector';
 import { NotificationGlobalType, NotificationProjectType } from '../../../types/notifications';
 import { Permissions } from '../../../types/permissions';
 import { TokenType } from '../../../types/token';
@@ -36,7 +36,6 @@ import { CurrentUser } from '../../../types/users';
 import routes from '../routes';
 
 jest.mock('../../../api/user-tokens');
-jest.mock('../../../api/notifications');
 
 jest.mock('../../../helpers/preferences', () => ({
   getKeyboardShortcutEnabled: jest.fn().mockResolvedValue(true),
@@ -347,15 +346,15 @@ describe('security page', () => {
 
       // Revoke the token
       const revokeButtons = within(row).getByRole('button', {
-        name: 'users.tokens.revoke_token',
+        name: 'users.tokens.revoke_label.importantToken',
       });
       await user.click(revokeButtons);
 
       expect(
-        screen.getByRole('heading', { name: 'users.tokens.revoke_token' })
+        screen.getByRole('heading', { name: 'users.tokens.revoke_label.importantToken' })
       ).toBeInTheDocument();
 
-      await user.click(screen.getByText('users.tokens.revoke_token', { selector: 'button' }));
+      await user.click(screen.getByRole('button', { name: 'yes' }));
 
       expect(screen.getAllByRole('row')).toHaveLength(3); // 2 tokens + header
     }
@@ -389,7 +388,7 @@ describe('security page', () => {
   });
 
   it("should not suggest creating a Project token if the user doesn't have at least one scannable Projects", () => {
-    (getScannableProjects as jest.Mock).mockResolvedValueOnce({
+    jest.mocked(getScannableProjects).mockResolvedValueOnce({
       projects: [],
     });
     renderAccountApp(
@@ -402,7 +401,7 @@ describe('security page', () => {
   });
 
   it('should preselect the user token type if the user has no scan rights', async () => {
-    (getScannableProjects as jest.Mock).mockResolvedValueOnce({
+    jest.mocked(getScannableProjects).mockResolvedValueOnce({
       projects: [],
     });
     renderAccountApp(mockLoggedInUser(), securityPagePath);
@@ -412,7 +411,7 @@ describe('security page', () => {
   });
 
   it('should preselect the only project the user has access to if they select project token', async () => {
-    (getScannableProjects as jest.Mock).mockResolvedValueOnce({
+    jest.mocked(getScannableProjects).mockResolvedValueOnce({
       projects: [
         {
           key: 'project-key-1',

@@ -30,6 +30,7 @@ import org.sonar.db.component.BranchDto;
 import org.sonar.db.project.ProjectDto;
 import org.sonar.server.component.ComponentCleanerService;
 import org.sonar.server.component.ComponentFinder;
+import org.sonar.server.project.Project;
 import org.sonar.server.project.ProjectLifeCycleListeners;
 import org.sonar.server.user.UserSession;
 
@@ -40,7 +41,6 @@ import static org.sonar.server.branch.ws.ProjectBranchesParameters.ACTION_DELETE
 import static org.sonar.server.branch.ws.ProjectBranchesParameters.PARAM_BRANCH;
 import static org.sonar.server.branch.ws.ProjectBranchesParameters.PARAM_PROJECT;
 import static org.sonar.server.exceptions.NotFoundException.checkFoundWithOptional;
-import static org.sonar.server.project.Project.from;
 
 public class DeleteAction implements BranchWsAction {
   private final DbClient dbClient;
@@ -89,13 +89,13 @@ public class DeleteAction implements BranchWsAction {
         throw new IllegalArgumentException("Only non-main branches can be deleted");
       }
       componentCleanerService.deleteBranch(dbSession, branch);
-      projectLifeCycleListeners.onProjectBranchesDeleted(singleton(from(project)));
+      projectLifeCycleListeners.onProjectBranchesDeleted(singleton(Project.fromProjectDtoWithTags(project)));
       response.noContent();
     }
   }
 
   private void checkPermission(ProjectDto project) {
-    userSession.checkProjectPermission(UserRole.ADMIN, project);
+    userSession.checkEntityPermission(UserRole.ADMIN, project);
   }
 
 }

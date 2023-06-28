@@ -21,12 +21,12 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { times } from 'lodash';
 import * as React from 'react';
-import selectEvent from 'react-select-event';
-import { byLabelText, byPlaceholderText, byRole, byText } from 'testing-library-selector';
 import { parseDate } from '../../../helpers/dates';
 import { mockHistoryItem, mockMeasureHistory } from '../../../helpers/mocks/project-activity';
 import { mockMetric } from '../../../helpers/testMocks';
 import { renderComponent } from '../../../helpers/testReactTestingUtils';
+import { byLabelText, byPlaceholderText, byRole, byText } from '../../../helpers/testSelector';
+import { FCProps } from '../../../helpers/testUtils';
 import { MetricKey } from '../../../types/metrics';
 import { GraphType, MeasureHistory } from '../../../types/project-activity';
 import { Metric } from '../../../types/types';
@@ -42,7 +42,7 @@ const START_DATE = '2016-01-01T00:00:00+0200';
 describe('rendering', () => {
   it('should render correctly when loading', async () => {
     renderActivityGraph({ loading: true });
-    expect(await screen.findByText('loading')).toBeInTheDocument();
+    expect(await screen.findByLabelText('loading')).toBeInTheDocument();
   });
 
   it('should show the correct legend items', async () => {
@@ -143,9 +143,7 @@ it('should correctly handle adding/removing custom metrics', async () => {
   // We cannot select anymore options. It should disable all remaining options, and
   // show a different alert.
   expect(ui.maxOptionsAlert.get()).toBeInTheDocument();
-  // See https://github.com/testing-library/jest-dom/issues/144 for why we cannot
-  // use isDisabled().
-  expect(ui.vulnerabilityCheckbox.get()).toHaveAttribute('aria-disabled', 'true');
+  expect(ui.vulnerabilityCheckbox.get()).toBeDisabled();
 
   // Disable a few options.
   await ui.clickOnMetric(MetricKey.bugs);
@@ -212,7 +210,9 @@ function getPageObject() {
     ui: {
       ...ui,
       async changeGraphType(type: GraphType) {
-        await selectEvent.select(ui.graphTypeSelect.get(), [`project_activity.graphs.${type}`]);
+        await user.click(ui.graphTypeSelect.get());
+        const optionForType = await screen.findByText(`project_activity.graphs.${type}`);
+        await user.click(optionForType);
       },
       async openAddMetrics() {
         await user.click(ui.addMetricBtn.get());
@@ -238,7 +238,7 @@ function getPageObject() {
 
 function renderActivityGraph(
   graphsHistoryProps: Partial<GraphsHistory['props']> = {},
-  graphsHeaderProps: Partial<GraphsHeader['props']> = {}
+  graphsHeaderProps: Partial<FCProps<typeof GraphsHeader>> = {}
 ) {
   function ActivityGraph() {
     const [selectedMetrics, setSelectedMetrics] = React.useState<string[]>([]);

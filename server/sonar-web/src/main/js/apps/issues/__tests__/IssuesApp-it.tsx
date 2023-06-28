@@ -17,12 +17,14 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import selectEvent from 'react-select-event';
 import { TabKeys } from '../../../components/rules/RuleTabViewer';
 import { renderOwaspTop102021Category } from '../../../helpers/security-standard';
-import { mockLoggedInUser } from '../../../helpers/testMocks';
+import { mockLoggedInUser, mockRawIssue } from '../../../helpers/testMocks';
+import { findTooltipWithContent } from '../../../helpers/testReactTestingUtils';
 import { ComponentQualifier } from '../../../types/component';
 import { IssueType } from '../../../types/issues';
 import {
@@ -117,7 +119,7 @@ describe('issues app', () => {
       renderIssueApp();
 
       // Select an issue with an advanced rule
-      await user.click(await screen.findByRole('region', { name: 'Fix that' }));
+      await user.click(await screen.findByRole('link', { name: 'Fix that' }));
       expect(screen.getByRole('tab', { name: 'issue.tabs.code' })).toBeInTheDocument();
 
       // Are rule headers present?
@@ -136,21 +138,21 @@ describe('issues app', () => {
       );
 
       // Is the context selector present with the expected values and default selection?
-      expect(screen.getByRole('button', { name: 'Context 2' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Context 3' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Spring' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Context 2' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Context 3' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Spring' })).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'coding_rules.description_context.other' })
+        screen.getByRole('radio', { name: 'coding_rules.description_context.other' })
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Spring' })).toHaveClass('selected');
+      expect(screen.getByRole('radio', { name: 'Spring', current: true })).toBeInTheDocument();
 
       // Select context 2 and check tab content
-      await user.click(screen.getByRole('button', { name: 'Context 2' }));
+      await user.click(screen.getByRole('radio', { name: 'Context 2' }));
       expect(screen.getByText('Context 2 content')).toBeInTheDocument();
 
       // Select the "other" context and check tab content
       await user.click(
-        screen.getByRole('button', { name: 'coding_rules.description_context.other' })
+        screen.getByRole('radio', { name: 'coding_rules.description_context.other' })
       );
       expect(screen.getByText('coding_rules.context.others.title')).toBeInTheDocument();
       expect(screen.getByText('coding_rules.context.others.description.first')).toBeInTheDocument();
@@ -193,7 +195,9 @@ describe('issues app', () => {
       expect(screen.getByRole('link', { name: 'simpleRuleId' })).toBeInTheDocument();
 
       // The "Where is the issue" tab should be selected by default. Check its content
-      expect(screen.getByRole('region', { name: 'Issue on file' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Issue on file', exact: false })).toHaveLength(
+        2
+      ); // there will be 2 buttons one in concise issue and other in code viewer
       expect(
         screen.getByRole('row', {
           name: '2 * SonarQube',
@@ -205,10 +209,10 @@ describe('issues app', () => {
       const user = userEvent.setup();
       renderIssueApp();
 
-      await user.click(await ui.issueItem5.find());
-      expect(ui.issueItem6.get()).toBeInTheDocument();
+      await user.click(await ui.issueItemAction5.find());
+      expect(ui.projectIssueItem6.getAll()).toHaveLength(2); // there will be 2 buttons one in concise issue and other in code viewer
 
-      await user.click(ui.issueItem6.get());
+      await user.click(ui.projectIssueItem6.getAll()[1]);
       expect(screen.getByRole('heading', { level: 1, name: 'Second issue' })).toBeInTheDocument();
     });
 
@@ -220,7 +224,7 @@ describe('issues app', () => {
       expect(ui.issueItem8.query()).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'show_more' }));
-      expect(ui.issueItems.getAll()).toHaveLength(8);
+      expect(ui.issueItems.getAll()).toHaveLength(10);
       expect(ui.issueItem8.get()).toBeInTheDocument();
     });
 
@@ -236,20 +240,18 @@ describe('issues app', () => {
       expect(screen.getByRole('button', { name: 'bulk_change' })).toBeDisabled();
       await user.click(screen.getByRole('checkbox', { name: 'issues.select_all_issues' }));
       expect(
-        screen.getByRole('button', { name: 'issues.bulk_change_X_issues.8' })
+        screen.getByRole('button', { name: 'issues.bulk_change_X_issues.10' })
       ).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: 'issues.bulk_change_X_issues.8' }));
+      await user.click(screen.getByRole('button', { name: 'issues.bulk_change_X_issues.10' }));
       await user.click(screen.getByRole('button', { name: 'cancel' }));
-      expect(screen.getByRole('button', { name: 'issues.bulk_change_X_issues.8' })).toHaveFocus();
+      expect(screen.getByRole('button', { name: 'issues.bulk_change_X_issues.10' })).toHaveFocus();
       await user.click(screen.getByRole('checkbox', { name: 'issues.select_all_issues' }));
 
       // Check that we bulk change the selected issue
       const issueBoxFixThat = within(screen.getByRole('region', { name: 'Fix that' }));
 
       expect(
-        issueBoxFixThat.getByRole('button', {
-          name: 'issue.type.type_x_click_to_change.issue.type.CODE_SMELL',
-        })
+        issueBoxFixThat.getByLabelText('issue.type.type_x_click_to_change.issue.type.CODE_SMELL')
       ).toBeInTheDocument();
 
       await user.click(
@@ -267,67 +269,12 @@ describe('issues app', () => {
       await user.click(screen.getByRole('button', { name: 'apply' }));
 
       expect(
-        issueBoxFixThat.getByRole('button', {
-          name: 'issue.type.type_x_click_to_change.issue.type.BUG',
-        })
+        issueBoxFixThat.getByLabelText('issue.type.type_x_click_to_change.issue.type.BUG')
       ).toBeInTheDocument();
     });
   });
+
   describe('filtering', () => {
-    it('should handle filtering from a specific issue properly', async () => {
-      const user = userEvent.setup();
-      renderIssueApp();
-      await waitOnDataLoaded();
-
-      // Ensure issue type filter is unchecked
-      expect(ui.codeSmellIssueTypeFilter.get()).not.toBeChecked();
-      expect(ui.vulnerabilityIssueTypeFilter.get()).not.toBeChecked();
-      expect(ui.issueItem1.get()).toBeInTheDocument();
-      expect(ui.issueItem2.get()).toBeInTheDocument();
-
-      // Open filter similar issue dropdown for issue 2 (Code smell)
-      await user.click(
-        await within(ui.issueItem2.get()).findByRole('button', {
-          name: 'issue.filter_similar_issues',
-        })
-      );
-      await user.click(
-        await within(ui.issueItem2.get()).findByRole('button', {
-          name: 'issue.type.CODE_SMELL',
-        })
-      );
-
-      expect(ui.codeSmellIssueTypeFilter.get()).toBeChecked();
-      expect(ui.vulnerabilityIssueTypeFilter.get()).not.toBeChecked();
-      expect(ui.issueItem1.query()).not.toBeInTheDocument();
-      expect(ui.issueItem2.get()).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'issues.facet.owaspTop10_2021' })
-      ).not.toBeInTheDocument();
-
-      // Clear filters
-      await user.click(ui.clearAllFilters.get());
-
-      // Open filter similar issue dropdown for issue 3 (Vulnerability)
-      await user.click(
-        await within(await ui.issueItem1.find()).findByRole('button', {
-          name: 'issue.filter_similar_issues',
-        })
-      );
-      await user.click(
-        await within(await ui.issueItem1.find()).findByRole('button', {
-          name: 'issue.type.VULNERABILITY',
-        })
-      );
-
-      expect(ui.codeSmellIssueTypeFilter.get()).not.toBeChecked();
-      expect(ui.vulnerabilityIssueTypeFilter.get()).toBeChecked();
-      expect(ui.issueItem1.get()).toBeInTheDocument();
-      expect(ui.issueItem2.query()).not.toBeInTheDocument();
-      // Standards should now be expanded and Owasp should be visible
-      expect(screen.getByRole('button', { name: 'issues.facet.owaspTop10_2021' })).toBeVisible();
-    });
-
     it('should combine sidebar filters properly', async () => {
       const user = userEvent.setup();
       renderIssueApp();
@@ -358,6 +305,7 @@ describe('issues app', () => {
 
       // Status
       await user.click(ui.statusFacet.get());
+
       await user.click(ui.openStatusFilter.get());
       expect(ui.issueItem6.query()).not.toBeInTheDocument(); // Issue 6 should vanish
 
@@ -373,10 +321,13 @@ describe('issues app', () => {
       // Rule
       await user.click(ui.ruleFacet.get());
       await user.click(screen.getByRole('checkbox', { name: 'other' }));
-      expect(screen.getByRole('checkbox', { name: '(HTML) Advanced rule' })).toBeInTheDocument(); // Name should apply to the rule
+
+      // Name should apply to the rule
+      expect(screen.getByRole('checkbox', { name: '(HTML) Advanced rule' })).toBeInTheDocument();
 
       // Tag
       await user.click(ui.tagFacet.get());
+      await user.type(ui.tagFacetSearch.get(), 'unu');
       await user.click(screen.getByRole('checkbox', { name: 'unused' }));
 
       // Project
@@ -390,6 +341,7 @@ describe('issues app', () => {
 
       // Author
       await user.click(ui.authorFacet.get());
+      await user.type(ui.authorFacetSearch.get(), 'email');
       await user.click(screen.getByRole('checkbox', { name: 'email4@sonarsource.com' }));
       await user.click(screen.getByRole('checkbox', { name: 'email3@sonarsource.com' })); // Change author
       expect(ui.issueItem1.query()).not.toBeInTheDocument();
@@ -419,19 +371,61 @@ describe('issues app', () => {
       expect(ui.issueItem7.get()).toBeInTheDocument();
     });
 
+    it('should properly filter by code variants', async () => {
+      const user = userEvent.setup();
+      renderProjectIssuesApp();
+      await waitOnDataLoaded();
+
+      await user.click(ui.codeVariantsFacet.get());
+      await user.click(screen.getByRole('checkbox', { name: /variant 1/ }));
+
+      expect(ui.issueItem1.query()).not.toBeInTheDocument();
+      expect(ui.issueItem7.get()).toBeInTheDocument();
+
+      // Clear filter
+      await user.click(ui.clearCodeVariantsFacet.get());
+      expect(ui.issueItem1.get()).toBeInTheDocument();
+    });
+
+    it('should properly hide the code variants filter if no issue has any code variants', async () => {
+      issuesHandler.setIssueList([
+        {
+          issue: mockRawIssue(),
+          snippets: {},
+        },
+      ]);
+      renderProjectIssuesApp();
+      await waitOnDataLoaded();
+
+      expect(ui.codeVariantsFacet.query()).not.toBeInTheDocument();
+    });
+
     it('should allow to set creation date', async () => {
       const user = userEvent.setup();
       const currentUser = mockLoggedInUser();
       issuesHandler.setCurrentUser(currentUser);
+
       renderIssueApp(currentUser);
+
       await waitOnDataLoaded();
 
       // Select a specific date range such that only one issue matches
       await user.click(ui.creationDateFacet.get());
       await user.click(screen.getByPlaceholderText('start_date'));
-      await user.selectOptions(ui.dateInputMonthSelect.get(), 'January');
-      await user.selectOptions(ui.dateInputYearSelect.get(), '2023');
-      await user.click(screen.getByText('1'));
+
+      const monthSelector = within(ui.dateInputMonthSelect.get()).getByRole('combobox');
+
+      await user.click(monthSelector);
+
+      await user.click(within(ui.dateInputMonthSelect.get()).getByText('Jan'));
+
+      const yearSelector = within(ui.dateInputYearSelect.get()).getByRole('combobox');
+
+      await user.click(yearSelector);
+
+      await user.click(within(ui.dateInputYearSelect.get()).getAllByText('2023')[-1]);
+
+      await user.click(screen.getByText('1', { selector: 'button' }));
       await user.click(screen.getByText('10'));
 
       expect(ui.issueItem1.get()).toBeInTheDocument();
@@ -455,12 +449,12 @@ describe('issues app', () => {
       expect(ui.issueItem3.get()).toBeInTheDocument();
 
       // Only show my issues
-      await user.click(screen.getByRole('button', { name: 'issues.my_issues' }));
+      await user.click(screen.getByRole('radio', { name: 'issues.my_issues' }));
       expect(ui.issueItem2.query()).not.toBeInTheDocument();
       expect(ui.issueItem3.get()).toBeInTheDocument();
 
       // Show all issues again
-      await user.click(screen.getByRole('button', { name: 'all' }));
+      await user.click(screen.getByRole('radio', { name: 'all' }));
       expect(ui.issueItem2.get()).toBeInTheDocument();
       expect(ui.issueItem3.get()).toBeInTheDocument();
     });
@@ -471,13 +465,17 @@ describe('issues app', () => {
       renderIssueApp();
 
       await user.click(await ui.ruleFacet.find());
+
       await user.type(ui.ruleFacetSearch.get(), 'rule');
+
       expect(within(ui.ruleFacetList.get()).getAllByRole('checkbox')).toHaveLength(2);
+
       expect(
         within(ui.ruleFacetList.get()).getByRole('checkbox', {
           name: /Advanced rule/,
         })
       ).toBeInTheDocument();
+
       expect(
         within(ui.ruleFacetList.get()).getByRole('checkbox', {
           name: /Simple rule/,
@@ -546,26 +544,25 @@ describe('issues item', () => {
     expect(
       await screen.findByRole('tab', {
         name: `coding_rules.description_section.title.root_cause`,
-        selected: true,
       })
-    ).toBeInTheDocument();
-  });
-
-  it('should show secondary location even when no message is present', async () => {
-    renderProjectIssuesApp('project/issues?issues=issue101&open=issue101&id=myproject');
-
-    expect(await screen.findByRole('button', { name: '1 issue.location_x.1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2 issue.location_x.2' })).toBeInTheDocument();
+    ).toHaveAttribute('aria-current', 'true');
   });
 
   it('should interact with flows and locations', async () => {
     const user = userEvent.setup();
     renderProjectIssuesApp('project/issues?issues=issue11&open=issue11&id=myproject');
-    const dataFlowButton = await screen.findByRole('button', { name: 'Backtracking 1' });
-    const exectionFlowButton = screen.getByRole('button', { name: 'issue.execution_flow' });
 
-    let dataLocation1Button = screen.getByRole('button', { name: '1 Data location 1' });
-    let dataLocation2Button = screen.getByRole('button', { name: '2 Data location 2' });
+    expect(await screen.findByLabelText('list_of_issues')).toBeInTheDocument();
+
+    const dataFlowButton = await screen.findByRole('button', {
+      name: 'issue.flow.x_steps.2 Backtracking 1',
+    });
+    const exectionFlowButton = screen.getByRole('button', {
+      name: 'issue.flow.x_steps.3 issue.full_execution_flow',
+    });
+
+    let dataLocation1Button = screen.getByRole('link', { name: '1 Data location 1' });
+    let dataLocation2Button = screen.getByRole('link', { name: '2 Data location 2' });
 
     expect(dataFlowButton).toBeInTheDocument();
     expect(dataLocation1Button).toBeInTheDocument();
@@ -577,33 +574,41 @@ describe('issues item', () => {
     expect(dataLocation2Button).not.toBeInTheDocument();
 
     await user.click(exectionFlowButton);
-    expect(screen.getByRole('button', { name: '1 Execution location 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2 Execution location 2' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '3 Execution location 3' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '1 Execution location 1' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '2 Execution location 2' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '3 Execution location 3' })).toBeInTheDocument();
 
     // Keyboard interaction
     await user.click(dataFlowButton);
-    dataLocation1Button = screen.getByRole('button', { name: '1 Data location 1' });
-    dataLocation2Button = screen.getByRole('button', { name: '2 Data location 2' });
+    dataLocation1Button = screen.getByRole('link', { name: '1 Data location 1' });
+    dataLocation2Button = screen.getByRole('link', { name: '2 Data location 2' });
 
     // Location navigation
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
-    expect(dataLocation1Button).toHaveClass('selected');
+
+    expect(dataLocation1Button).toHaveAttribute('aria-current', 'true');
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
-    expect(dataLocation1Button).not.toHaveClass('selected');
-    expect(dataLocation2Button).toHaveClass('selected');
+    expect(dataLocation1Button).toHaveAttribute('aria-current', 'false');
+    expect(dataLocation2Button).toHaveAttribute('aria-current', 'true');
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
-    expect(dataLocation1Button).not.toHaveClass('selected');
-    expect(dataLocation2Button).not.toHaveClass('selected');
+    expect(dataLocation1Button).toHaveAttribute('aria-current', 'false');
+    expect(dataLocation2Button).toHaveAttribute('aria-current', 'false');
     await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
-    expect(dataLocation1Button).not.toHaveClass('selected');
-    expect(dataLocation2Button).toHaveClass('selected');
+    expect(dataLocation1Button).toHaveAttribute('aria-current', 'false');
+
+    expect(dataLocation2Button).toHaveAttribute('aria-current', 'true');
 
     // Flow navigation
     await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
-    expect(screen.getByRole('button', { name: '1 Execution location 1' })).toHaveClass('selected');
+    expect(screen.getByRole('link', { name: '1 Execution location 1' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
     await user.keyboard('{Alt>}{ArrowLeft}{/Alt}');
-    expect(screen.getByRole('button', { name: '1 Data location 1' })).toHaveClass('selected');
+    expect(screen.getByRole('link', { name: '1 Data location 1' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
   });
 
   it('should show education principles', async () => {
@@ -625,35 +630,27 @@ describe('issues item', () => {
 
     // Change issue type
     await user.click(
-      listItem.getByRole('button', {
-        name: `issue.type.type_x_click_to_change.issue.type.CODE_SMELL`,
-      })
+      listItem.getByLabelText('issue.type.type_x_click_to_change.issue.type.CODE_SMELL')
     );
     expect(listItem.getByText('issue.type.BUG')).toBeInTheDocument();
     expect(listItem.getByText('issue.type.VULNERABILITY')).toBeInTheDocument();
 
     await user.click(listItem.getByText('issue.type.VULNERABILITY'));
     expect(
-      listItem.getByRole('button', {
-        name: `issue.type.type_x_click_to_change.issue.type.VULNERABILITY`,
-      })
+      listItem.getByLabelText('issue.type.type_x_click_to_change.issue.type.VULNERABILITY')
     ).toBeInTheDocument();
 
     // Change issue severity
     expect(listItem.getByText('severity.MAJOR')).toBeInTheDocument();
 
     await user.click(
-      listItem.getByRole('button', {
-        name: `issue.severity.severity_x_click_to_change.severity.MAJOR`,
-      })
+      listItem.getByLabelText('issue.severity.severity_x_click_to_change.severity.MAJOR')
     );
     expect(listItem.getByText('severity.MINOR')).toBeInTheDocument();
     expect(listItem.getByText('severity.INFO')).toBeInTheDocument();
     await user.click(listItem.getByText('severity.MINOR'));
     expect(
-      listItem.getByRole('button', {
-        name: `issue.severity.severity_x_click_to_change.severity.MINOR`,
-      })
+      listItem.getByLabelText('issue.severity.severity_x_click_to_change.severity.MINOR')
     ).toBeInTheDocument();
 
     // Change issue status
@@ -665,9 +662,7 @@ describe('issues item', () => {
 
     await user.click(listItem.getByText('issue.transition.confirm'));
     expect(
-      listItem.getByRole('button', {
-        name: `issue.transition.status_x_click_to_change.issue.status.CONFIRMED`,
-      })
+      listItem.getByLabelText('issue.transition.status_x_click_to_change.issue.status.CONFIRMED')
     ).toBeInTheDocument();
 
     // As won't fix
@@ -682,64 +677,26 @@ describe('issues item', () => {
     ).not.toBeInTheDocument();
 
     // Assign issue to a different user
+
     await user.click(
-      listItem.getByRole('button', {
-        name: `issue.assign.unassigned_click_to_assign`,
-      })
+      listItem.getByRole('combobox', { name: 'issue.assign.unassigned_click_to_assign' })
     );
-    await user.click(listItem.getByRole('searchbox', { name: 'search.search_for_users' }));
-    await user.keyboard('luke');
-    expect(listItem.getByText('Skywalker')).toBeInTheDocument();
-    await user.keyboard('{ArrowUp}{enter}');
+    await user.click(screen.getByLabelText('search.search_for_users'));
+
+    await act(async () => {
+      await user.keyboard('luke');
+    });
+    expect(screen.getByText('Skywalker')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Skywalker'));
+    await listItem.findByRole('combobox', {
+      name: 'issue.assign.assigned_to_x_click_to_change.luke',
+    });
     expect(
-      listItem.getByRole('button', {
+      listItem.getByRole('combobox', {
         name: 'issue.assign.assigned_to_x_click_to_change.luke',
       })
     ).toBeInTheDocument();
-
-    // Add comment to the issue
-    await user.click(
-      listItem.getByRole('button', {
-        name: `issue.comment.add_comment`,
-      })
-    );
-    await user.keyboard('comment');
-    await user.click(listItem.getByRole('button', { name: 'issue.comment.formlink' }));
-    expect(listItem.getByText('comment')).toBeInTheDocument();
-
-    // Cancel editing the comment
-    await user.click(listItem.getByRole('button', { name: 'issue.comment.edit' }));
-    await user.keyboard('New ');
-    await user.click(listItem.getByRole('button', { name: 'issue.comment.edit.cancel' }));
-    expect(listItem.queryByText('New comment')).not.toBeInTheDocument();
-
-    // Edit the comment
-    await user.click(listItem.getByRole('button', { name: 'issue.comment.edit' }));
-    await user.keyboard('New ');
-    await user.click(listItem.getByText('save'));
-    expect(listItem.getByText('New comment')).toBeInTheDocument();
-
-    // Delete the comment
-    await user.click(listItem.getByRole('button', { name: 'issue.comment.delete' }));
-    await user.click(listItem.getByRole('button', { name: 'delete' })); // Confirm button
-    expect(listItem.queryByText('New comment')).not.toBeInTheDocument();
-
-    // Add comment using keyboard
-    await user.click(
-      listItem.getByRole('button', {
-        name: `issue.comment.add_comment`,
-      })
-    );
-    await user.keyboard('comment');
-    await user.keyboard('{Control>}{enter}{/Control}');
-    expect(listItem.getByText('comment')).toBeInTheDocument();
-
-    // Edit the comment using keyboard
-    await user.click(listItem.getByRole('button', { name: 'issue.comment.edit' }));
-    await user.keyboard('New ');
-    await user.keyboard('{Control>}{enter}{/Control}');
-    expect(listItem.getByText('New comment')).toBeInTheDocument();
-    await user.keyboard('{Escape}');
 
     // Change tags
     expect(listItem.getByText('issue.no_tag')).toBeInTheDocument();
@@ -753,13 +710,13 @@ describe('issues item', () => {
     expect(listItem.getByTitle('accessibility, android')).toBeInTheDocument();
 
     // Unselect
-    await user.click(screen.getByText('accessibility'));
-    expect(screen.getByTitle('android')).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'accessibility' }));
+    expect(listItem.getByTitle('android')).toBeInTheDocument();
 
     await user.click(screen.getByRole('searchbox', { name: 'search.search_for_tags' }));
     await user.keyboard('addNewTag');
     expect(
-      screen.getByRole('checkbox', { name: 'create_new_element: addnewtag' })
+      screen.getByRole('checkbox', { name: 'issue.create_tag: addnewtag' })
     ).toBeInTheDocument();
   });
 
@@ -780,12 +737,6 @@ describe('issues item', () => {
       })
     ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', {
-        name: `issue.comment.add_comment`,
-      })
-    );
-    expect(screen.queryByRole('button', { name: 'issue.comment.submit' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', {
         name: `issue.transition.status_x_click_to_change.issue.status.OPEN`,
@@ -804,12 +755,13 @@ describe('issues item', () => {
     renderIssueApp();
 
     // Select an issue with an advanced rule
-    await user.click(await ui.issueItem5.find());
+    await user.click(await ui.issueItemAction5.find());
 
     // open severity popup on key press 'i'
+
     await user.keyboard('i');
-    expect(screen.getByRole('button', { name: 'severity.MINOR' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'severity.INFO' })).toBeInTheDocument();
+    expect(screen.getByText('severity.MINOR')).toBeInTheDocument();
+    expect(screen.getByText('severity.INFO')).toBeInTheDocument();
 
     // open status popup on key press 'f'
     await user.keyboard('f');
@@ -822,6 +774,7 @@ describe('issues item', () => {
     await user.keyboard('{Escape}');
 
     // open tags popup on key press 't'
+
     await user.keyboard('t');
     expect(screen.getByRole('searchbox', { name: 'search.search_for_tags' })).toBeInTheDocument();
     expect(screen.getByText('android')).toBeInTheDocument();
@@ -858,9 +811,9 @@ describe('issues item', () => {
     const user = userEvent.setup();
     renderIssueApp();
 
-    await user.click(await ui.issueItem4.find());
-    expect(screen.getByRole('button', { name: '1 location 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2 location 2' })).toBeInTheDocument();
+    await user.click(await ui.issueItemAction4.find());
+    expect(screen.getByRole('link', { name: 'location 1' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'location 2' })).toBeInTheDocument();
 
     // Select the "why is this an issue" tab
     await user.click(
@@ -869,17 +822,15 @@ describe('issues item', () => {
     expect(
       screen.queryByRole('tab', {
         name: `issue.tabs.${TabKeys.Code}`,
-        selected: true,
       })
-    ).not.toBeInTheDocument();
+    ).toHaveAttribute('aria-current', 'false');
 
-    await user.click(screen.getByRole('button', { name: '1 location 1' }));
+    await user.click(screen.getByRole('link', { name: 'location 1' }));
     expect(
-      screen.getByRole('tab', {
+      screen.queryByRole('tab', {
         name: `issue.tabs.${TabKeys.Code}`,
-        selected: true,
       })
-    ).toBeInTheDocument();
+    ).toHaveAttribute('aria-current', 'true');
 
     // Select the same selected hotspot location should also navigate back to code page
     await user.click(
@@ -888,17 +839,15 @@ describe('issues item', () => {
     expect(
       screen.queryByRole('tab', {
         name: `issue.tabs.${TabKeys.Code}`,
-        selected: true,
       })
-    ).not.toBeInTheDocument();
+    ).toHaveAttribute('aria-current', 'false');
 
-    await user.click(screen.getByRole('button', { name: '1 location 1' }));
+    await user.click(screen.getByRole('link', { name: 'location 1' }));
     expect(
-      screen.getByRole('tab', {
+      screen.queryByRole('tab', {
         name: `issue.tabs.${TabKeys.Code}`,
-        selected: true,
       })
-    ).toBeInTheDocument();
+    ).toHaveAttribute('aria-current', 'true');
   });
 
   it('should show issue tags if applicable', async () => {
@@ -907,11 +856,14 @@ describe('issues item', () => {
     renderIssueApp();
 
     // Select an issue with an advanced rule
-    await user.click(await ui.issueItem7.find());
+    await user.click(await ui.issueItemAction7.find());
 
     expect(
-      screen.getByRole('heading', {
-        name: 'Issue with tags issue.quick_fix_available_with_sonarlint_no_link issue.resolution.badge.DEPRECATED',
+      findTooltipWithContent('issue.quick_fix_available_with_sonarlint_no_link')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', {
+        name: 'issue.resolution.badge.DEPRECATED',
       })
     ).toBeInTheDocument();
   });
@@ -931,6 +883,77 @@ describe('redirects', () => {
 
     expect(
       screen.getByRole('checkbox', { name: `issue.type.${IssueType.CodeSmell}` })
+    ).toBeInTheDocument();
+  });
+});
+
+describe('Activity', () => {
+  it('should be able to add or update comment', async () => {
+    const user = userEvent.setup();
+    issuesHandler.setIsAdmin(true);
+    renderIssueApp();
+    await user.click(await screen.findByRole('link', { name: 'Fix that' }));
+
+    expect(
+      screen.getByRole('tab', { name: `coding_rules.description_section.title.activity` })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('tab', { name: `coding_rules.description_section.title.activity` })
+    );
+
+    // Add comment to the issue
+    await user.click(
+      screen.getByRole('button', {
+        name: `issue.activity.add_comment`,
+      })
+    );
+    await user.click(screen.getByRole('textbox'));
+    await user.keyboard('activity comment');
+    await user.click(screen.getByText('hotspots.comment.submit'));
+    expect(screen.getByText('activity comment')).toBeInTheDocument();
+
+    // Cancel editing the comment
+    await user.click(screen.getByRole('button', { name: 'issue.comment.edit' }));
+    await user.click(screen.getByRole('textbox'));
+    await user.keyboard(' new');
+    await user.click(screen.getByRole('button', { name: 'cancel' }));
+    expect(screen.queryByText('activity comment new')).not.toBeInTheDocument();
+
+    // Edit the comment
+    await user.click(screen.getByRole('button', { name: 'issue.comment.edit' }));
+    await user.click(screen.getByRole('textbox'));
+    await user.keyboard(' new');
+    await user.click(screen.getByText('hotspots.comment.submit'));
+    expect(screen.getByText('activity comment new')).toBeInTheDocument();
+
+    // Delete the comment
+    await user.click(screen.getByRole('button', { name: 'issue.comment.delete' }));
+    await user.click(screen.getByRole('button', { name: 'delete' })); // Confirm button
+    expect(screen.queryByText('activity comment new')).not.toBeInTheDocument();
+  });
+
+  it('should be able to show changelog', async () => {
+    const user = userEvent.setup();
+    issuesHandler.setIsAdmin(true);
+    renderIssueApp();
+
+    await user.click(await screen.findByRole('link', { name: 'Fix that' }));
+
+    await user.click(
+      screen.getByRole('tab', { name: `coding_rules.description_section.title.activity` })
+    );
+
+    expect(screen.getByText('issue.activity.review_history.created')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'issue.changelog.changed_to.issue.changelog.field.assign.darth.vader (issue.changelog.was.luke.skywalker)'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'issue.changelog.changed_to.issue.changelog.field.status.REOPENED (issue.changelog.was.CONFIRMED)'
+      )
     ).toBeInTheDocument();
   });
 });

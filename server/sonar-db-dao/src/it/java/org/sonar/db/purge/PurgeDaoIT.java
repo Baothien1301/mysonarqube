@@ -79,6 +79,8 @@ import org.sonar.db.newcodeperiod.NewCodePeriodType;
 import org.sonar.db.portfolio.PortfolioProjectDto;
 import org.sonar.db.project.ProjectDto;
 import org.sonar.db.property.PropertyDto;
+import org.sonar.db.report.ReportScheduleDto;
+import org.sonar.db.report.ReportSubscriptionDto;
 import org.sonar.db.rule.RuleDto;
 import org.sonar.db.source.FileSourceDto;
 import org.sonar.db.user.UserDismissedMessageDto;
@@ -658,6 +660,8 @@ public class PurgeDaoIT {
     // properties exist or active and for inactive branch
     insertPropertyFor(appBranchComponent, otherAppBranchComponent);
 
+    insertReportScheduleAndSubscriptionForBranch(appBranch.getUuid(), dbSession);
+
     underTest.deleteBranch(dbSession, appBranch.getUuid());
     dbSession.commit();
 
@@ -669,6 +673,29 @@ public class PurgeDaoIT {
     assertThat(uuidsIn("app_projects", "application_uuid")).containsOnly(app.getProjectDto().getUuid(), otherApp.getProjectDto().getUuid());
     assertThat(uuidsIn("app_branch_project_branch", "application_branch_uuid")).containsOnly(otherAppBranch.getUuid());
     assertThat(componentUuidsIn("properties")).containsOnly(otherAppBranch.getUuid());
+    assertThat(uuidsIn("report_schedules", "branch_uuid")).isEmpty();
+    assertThat(uuidsIn("report_subscriptions", "branch_uuid")).isEmpty();
+
+  }
+
+  private void insertReportScheduleAndSubscriptionForBranch(String branchUuid, DbSession dbSession) {
+    db.getDbClient().reportSubscriptionDao().insert(dbSession, new ReportSubscriptionDto().setUuid("uuid")
+      .setUserUuid("userUuid")
+      .setBranchUuid(branchUuid));
+
+    db.getDbClient().reportScheduleDao().upsert(dbSession, new ReportScheduleDto().setUuid("uuid")
+      .setBranchUuid(branchUuid)
+      .setLastSendTimeInMs(2));
+  }
+
+  private void insertReportScheduleAndSubscriptionForPortfolio(String uuid, String portfolioUuid, DbSession dbSession) {
+    db.getDbClient().reportSubscriptionDao().insert(dbSession, new ReportSubscriptionDto().setUuid(uuid)
+      .setUserUuid("userUuid")
+      .setPortfolioUuid(portfolioUuid));
+
+    db.getDbClient().reportScheduleDao().upsert(dbSession, new ReportScheduleDto().setUuid(uuid)
+      .setPortfolioUuid(portfolioUuid)
+      .setLastSendTimeInMs(2));
   }
 
   @Test
@@ -877,7 +904,7 @@ public class PurgeDaoIT {
     dbSession.commit();
 
     assertThat(db.countRowsOfTable("ce_queue")).isOne();
-    assertThat(db.countSql("select count(*) from ce_queue where main_component_uuid='" + projectToBeDeleted.uuid() + "'")).isZero();
+    assertThat(db.countSql("select count(*) from ce_queue where entity_uuid='" + projectToBeDeleted.uuid() + "'")).isZero();
   }
 
   @Test
@@ -1246,9 +1273,9 @@ public class PurgeDaoIT {
   public void delete_ce_analysis_older_than_180_and_scanner_context_older_than_40_days_of_specified_project_when_purging_project() {
     LocalDateTime now = LocalDateTime.now();
     ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
-    Consumer<CeQueueDto> belongsToProject1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(project1.uuid());
+    Consumer<CeQueueDto> belongsToProject1 = t -> t.setEntityUuid(project1.uuid()).setComponentUuid(project1.uuid());
     ComponentDto project2 = db.components().insertPublicProject().getMainBranchComponent();
-    Consumer<CeQueueDto> belongsToProject2 = t -> t.setMainComponentUuid(project2.uuid()).setComponentUuid(project2.uuid());
+    Consumer<CeQueueDto> belongsToProject2 = t -> t.setEntityUuid(project2.uuid()).setComponentUuid(project2.uuid());
 
     insertCeActivityAndChildDataWithDate("VERY_OLD_1", now.minusDays(180).minusMonths(10), belongsToProject1);
     insertCeActivityAndChildDataWithDate("JUST_OLD_ENOUGH_1", now.minusDays(180).minusDays(1), belongsToProject1);
@@ -1305,8 +1332,8 @@ public class PurgeDaoIT {
     LocalDateTime now = LocalDateTime.now();
     ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto branch1 = db.components().insertProjectBranch(project1, b -> b.setExcludeFromPurge(true));
-    Consumer<CeQueueDto> belongsToProject1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(project1.uuid());
-    Consumer<CeQueueDto> belongsToBranch1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(branch1.uuid());
+    Consumer<CeQueueDto> belongsToProject1 = t -> t.setEntityUuid(project1.uuid()).setComponentUuid(project1.uuid());
+    Consumer<CeQueueDto> belongsToBranch1 = t -> t.setEntityUuid(project1.uuid()).setComponentUuid(branch1.uuid());
 
     insertCeActivityAndChildDataWithDate("VERY_OLD_1", now.minusDays(180).minusMonths(10), belongsToProject1);
     insertCeActivityAndChildDataWithDate("JUST_OLD_ENOUGH_1", now.minusDays(180).minusDays(1), belongsToProject1);
@@ -1363,8 +1390,8 @@ public class PurgeDaoIT {
     LocalDateTime now = LocalDateTime.now();
     ComponentDto project1 = db.components().insertPublicProject().getMainBranchComponent();
     ComponentDto branch1 = db.components().insertProjectBranch(project1);
-    Consumer<CeQueueDto> belongsToProject1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(project1.uuid());
-    Consumer<CeQueueDto> belongsToBranch1 = t -> t.setMainComponentUuid(project1.uuid()).setComponentUuid(branch1.uuid());
+    Consumer<CeQueueDto> belongsToProject1 = t -> t.setEntityUuid(project1.uuid()).setComponentUuid(project1.uuid());
+    Consumer<CeQueueDto> belongsToBranch1 = t -> t.setEntityUuid(project1.uuid()).setComponentUuid(branch1.uuid());
 
     insertCeActivityAndChildDataWithDate("VERY_OLD_1", now.minusDays(180).minusMonths(10), belongsToProject1);
     insertCeActivityAndChildDataWithDate("JUST_OLD_ENOUGH_1", now.minusDays(180).minusDays(1), belongsToProject1);
@@ -1419,24 +1446,12 @@ public class PurgeDaoIT {
   @Test
   public void deleteProject_deletes_webhook_deliveries() {
     ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
-    dbClient.webhookDeliveryDao().insert(dbSession, newDto().setComponentUuid(project.uuid()).setUuid("D1").setDurationMs(1000).setWebhookUuid("webhook-uuid"));
-    dbClient.webhookDeliveryDao().insert(dbSession, newDto().setComponentUuid("P2").setUuid("D2").setDurationMs(1000).setWebhookUuid("webhook-uuid"));
+    dbClient.webhookDeliveryDao().insert(dbSession, newDto().setProjectUuid(project.uuid()).setUuid("D1").setDurationMs(1000).setWebhookUuid("webhook-uuid"));
+    dbClient.webhookDeliveryDao().insert(dbSession, newDto().setProjectUuid("P2").setUuid("D2").setDurationMs(1000).setWebhookUuid("webhook-uuid"));
 
     underTest.deleteProject(dbSession, project.uuid(), project.qualifier(), project.name(), project.getKey());
 
     assertThat(selectAllDeliveryUuids(db, dbSession)).containsOnly("D2");
-  }
-
-  @Test
-  public void deleteProject_deletes_project_mappings() {
-    ComponentDto project = db.components().insertPublicProject().getMainBranchComponent();
-    dbClient.projectMappingsDao().put(dbSession, "a.key.type", "a.key", project.uuid());
-    dbClient.projectMappingsDao().put(dbSession, "a.key.type", "another.key", "D2");
-
-    underTest.deleteProject(dbSession, project.uuid(), project.qualifier(), project.name(), project.getKey());
-
-    assertThat(dbClient.projectMappingsDao().get(dbSession, "a.key.type", "a.key")).isEmpty();
-    assertThat(dbClient.projectMappingsDao().get(dbSession, "a.key.type", "another.key")).isNotEmpty();
   }
 
   @Test
@@ -1700,15 +1715,26 @@ public class PurgeDaoIT {
     ComponentDto subview3 = db.components().insertComponent(newSubPortfolio(view));
     ComponentDto pc = db.components().insertComponent(newProjectCopy("a", db.components().insertPrivateProject().getMainBranchComponent(), view));
     insertPropertyFor(view, subview1, subview2, subview3, pc);
+
+    insertReportScheduleAndSubscriptionForPortfolio("uuid", view.uuid(), dbSession);
+    insertReportScheduleAndSubscriptionForPortfolio("uuid2", subview1.uuid(), dbSession);
+    insertReportScheduleAndSubscriptionForPortfolio("uuid3", subview3.uuid(), dbSession);
+
     assertThat(getResourceIdOfProperties()).containsOnly(view.uuid(), subview1.uuid(), subview2.uuid(), subview3.uuid(), pc.uuid());
 
     underTest.deleteNonRootComponentsInView(dbSession, singletonList(subview1));
     assertThat(getResourceIdOfProperties())
       .containsOnly(view.uuid(), subview2.uuid(), subview3.uuid(), pc.uuid());
+    assertThat(uuidsIn("report_schedules", "portfolio_uuid")).containsOnly(view.uuid(), subview3.uuid());
+    assertThat(uuidsIn("report_subscriptions", "portfolio_uuid")).containsOnly(view.uuid(), subview3.uuid());
 
     underTest.deleteNonRootComponentsInView(dbSession, asList(subview2, subview3, pc));
     assertThat(getResourceIdOfProperties())
       .containsOnly(view.uuid(), pc.uuid());
+
+    assertThat(uuidsIn("report_schedules", "portfolio_uuid")).containsOnly(view.uuid());
+    assertThat(uuidsIn("report_subscriptions", "portfolio_uuid")).containsOnly(view.uuid());
+
   }
 
   @Test
@@ -1797,7 +1823,7 @@ public class PurgeDaoIT {
   }
 
   private Stream<String> getResourceIdOfProperties() {
-    return db.select("select component_uuid as \"uuid\" from properties").stream()
+    return db.select("select entity_uuid as \"uuid\" from properties").stream()
       .map(row -> (String) row.get("uuid"));
   }
 
@@ -1805,7 +1831,7 @@ public class PurgeDaoIT {
     Stream.of(components).forEach(componentDto -> db.properties().insertProperty(new PropertyDto()
         .setKey(randomAlphabetic(3))
         .setValue(randomAlphabetic(3))
-        .setComponentUuid(componentDto.uuid()),
+        .setEntityUuid(componentDto.uuid()),
       componentDto.getKey(), componentDto.name(), componentDto.qualifier(), null));
   }
 
@@ -1813,7 +1839,7 @@ public class PurgeDaoIT {
     branches.stream().forEach(branchDto -> db.properties().insertProperty(new PropertyDto()
         .setKey(randomAlphabetic(3))
         .setValue(randomAlphabetic(3))
-        .setComponentUuid(branchDto.getUuid()),
+        .setEntityUuid(branchDto.getUuid()),
       null, branchDto.getKey(), null, null));
   }
 
@@ -1835,7 +1861,7 @@ public class PurgeDaoIT {
     queueDto.setUuid(Uuids.create());
     queueDto.setTaskType(REPORT);
     queueDto.setComponentUuid(component.uuid());
-    queueDto.setMainComponentUuid(mainBranch);
+    queueDto.setEntityUuid(mainBranch);
     queueDto.setSubmitterUuid("submitter uuid");
     queueDto.setCreatedAt(1_300_000_000_000L);
     queueDto.setStatus(status);
@@ -1860,7 +1886,7 @@ public class PurgeDaoIT {
       .setUuid(UuidFactoryFast.getInstance().create())
       .setTaskType("foo")
       .setComponentUuid(component.uuid())
-      .setMainComponentUuid(mainBranch)
+      .setEntityUuid(mainBranch)
       .setStatus(Status.PENDING)
       .setCreatedAt(1_2323_222L)
       .setUpdatedAt(1_2323_222L);
@@ -1919,7 +1945,7 @@ public class PurgeDaoIT {
   }
 
   private Stream<String> componentUuidsIn(String tableName) {
-    return uuidsIn(tableName, "component_uuid");
+    return uuidsIn(tableName, "entity_uuid");
   }
 
   private Stream<String> taskUuidsIn(String tableName) {

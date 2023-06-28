@@ -188,14 +188,14 @@ class PurgeCommands {
     profiler.stop();
   }
 
-  void deletePermissions(String rootUuid) {
+  void deletePermissions(String entityUuid) {
     profiler.start("deletePermissions (group_roles)");
-    purgeMapper.deleteGroupRolesByComponentUuid(rootUuid);
+    purgeMapper.deleteGroupRolesByEntityUuid(entityUuid);
     session.commit();
     profiler.stop();
 
     profiler.start("deletePermissions (user_roles)");
-    purgeMapper.deleteUserRolesByComponentUuid(rootUuid);
+    purgeMapper.deleteUserRolesByEntityUuid(entityUuid);
     session.commit();
     profiler.stop();
   }
@@ -231,7 +231,17 @@ class PurgeCommands {
     List<List<String>> uuidsPartitions = Lists.partition(rootAndSubviewsUuids, MAX_RESOURCES_PER_QUERY);
 
     profiler.start("deleteByRootAndSubviews (properties)");
-    uuidsPartitions.forEach(purgeMapper::deletePropertiesByComponentUuids);
+    uuidsPartitions.forEach(purgeMapper::deletePropertiesByEntityUuids);
+    session.commit();
+    profiler.stop();
+
+    profiler.start("deleteByRootAndSubviews (report_schedules)");
+    uuidsPartitions.forEach(purgeMapper::deleteReportSchedulesByPortfolioUuids);
+    session.commit();
+    profiler.stop();
+
+    profiler.start("deleteByRootAndSubviews (report_subscriptions)");
+    uuidsPartitions.forEach(purgeMapper::deleteReportSubscriptionsByPortfolioUuids);
     session.commit();
     profiler.stop();
   }
@@ -243,7 +253,7 @@ class PurgeCommands {
     List<List<String>> uuidsPartitions = Lists.partition(disabledComponentsWithoutIssue, MAX_RESOURCES_PER_QUERY);
 
     profiler.start("deleteDisabledComponentsWithoutIssues (properties)");
-    uuidsPartitions.forEach(purgeMapper::deletePropertiesByComponentUuids);
+    uuidsPartitions.forEach(purgeMapper::deletePropertiesByEntityUuids);
     session.commit();
     profiler.stop();
 
@@ -255,7 +265,7 @@ class PurgeCommands {
 
   void deleteOutdatedProperties(String branchUuid) {
     profiler.start("deleteOutdatedProperties (properties)");
-    purgeMapper.deletePropertiesByComponentUuids(List.of(branchUuid));
+    purgeMapper.deletePropertiesByEntityUuids(List.of(branchUuid));
     session.commit();
     profiler.stop();
   }
@@ -400,13 +410,6 @@ class PurgeCommands {
     profiler.stop();
   }
 
-  void deleteProjectMappings(String rootUuid) {
-    profiler.start("deleteProjectMappings (project_mappings)");
-    purgeMapper.deleteProjectMappingsByProjectUuid(rootUuid);
-    session.commit();
-    profiler.stop();
-  }
-
   void deleteApplicationProjectsByProject(String projectUuid) {
     profiler.start("deleteApplicationProjectsByProject (app_projects)");
     purgeMapper.deleteAppBranchProjectBranchesByProjectUuid(projectUuid);
@@ -491,5 +494,21 @@ class PurgeCommands {
     session.commit();
     profiler.stop();
   }
+
+  public void deleteReportSchedules(String rootUuid) {
+    profiler.start("deleteReportSchedules (report_schedules)");
+    purgeMapper.deleteReportSchedulesByBranchUuid(rootUuid);
+    session.commit();
+    profiler.stop();
+  }
+
+
+  public void deleteReportSubscriptions(String rootUuid){
+    profiler.start("deleteReportSubscriptions (report_subscriptions)");
+    purgeMapper.deleteReportSubscriptionsByBranchUuid(rootUuid);
+    session.commit();
+    profiler.stop();
+  }
+
 
 }

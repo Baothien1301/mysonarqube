@@ -24,17 +24,18 @@ import { Key } from '../helpers/keyboard';
 import { KeyboardHintKeys } from './KeyboardHintKeys';
 
 interface Props {
+  className?: string;
   command: string;
   title?: string;
 }
 
-export function KeyboardHint({ title, command }: Props) {
+export function KeyboardHint({ title, command, className }: Props) {
   const normalizedCommand = command
     .replace(Key.Control, isMacOS() ? 'Command' : 'Control')
     .replace(Key.Alt, isMacOS() ? 'Option' : 'Alt');
 
   return (
-    <Body>
+    <Body className={className}>
       {title && <span className="sw-truncate">{title}</span>}
       <KeyboardHintKeys command={normalizedCommand} />
     </Body>

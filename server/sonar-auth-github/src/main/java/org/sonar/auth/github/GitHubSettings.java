@@ -22,11 +22,14 @@ package org.sonar.auth.github;
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
 import org.sonar.api.PropertyType;
+import org.sonar.api.ce.ComputeEngineSide;
 import org.sonar.api.config.Configuration;
 import org.sonar.api.config.PropertyDefinition;
+import org.sonar.api.server.ServerSide;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.server.property.InternalProperties;
@@ -39,6 +42,8 @@ import static org.sonar.api.PropertyType.PASSWORD;
 import static org.sonar.api.PropertyType.STRING;
 import static org.sonar.api.utils.Preconditions.checkState;
 
+@ServerSide
+@ComputeEngineSide
 public class GitHubSettings {
 
   public static final String CLIENT_ID = "sonar.auth.github.clientId.secured";
@@ -58,6 +63,7 @@ public class GitHubSettings {
 
   private static final String CATEGORY = "authentication";
   private static final String SUBCATEGORY = "github";
+
 
   private final Configuration configuration;
 
@@ -108,8 +114,12 @@ public class GitHubSettings {
     return urlWithEndingSlash(configuration.get(API_URL).orElse(""));
   }
 
-  String[] organizations() {
-    return configuration.getStringArray(ORGANIZATIONS);
+  public String apiURLOrDefault() {
+    return configuration.get(API_URL).map(GitHubSettings::urlWithEndingSlash).orElse(DEFAULT_API_URL);
+  }
+
+  public Set<String> getOrganizations() {
+    return Set.of(configuration.getStringArray(ORGANIZATIONS));
   }
 
   @CheckForNull
@@ -233,8 +243,8 @@ public class GitHubSettings {
         .build(),
       PropertyDefinition.builder(ORGANIZATIONS)
         .name("Organizations")
-        .description("Only members of these organizations will be able to authenticate to the server. " +
-          "If a user is a member of any of the organizations listed they will be authenticated.")
+        .description("Only members of these organizations will be able to authenticate to the server. "
+          + "⚠ if not set, users from any organization where the GitHub App is installed will be able to login to this SonarQube instance.")
         .multiValues(true)
         .category(CATEGORY)
         .subCategory(SUBCATEGORY)

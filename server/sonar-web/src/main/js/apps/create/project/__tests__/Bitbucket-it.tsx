@@ -22,11 +22,12 @@ import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import selectEvent from 'react-select-event';
-import { byLabelText, byRole, byText } from 'testing-library-selector';
 import { searchForBitbucketServerRepositories } from '../../../../api/alm-integrations';
 import AlmIntegrationsServiceMock from '../../../../api/mocks/AlmIntegrationsServiceMock';
 import AlmSettingsServiceMock from '../../../../api/mocks/AlmSettingsServiceMock';
+import NewCodePeriodsServiceMock from '../../../../api/mocks/NewCodePeriodsServiceMock';
 import { renderApp } from '../../../../helpers/testReactTestingUtils';
+import { byLabelText, byRole, byText } from '../../../../helpers/testSelector';
 import CreateProjectPage, { CreateProjectPageProps } from '../CreateProjectPage';
 
 jest.mock('../../../../api/alm-integrations');
@@ -34,6 +35,7 @@ jest.mock('../../../../api/alm-settings');
 
 let almIntegrationHandler: AlmIntegrationsServiceMock;
 let almSettingsHandler: AlmSettingsServiceMock;
+let newCodePeriodHandler: NewCodePeriodsServiceMock;
 
 const ui = {
   bitbucketServerCreateProjectButton: byText('onboarding.create_project.select_method.bitbucket'),
@@ -46,12 +48,14 @@ const ui = {
 beforeAll(() => {
   almIntegrationHandler = new AlmIntegrationsServiceMock();
   almSettingsHandler = new AlmSettingsServiceMock();
+  newCodePeriodHandler = new NewCodePeriodsServiceMock();
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
   almIntegrationHandler.reset();
   almSettingsHandler.reset();
+  newCodePeriodHandler.reset();
 });
 
 it('should ask for PAT when it is not set yet and show the import project feature afterwards', async () => {
@@ -121,6 +125,18 @@ it('should show import project feature when PAT is already set', async () => {
   await user.click(radioButton);
   expect(importButton).toBeEnabled();
   await user.click(importButton);
+
+  expect(
+    screen.getByRole('heading', { name: 'onboarding.create_project.new_code_definition.title' })
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByRole('radio', { name: 'new_code_definition.global_setting' }));
+  await user.click(
+    screen.getByRole('button', {
+      name: 'onboarding.create_project.new_code_definition.create_project',
+    })
+  );
+
   expect(await screen.findByText('/dashboard?id=key')).toBeInTheDocument();
 });
 
@@ -154,7 +170,7 @@ it('should show no result message when there are no projects', async () => {
     await selectEvent.select(ui.instanceSelector.get(), [/conf-bitbucketserver-2/]);
   });
 
-  expect(screen.getByRole('alert')).toHaveTextContent('onboarding.create_project.no_bbs_projects');
+  expect(screen.getByText('onboarding.create_project.no_bbs_projects')).toBeInTheDocument();
 });
 
 function renderCreateProject(props: Partial<CreateProjectPageProps> = {}) {

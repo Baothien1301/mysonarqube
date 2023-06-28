@@ -17,12 +17,11 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import { DeferredSpinner } from 'design-system';
 import * as React from 'react';
 import { getComponentLeaves } from '../../../api/components';
-import A11ySkipTarget from '../../../components/a11y/A11ySkipTarget';
 import SourceViewer from '../../../components/SourceViewer/SourceViewer';
-import DeferredSpinner from '../../../components/ui/DeferredSpinner';
-import PageActions from '../../../components/ui/PageActions';
+import A11ySkipTarget from '../../../components/a11y/A11ySkipTarget';
 import { getBranchLikeQuery, isSameBranchLike } from '../../../helpers/branch-like';
 import { BranchLike } from '../../../types/branch-like';
 import { isFile } from '../../../types/component';
@@ -36,11 +35,11 @@ import {
   Paging,
   Period,
 } from '../../../types/types';
-import BubbleChart from '../drilldown/BubbleChart';
+import BubbleChartView from '../drilldown/BubbleChartView';
 import { BUBBLES_FETCH_LIMIT, enhanceComponent, getBubbleMetrics, hasFullMeasures } from '../utils';
-import Breadcrumbs from './Breadcrumbs';
 import LeakPeriodLegend from './LeakPeriodLegend';
 import MeasureContentHeader from './MeasureContentHeader';
+import MeasuresBreadcrumbs from './MeasuresBreadcrumbs';
 
 interface Props {
   branchLike?: BranchLike;
@@ -121,14 +120,15 @@ export default class MeasureOverview extends React.PureComponent<Props, State> {
     );
   };
 
-  renderContent() {
+  renderContent(isFile: boolean) {
     const { branchLike, component, domain, metrics } = this.props;
     const { paging } = this.state;
 
-    if (isFile(component.qualifier)) {
+    if (isFile) {
       return (
         <div className="measure-details-viewer">
           <SourceViewer
+            hideHeader
             branchLike={branchLike}
             component={component.key}
             onIssueChange={this.props.onIssueChange}
@@ -138,8 +138,8 @@ export default class MeasureOverview extends React.PureComponent<Props, State> {
     }
 
     return (
-      <BubbleChart
-        componentKey={component.key}
+      <BubbleChartView
+        component={component}
         branchLike={branchLike}
         components={this.state.components}
         domain={domain}
@@ -153,44 +153,33 @@ export default class MeasureOverview extends React.PureComponent<Props, State> {
   render() {
     const { branchLike, className, component, leakPeriod, loading, rootComponent } = this.props;
     const displayLeak = hasFullMeasures(branchLike);
-    return (
-      <main className={className}>
-        <div className="layout-page-header-panel layout-page-main-header">
-          <A11ySkipTarget anchor="measures_main" />
+    const isFileComponent = isFile(component.qualifier);
 
-          <div className="layout-page-header-panel-inner layout-page-main-header-inner">
-            <div className="layout-page-main-inner">
-              <MeasureContentHeader
-                left={
-                  <Breadcrumbs
-                    backToFirst={true}
-                    branchLike={branchLike}
-                    className="text-ellipsis"
-                    component={component}
-                    handleSelect={this.props.updateSelected}
-                    rootComponent={rootComponent}
-                  />
-                }
-                right={
-                  <PageActions
-                    componentQualifier={rootComponent.qualifier}
-                    current={this.state.components.length}
-                  />
-                }
-              />
-            </div>
-          </div>
-        </div>
-        <div className="layout-page-main-inner measure-details-content">
-          <div className="clearfix big-spacer-bottom">
-            {leakPeriod && displayLeak && (
-              <LeakPeriodLegend className="pull-right" component={component} period={leakPeriod} />
-            )}
-          </div>
+    return (
+      <div className={className}>
+        <A11ySkipTarget anchor="measures_main" />
+
+        <MeasureContentHeader
+          left={
+            <MeasuresBreadcrumbs
+              backToFirst
+              branchLike={branchLike}
+              component={component}
+              handleSelect={this.props.updateSelected}
+              rootComponent={rootComponent}
+            />
+          }
+          right={
+            leakPeriod &&
+            displayLeak && <LeakPeriodLegend component={component} period={leakPeriod} />
+          }
+        />
+
+        <div className="sw-p-6">
           <DeferredSpinner loading={loading} />
-          {!loading && this.renderContent()}
+          {!loading && this.renderContent(isFileComponent)}
         </div>
-      </main>
+      </div>
     );
   }
 }

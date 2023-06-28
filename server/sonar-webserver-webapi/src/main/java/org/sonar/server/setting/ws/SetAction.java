@@ -47,16 +47,17 @@ import org.sonar.api.server.ws.WebService;
 import org.sonar.api.web.UserRole;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.property.PropertyDto;
 import org.sonar.scanner.protocol.GsonHelper;
-import org.sonar.server.component.ComponentFinder;
 import org.sonar.server.exceptions.BadRequestException;
+import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.setting.SettingsChangeNotifier;
 import org.sonar.server.setting.ws.SettingValidations.SettingData;
 import org.sonar.server.user.UserSession;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static java.lang.String.format;
 import static org.sonar.server.exceptions.BadRequestException.checkRequest;
 import static org.sonar.server.setting.ws.SettingsWsParameters.PARAM_COMPONENT;
 import static org.sonar.server.setting.ws.SettingsWsParameters.PARAM_FIELD_VALUES;
@@ -72,17 +73,15 @@ public class SetAction implements SettingsWsAction {
 
   private final PropertyDefinitions propertyDefinitions;
   private final DbClient dbClient;
-  private final ComponentFinder componentFinder;
   private final UserSession userSession;
   private final SettingsUpdater settingsUpdater;
   private final SettingsChangeNotifier settingsChangeNotifier;
   private final SettingValidations validations;
 
-  public SetAction(PropertyDefinitions propertyDefinitions, DbClient dbClient, ComponentFinder componentFinder, UserSession userSession,
+  public SetAction(PropertyDefinitions propertyDefinitions, DbClient dbClient, UserSession userSession,
     SettingsUpdater settingsUpdater, SettingsChangeNotifier settingsChangeNotifier, SettingValidations validations) {
     this.propertyDefinitions = propertyDefinitions;
     this.dbClient = dbClient;
-    this.componentFinder = componentFinder;
     this.userSession = userSession;
     this.settingsUpdater = settingsUpdater;
     this.settingsChangeNotifier = settingsChangeNotifier;
@@ -103,9 +102,10 @@ public class SetAction implements SettingsWsAction {
         PARAM_VALUE, PARAM_VALUES)
       .setSince("6.1")
       .setChangelog(
-        new Change("10.1", String.format("The use of module keys in parameter '%s' is removed", PARAM_COMPONENT)),
+        new Change("10.1", "Param 'component' now only accept keys for projects, applications, portfolios or subportfolios"),
+        new Change("10.1", format("The use of module keys in parameter '%s' is removed", PARAM_COMPONENT)),
         new Change("8.8", "Deprecated parameter 'componentKey' has been removed"),
-        new Change("7.6", String.format("The use of module keys in parameter '%s' is deprecated", PARAM_COMPONENT)),
+        new Change("7.6", format("The use of module keys in parameter '%s' is deprecated", PARAM_COMPONENT)),
         new Change("7.1", "The settings defined in conf/sonar.properties are read-only and can't be changed"))
       .setPost(true)
       .setHandler(this);
@@ -129,7 +129,7 @@ public class SetAction implements SettingsWsAction {
       .setExampleValue(PARAM_FIELD_VALUES + "={\"firstField\":\"first value\", \"secondField\":\"second value\", \"thirdField\":\"third value\"}");
 
     action.createParam(PARAM_COMPONENT)
-      .setDescription("Component key")
+      .setDescription("Component key. Only keys for projects, applications, portfolios or subportfolios are accepted.")
       .setExampleValue(KEY_PROJECT_EXAMPLE_001);
   }
 
@@ -144,10 +144,10 @@ public class SetAction implements SettingsWsAction {
   }
 
   private void doHandle(DbSession dbSession, SetRequest request) {
-    Optional<ComponentDto> component = searchComponent(dbSession, request);
-    String projectKey = component.isPresent() ? component.get().getKey() : null;
-    String projectName = component.isPresent() ? component.get().name() : null;
-    String qualifier = component.isPresent() ? component.get().qualifier() : null;
+    Optional<EntityDto> component = searchEntity(dbSession, request);
+    String projectKey = component.map(EntityDto::getKey).orElse(null);
+    String projectName = component.map(EntityDto::getName).orElse(null);
+    String qualifier = component.map(EntityDto::getQualifier).orElse(null);
     checkPermissions(component);
 
     PropertyDefinition definition = propertyDefinitions.get(request.getKey());
@@ -172,20 +172,20 @@ public class SetAction implements SettingsWsAction {
     }
   }
 
-  private String doHandlePropertySet(DbSession dbSession, SetRequest request, @Nullable PropertyDefinition definition, Optional<ComponentDto> component) {
+  private String doHandlePropertySet(DbSession dbSession, SetRequest request, @Nullable PropertyDefinition definition, Optional<EntityDto> component) {
     validatePropertySet(request, definition);
 
     int[] fieldIds = IntStream.rangeClosed(1, request.getFieldValues().size()).toArray();
     String inlinedFieldKeys = IntStream.of(fieldIds).mapToObj(String::valueOf).collect(COMMA_JOINER);
     String key = persistedKey(request);
-    String componentUuid = component.isPresent() ? component.get().uuid() : null;
+    String componentUuid = component.isPresent() ? component.get().getUuid() : null;
     String componentKey = component.isPresent() ? component.get().getKey() : null;
-    String componentName = component.isPresent() ? component.get().name() : null;
-    String qualifier = component.isPresent() ? component.get().qualifier() : null;
+    String componentName = component.isPresent() ? component.get().getName() : null;
+    String qualifier = component.isPresent() ? component.get().getQualifier() : null;
 
     deleteSettings(dbSession, component, key);
     dbClient.propertiesDao().saveProperty(dbSession, new PropertyDto().setKey(key).setValue(inlinedFieldKeys)
-      .setComponentUuid(componentUuid), null, componentKey, componentName, qualifier);
+      .setEntityUuid(componentUuid), null, componentKey, componentName, qualifier);
 
     List<String> fieldValues = request.getFieldValues();
     IntStream.of(fieldIds).boxed()
@@ -197,7 +197,7 @@ public class SetAction implements SettingsWsAction {
     return inlinedFieldKeys;
   }
 
-  private void deleteSettings(DbSession dbSession, Optional<ComponentDto> component, String key) {
+  private void deleteSettings(DbSession dbSession, Optional<EntityDto> component, String key) {
     if (component.isPresent()) {
       settingsUpdater.deleteComponentSettings(dbSession, component.get(), key);
     } else {
@@ -205,10 +205,10 @@ public class SetAction implements SettingsWsAction {
     }
   }
 
-  private void commonChecks(SetRequest request, Optional<ComponentDto> component) {
+  private void commonChecks(SetRequest request, Optional<EntityDto> entity) {
     checkValueIsSet(request);
     String settingKey = request.getKey();
-    SettingData settingData = new SettingData(settingKey, valuesFromRequest(request), component.orElse(null));
+    SettingData settingData = new SettingData(settingKey, valuesFromRequest(request), entity.orElse(null));
     List.of(validations.scope(), validations.qualifier(), validations.valueType())
       .forEach(validation -> validation.accept(settingData));
   }
@@ -284,9 +284,9 @@ public class SetAction implements SettingsWsAction {
       : request.getValue();
   }
 
-  private void checkPermissions(Optional<ComponentDto> component) {
-    if (component.isPresent()) {
-      userSession.checkComponentPermission(UserRole.ADMIN, component.get());
+  private void checkPermissions(Optional<EntityDto> entity) {
+    if (entity.isPresent()) {
+      userSession.checkEntityPermission(UserRole.ADMIN, entity.get());
     } else {
       userSession.checkIsSystemAdministrator();
     }
@@ -298,7 +298,7 @@ public class SetAction implements SettingsWsAction {
       .setValue(request.param(PARAM_VALUE))
       .setValues(request.multiParam(PARAM_VALUES))
       .setFieldValues(request.multiParam(PARAM_FIELD_VALUES))
-      .setComponent(request.param(PARAM_COMPONENT));
+      .setEntity(request.param(PARAM_COMPONENT));
     checkArgument(set.getValues() != null, "Setting values must not be null");
     checkArgument(set.getFieldValues() != null, "Setting fields values must not be null");
     return set;
@@ -311,19 +311,20 @@ public class SetAction implements SettingsWsAction {
     try {
       return gson.fromJson(json, type);
     } catch (JsonSyntaxException e) {
-      throw BadRequestException.create(String.format("JSON '%s' does not respect expected format for setting '%s'. Ex: {\"field1\":\"value1\", \"field2\":\"value2\"}", json, key));
+      throw BadRequestException.create(format("JSON '%s' does not respect expected format for setting '%s'. Ex: {\"field1\":\"value1\", \"field2\":\"value2\"}", json, key));
     }
   }
 
-  private Optional<ComponentDto> searchComponent(DbSession dbSession, SetRequest request) {
-    String componentKey = request.getComponent();
-    if (componentKey == null) {
+  private Optional<EntityDto> searchEntity(DbSession dbSession, SetRequest request) {
+    String entityKey = request.getEntity();
+    if (entityKey == null) {
       return Optional.empty();
     }
-    return Optional.of(componentFinder.getByKey(dbSession, componentKey));
+    return Optional.of(dbClient.entityDao().selectByKey(dbSession, entityKey)
+      .orElseThrow(() -> new NotFoundException(format("Component key '%s' not found", entityKey))));
   }
 
-  private PropertyDto toProperty(SetRequest request, Optional<ComponentDto> component) {
+  private PropertyDto toProperty(SetRequest request, Optional<EntityDto> entity) {
     String key = persistedKey(request);
     String value = persistedValue(request);
 
@@ -331,15 +332,15 @@ public class SetAction implements SettingsWsAction {
       .setKey(key)
       .setValue(value);
 
-    if (component.isPresent()) {
-      property.setComponentUuid(component.get().uuid());
+    if (entity.isPresent()) {
+      property.setEntityUuid(entity.get().getUuid());
     }
 
     return property;
   }
 
   private static PropertyDto toFieldProperty(KeyValue keyValue, @Nullable String componentUuid) {
-    return new PropertyDto().setKey(keyValue.key).setValue(keyValue.value).setComponentUuid(componentUuid);
+    return new PropertyDto().setKey(keyValue.key).setValue(keyValue.value).setEntityUuid(componentUuid);
   }
 
   private static class KeyValue {
@@ -354,21 +355,20 @@ public class SetAction implements SettingsWsAction {
 
   private static class SetRequest {
 
-    private String pullRequest;
-    private String component;
+    private String entity;
     private List<String> fieldValues;
     private String key;
     private String value;
     private List<String> values;
 
-    public SetRequest setComponent(@Nullable String component) {
-      this.component = component;
+    public SetRequest setEntity(@Nullable String entity) {
+      this.entity = entity;
       return this;
     }
 
     @CheckForNull
-    public String getComponent() {
-      return component;
+    public String getEntity() {
+      return entity;
     }
 
     public SetRequest setFieldValues(List<String> fieldValues) {

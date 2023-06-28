@@ -20,6 +20,7 @@
 import { RuleDescriptionSection } from '../apps/coding-rules/rule';
 import { ComponentQualifier, Visibility } from './component';
 import { MessageFormatting } from './issues';
+import { NewCodeDefinitionType } from './new-code-definition';
 import { UserActive, UserBase } from './users';
 
 export type Dict<T> = { [key: string]: T };
@@ -246,6 +247,7 @@ export interface Issue {
   assigneeName?: string;
   author?: string;
   branch?: string;
+  codeVariants?: string[];
   comments?: IssueComment[];
   component: string;
   componentEnabled?: boolean;
@@ -396,25 +398,6 @@ export interface MyProject {
   qualityGate?: string;
 }
 
-export interface NewCodePeriod {
-  type?: NewCodePeriodSettingType;
-  value?: string;
-  effectiveValue?: string;
-  inherited?: boolean;
-}
-
-export interface NewCodePeriodBranch extends NewCodePeriod {
-  projectKey: string;
-  branchKey: string;
-}
-
-export enum NewCodePeriodSettingType {
-  PREVIOUS_VERSION = 'PREVIOUS_VERSION',
-  NUMBER_OF_DAYS = 'NUMBER_OF_DAYS',
-  SPECIFIC_ANALYSIS = 'SPECIFIC_ANALYSIS',
-  REFERENCE_BRANCH = 'REFERENCE_BRANCH',
-}
-
 export interface Paging {
   pageIndex: number;
   pageSize: number;
@@ -424,7 +407,7 @@ export interface Paging {
 export interface Period {
   date: string;
   index?: number;
-  mode: PeriodMode | NewCodePeriodSettingType;
+  mode: PeriodMode | NewCodeDefinitionType;
   modeParam?: string;
   parameter?: string;
 }
@@ -616,6 +599,7 @@ export interface Snippet {
 export interface SnippetGroup extends SnippetsByComponent {
   locations: FlowLocation[];
 }
+
 export interface SnippetsByComponent {
   component: SourceViewerFile;
   sources: { [line: number]: SourceLine };
@@ -624,12 +608,14 @@ export interface SnippetsByComponent {
 export interface SourceLine {
   code?: string;
   conditions?: number;
+  coverageBlock?: number;
   coverageStatus?: SourceLineCoverageStatus;
   coveredConditions?: number;
   duplicated?: boolean;
   isNew?: boolean;
   line: number;
   lineHits?: number;
+  newCodeBlock?: number;
   scmAuthor?: string;
   scmDate?: string;
   scmRevision?: string;

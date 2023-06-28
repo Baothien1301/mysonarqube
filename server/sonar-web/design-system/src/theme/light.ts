@@ -18,7 +18,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-import { OPACITY_20_PERCENT } from '../helpers/constants';
+import { OPACITY_20_PERCENT, OPACITY_75_PERCENT } from '../helpers/constants';
 import COLORS from './colors';
 
 const primary = {
@@ -41,6 +41,17 @@ const danger = {
   default: COLORS.red[600],
   dark: COLORS.red[700],
   darker: COLORS.red[800],
+};
+
+const codeSnippetLight = {
+  annotations: [34, 84, 192],
+  body: [51, 53, 60],
+  constants: [126, 83, 5],
+  comments: [109, 111, 119],
+  keyword: [152, 29, 150],
+  string: [32, 105, 31],
+  'keyword-light': [28, 28, 163], // Not used currently in code snippet
+  'preprocessing-directive': [47, 103, 48],
 };
 
 export const lightTheme = {
@@ -91,6 +102,10 @@ export const lightTheme = {
     // popup
     popup: COLORS.white,
     popupBorder: secondary.default,
+
+    // modal
+    modalContents: COLORS.white,
+    modalOverlay: [...COLORS.blueGrey[900], OPACITY_75_PERCENT],
 
     // dropdown menu
     dropdownMenu: COLORS.white,
@@ -166,9 +181,54 @@ export const lightTheme = {
     codeSnippetBackground: COLORS.blueGrey[25],
     codeSnippetBorder: COLORS.blueGrey[100],
     codeSnippetHighlight: secondary.default,
+    codeSnippetBody: codeSnippetLight.body,
+    codeSnippetAnnotations: codeSnippetLight.annotations,
+    codeSnippetComments: codeSnippetLight.comments,
+    codeSnippetConstants: codeSnippetLight.constants,
+    codeSnippetKeyword: codeSnippetLight.keyword,
+    codeSnippetString: codeSnippetLight.string,
+    codeSnippetKeywordLight: codeSnippetLight['keyword-light'],
+    codeSnippetPreprocessingDirective: codeSnippetLight['preprocessing-directive'],
+    codeSnippetInline: COLORS.blueGrey[500],
 
     // code viewer
+    codeLine: COLORS.white,
+    codeLineBorder: COLORS.grey[100],
     codeLineIssueIndicator: COLORS.blueGrey[400], // Should be blueGrey[300], to be changed once code viewer is reworked
+    codeLineLocationMarker: COLORS.red[200],
+    codeLineLocationMarkerSelected: danger.lighter,
+    codeLineLocationSelected: COLORS.blueGrey[100],
+    codeLineCoveredUnderline: [...COLORS.green[500], 0.15],
+    codeLineUncoveredUnderline: [...COLORS.red[500], 0.15],
+
+    codeLineHover: secondary.light,
+    codeLineHighlighted: COLORS.blueGrey[100],
+    codeLineNewCodeUnderline: [...COLORS.indigo[300], 0.15],
+    codeLineMeta: COLORS.blueGrey[300],
+    codeLineMetaHover: secondary.dark,
+    codeLineDuplication: secondary.default,
+    codeLineCovered: COLORS.green[300],
+    codeLineUncovered: danger.default,
+    codeLinePartiallyCoveredA: danger.default,
+    codeLinePartiallyCoveredB: COLORS.white,
+    codeLineIssueSquiggle: danger.lighter,
+    codeLineIssuePointerBorder: COLORS.white,
+    codeLineLocationHighlighted: [...COLORS.blueGrey[200], 0.6],
+    codeLineEllipsis: COLORS.white,
+    codeLineEllipsisHover: secondary.light,
+    codeLineIssueLocation: [...danger.lighter, 0.15],
+    codeLineIssueLocationSelected: [...danger.lighter, 0.5],
+    codeLineIssueMessageTooltip: secondary.darker,
+
+    // code syntax highlight
+    codeSyntaxBody: COLORS.codeSyntaxLight.body,
+    codeSyntaxAnnotations: COLORS.codeSyntaxLight.annotations,
+    codeSyntaxConstants: COLORS.codeSyntaxLight.constants,
+    codeSyntaxComments: COLORS.codeSyntaxLight.comments,
+    codeSyntaxKeyword: COLORS.codeSyntaxLight.keyword,
+    codeSyntaxString: COLORS.codeSyntaxLight.string,
+    codeSyntaxKeywordLight: COLORS.codeSyntaxLight['keyword-light'],
+    codeSyntaxPreprocessingDirective: COLORS.codeSyntaxLight['preprocessing-directive'],
 
     // checkbox
     checkboxHover: COLORS.indigo[50],
@@ -198,6 +258,7 @@ export const lightTheme = {
     // tooltip
     tooltipBackground: COLORS.blueGrey[600],
     tooltipSeparator: secondary.dark,
+    tooltipHighlight: secondary.default,
 
     // avatar
     avatarBackground: COLORS.white,
@@ -363,11 +424,16 @@ export const lightTheme = {
 
     // subnavigation sidebar
     subnavigation: COLORS.white,
-    subnavigationHover: COLORS.indigo[50],
+    subnavigationHover: COLORS.blueGrey[50],
+    subnavigationSelected: COLORS.blueGrey[100],
     subnavigationBorder: COLORS.grey[100],
     subnavigationSeparator: COLORS.grey[50],
     subnavigationSubheading: COLORS.blueGrey[25],
     subnavigationDisabled: COLORS.blueGrey[300],
+    subnavigationExecutionFlow: COLORS.blueGrey[25],
+    subnavigationExecutionFlowBorder: secondary.default,
+    subnavigationExecutionFlowSeparator: COLORS.blueGrey[100],
+    subnavigationExecutionFlowActive: COLORS.indigo[500],
 
     // footer
     footer: COLORS.white,
@@ -394,6 +460,7 @@ export const lightTheme = {
     graphZoomBackgroundColor: COLORS.blueGrey[25],
     graphZoomBorderColor: COLORS.blueGrey[100],
     graphZoomHandleColor: COLORS.blueGrey[400],
+    graphLegendBorder: secondary.darker,
 
     // page
     pageTitle: COLORS.blueGrey[700],
@@ -416,7 +483,8 @@ export const lightTheme = {
     coreConceptsProgressBar: secondary.light,
 
     // issue box
-    issueBoxBorder: danger.lighter,
+    issueBoxSelectedBorder: danger.lighter,
+    issueBoxBorder: secondary.default,
     issueBoxBorderDepracated: secondary.default,
     issueTypeIcon: COLORS.red[200],
 
@@ -526,6 +594,16 @@ export const lightTheme = {
     toggle: secondary.darker,
     toggleHover: secondary.darker,
 
+    // code viewer
+    codeLineNewCodeUnderline: COLORS.indigo[500],
+    codeLineCoveredUnderline: COLORS.green[700],
+    codeLineUncoveredUnderline: COLORS.red[700],
+    codeLineEllipsis: COLORS.blueGrey[300],
+    codeLineEllipsisHover: secondary.dark,
+    codeLineLocationMarker: COLORS.red[900],
+    codeLineLocationMarkerSelected: COLORS.red[900],
+    codeLineIssueMessageTooltip: COLORS.blueGrey[25],
+
     // code snippet
     codeSnippetHighlight: danger.default,
 
@@ -625,6 +703,7 @@ export const lightTheme = {
 
     // subnavigation sidebar
     subnavigation: secondary.darker,
+    subnavigationExecutionFlow: COLORS.blueGrey[700],
     subnavigationHover: COLORS.blueGrey[700],
     subnavigationSubheading: secondary.dark,
 

@@ -20,6 +20,7 @@
 package org.sonar.server.component;
 
 import java.util.Optional;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -33,6 +34,7 @@ import org.sonar.db.DbTester;
 import org.sonar.db.component.BranchDto;
 import org.sonar.db.component.BranchType;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.UserDto;
 import org.sonar.server.es.ProjectIndexer;
 import org.sonar.server.es.TestProjectIndexers;
@@ -41,6 +43,7 @@ import org.sonar.server.favorite.FavoriteUpdater;
 import org.sonar.server.l18n.I18nRule;
 import org.sonar.server.permission.PermissionTemplateService;
 import org.sonar.server.project.DefaultBranchNameResolver;
+import org.sonar.server.project.Project;
 
 import static java.util.stream.IntStream.rangeClosed;
 import static org.apache.commons.lang.RandomStringUtils.randomAlphabetic;
@@ -52,6 +55,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.sonar.api.resources.Qualifiers.APP;
+import static org.sonar.api.resources.Qualifiers.PROJECT;
 import static org.sonar.api.resources.Qualifiers.VIEW;
 import static org.sonar.db.component.BranchDto.DEFAULT_MAIN_BRANCH_NAME;
 
@@ -219,7 +223,7 @@ public class ComponentUpdaterIT {
       .setKey(DEFAULT_PROJECT_KEY)
       .setName(DEFAULT_PROJECT_NAME)
       .build();
-    ComponentDto dto = underTest.create(db.getSession(), project, userUuid, "user-login").mainBranchComponent();
+    ProjectDto dto = underTest.create(db.getSession(), project, userUuid, "user-login").projectDto();
 
     verify(permissionTemplateService).applyDefaultToNewComponent(db.getSession(), dto, userUuid);
   }
@@ -231,10 +235,10 @@ public class ComponentUpdaterIT {
       .setKey(DEFAULT_PROJECT_KEY)
       .setName(DEFAULT_PROJECT_NAME)
       .build();
-    when(permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(any(DbSession.class), any(ComponentDto.class)))
+    when(permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(any(DbSession.class), any(ProjectDto.class)))
       .thenReturn(true);
 
-    ComponentDto dto = underTest.create(db.getSession(), project, userDto.getUuid(), userDto.getLogin()).mainBranchComponent();
+    ProjectDto dto = underTest.create(db.getSession(), project, userDto.getUuid(), userDto.getLogin()).projectDto();
 
     assertThat(db.favorites().hasFavorite(dto, userDto.getUuid())).isTrue();
   }
@@ -242,42 +246,42 @@ public class ComponentUpdaterIT {
   @Test
   public void do_not_add_project_to_user_favorites_if_project_creator_is_defined_in_permission_template_and_already_100_favorites() {
     UserDto user = db.users().insertUser();
-    rangeClosed(1, 100).forEach(i -> db.favorites().add(db.components().insertPrivateProject().getMainBranchComponent(), user.getUuid(), user.getLogin()));
+    rangeClosed(1, 100).forEach(i -> db.favorites().add(db.components().insertPrivateProject().getProjectDto(), user.getUuid(), user.getLogin()));
     NewComponent project = NewComponent.newComponentBuilder()
       .setKey(DEFAULT_PROJECT_KEY)
       .setName(DEFAULT_PROJECT_NAME)
       .build();
-    when(permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(eq(db.getSession()), any(ComponentDto.class)))
+    when(permissionTemplateService.hasDefaultTemplateWithPermissionOnProjectCreator(eq(db.getSession()), any(ProjectDto.class)))
       .thenReturn(true);
 
-    ComponentDto dto = underTest.create(db.getSession(),
+    ProjectDto dto = underTest.create(db.getSession(),
       project,
       user.getUuid(),
-      user.getLogin()).mainBranchComponent();
+      user.getLogin()).projectDto();
 
     assertThat(db.favorites().hasFavorite(dto, user.getUuid())).isFalse();
   }
 
   @Test
   public void does_not_add_project_to_favorite_when_anonymously_created() {
-    ComponentDto project = underTest.create(db.getSession(),
+    ProjectDto project = underTest.create(db.getSession(),
       NewComponent.newComponentBuilder()
         .setKey(DEFAULT_PROJECT_KEY)
         .setName(DEFAULT_PROJECT_NAME)
         .build(),
-      null, null).mainBranchComponent();
+      null, null).projectDto();
 
     assertThat(db.favorites().hasNoFavorite(project)).isTrue();
   }
 
   @Test
   public void does_not_add_project_to_favorite_when_project_has_no_permission_on_template() {
-    ComponentDto project = underTest.create(db.getSession(),
+    ProjectDto project = underTest.create(db.getSession(),
       NewComponent.newComponentBuilder()
         .setKey(DEFAULT_PROJECT_KEY)
         .setName(DEFAULT_PROJECT_NAME)
         .build(),
-      null, null).mainBranchComponent();
+      null, null).projectDto();
 
     assertThat(db.favorites().hasNoFavorite(project)).isTrue();
   }
@@ -322,6 +326,20 @@ public class ComponentUpdaterIT {
 
   @Test
   public void create_shouldFail_whenCreatingProjectWithExistingKeyButDifferentCase() {
+    createComponent_shouldFail_whenCreatingComponentWithExistingKeyButDifferentCase(PROJECT);
+  }
+
+  @Test
+  public void create_shouldFail_whenCreatingPortfolioWithExistingKeyButDifferentCase() {
+    createComponent_shouldFail_whenCreatingComponentWithExistingKeyButDifferentCase(VIEW);
+  }
+
+  @Test
+  public void create_shouldFail_whenCreatingApplicationWithExistingKeyButDifferentCase() {
+    createComponent_shouldFail_whenCreatingComponentWithExistingKeyButDifferentCase(APP);
+  }
+
+  private void createComponent_shouldFail_whenCreatingComponentWithExistingKeyButDifferentCase(String qualifier) {
     String existingKey = randomAlphabetic(5).toUpperCase();
     db.components().insertPrivateProject(component -> component.setKey(existingKey));
     String newKey = existingKey.toLowerCase();
@@ -329,12 +347,51 @@ public class ComponentUpdaterIT {
     NewComponent newComponent = NewComponent.newComponentBuilder()
       .setKey(newKey)
       .setName(DEFAULT_PROJECT_NAME)
+      .setQualifier(qualifier)
       .build();
 
     DbSession dbSession = db.getSession();
-    assertThatThrownBy(() -> underTest.create(dbSession, newComponent, null, null).mainBranchComponent())
+    assertThatThrownBy(() -> underTest.create(dbSession, newComponent, null, null))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Could not create Project with key: \"%s\". A similar key already exists: \"%s\"", newKey, existingKey);
+  }
+
+  @Test
+  public void createComponent_shouldFail_whenCreatingComponentWithMultipleExistingKeyButDifferentCase() {
+    String existingKey = randomAlphabetic(5).toUpperCase();
+    String existingKeyLowerCase = existingKey.toLowerCase();
+    db.components().insertPrivateProject(component -> component.setKey(existingKey));
+    db.components().insertPrivateProject(component -> component.setKey(existingKeyLowerCase));
+    String newKey = StringUtils.capitalize(existingKeyLowerCase);
+
+    NewComponent newComponent = NewComponent.newComponentBuilder()
+      .setKey(newKey)
+      .setName(DEFAULT_PROJECT_NAME)
+      .build();
+
+    DbSession dbSession = db.getSession();
+    assertThatThrownBy(() -> underTest.create(dbSession, newComponent, null, null))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Could not create Project with key: \"%s\". A similar key already exists: \"%s, %s\"", newKey, existingKey, existingKeyLowerCase);
+  }
+
+  @Test
+  public void createComponent_shouldFail_whenCreatingComponentWithMultipleExistingPortfolioKeysButDifferentCase() {
+    String existingKey = randomAlphabetic(5).toUpperCase();
+    String existingKeyLowerCase = existingKey.toLowerCase();
+    db.components().insertPrivatePortfolio(portfolio -> portfolio.setKey(existingKey));
+    db.components().insertPrivatePortfolio(portfolio -> portfolio.setKey(existingKeyLowerCase));
+    String newKey = StringUtils.capitalize(existingKeyLowerCase);
+
+    NewComponent newComponent = NewComponent.newComponentBuilder()
+      .setKey(newKey)
+      .setName(DEFAULT_PROJECT_NAME)
+      .build();
+
+    DbSession dbSession = db.getSession();
+    assertThatThrownBy(() -> underTest.create(dbSession, newComponent, null, null))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Could not create Project with key: \"%s\". A similar key already exists: \"%s, %s\"", newKey, existingKey, existingKeyLowerCase);
   }
 
   @Test

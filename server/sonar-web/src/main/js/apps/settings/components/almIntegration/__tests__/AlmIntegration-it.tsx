@@ -20,24 +20,52 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import { byRole, byText } from 'testing-library-selector';
 import AlmSettingsServiceMock from '../../../../../api/mocks/AlmSettingsServiceMock';
+import SettingsServiceMock from '../../../../../api/mocks/SettingsServiceMock';
 import { AvailableFeaturesContext } from '../../../../../app/components/available-features/AvailableFeaturesContext';
 import { renderComponent } from '../../../../../helpers/testReactTestingUtils';
+import { byRole, byText } from '../../../../../helpers/testSelector';
 import { AlmKeys } from '../../../../../types/alm-settings';
 import { Feature } from '../../../../../types/features';
+import { SettingsKey } from '../../../../../types/settings';
 import AlmIntegration from '../AlmIntegration';
 
 jest.mock('../../../../../api/alm-settings');
+jest.mock('../../../../../api/settings');
 
 let almSettings: AlmSettingsServiceMock;
+let settings: SettingsServiceMock;
 
 beforeAll(() => {
   almSettings = new AlmSettingsServiceMock();
+  settings = new SettingsServiceMock();
 });
 
 afterEach(() => {
   almSettings.reset();
+  settings.reset();
+});
+
+it('should not display the serverBaseURL message when it is defined', async () => {
+  const { ui } = getPageObjects();
+  settings.set(SettingsKey.ServerBaseUrl, 'http://localhost:9000');
+  renderAlmIntegration([Feature.BranchSupport]);
+  expect(await ui.almHeading.find()).toBeInTheDocument();
+  expect(ui.serverBaseUrlMissingInformation.query()).not.toBeInTheDocument();
+});
+
+it('should not display the serverBaseURL message for Community edition', async () => {
+  const { ui } = getPageObjects();
+  renderAlmIntegration();
+  expect(await ui.almHeading.find()).toBeInTheDocument();
+  expect(ui.serverBaseUrlMissingInformation.query()).not.toBeInTheDocument();
+});
+
+it('should display the serverBaseURL message when it is not defined', async () => {
+  const { ui } = getPageObjects();
+  renderAlmIntegration([Feature.BranchSupport]);
+
+  expect(await ui.serverBaseUrlMissingInformation.find()).toBeInTheDocument();
 });
 
 describe('github tab', () => {
@@ -155,6 +183,7 @@ function getPageObjects() {
 
   const ui = {
     almHeading: byRole('heading', { name: 'settings.almintegration.title' }),
+    serverBaseUrlMissingInformation: byText('settings.almintegration.empty.server_base_url'),
     emptyIntro: (almKey: AlmKeys) => byText(`settings.almintegration.empty.${almKey}`),
     createConfigurationButton: byRole('button', { name: 'settings.almintegration.create' }),
     tab: (almKey: AlmKeys) =>
@@ -176,8 +205,7 @@ function getPageObjects() {
     confirmDelete: byRole('button', { name: 'delete' }),
     checkConfigurationButton: (key: string) =>
       byRole('button', { name: `settings.almintegration.check_configuration_x.${key}` }),
-    validationErrorMessage: byRole('alert'),
-    validationSuccessMessage: byRole('status'),
+    validationMessage: (text: string) => byText(text),
   };
 
   async function createConfiguration(
@@ -221,15 +249,15 @@ function getPageObjects() {
     // Existing configuration is edited
     expect(screen.queryByRole('heading', { name: currentName })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: newName })).toBeInTheDocument();
-    expect(ui.validationErrorMessage.get()).toHaveTextContent('Something is wrong');
+    expect(ui.validationMessage('Something is wrong').get()).toBeInTheDocument();
   }
 
   async function checkConfiguration(name: string) {
     almSettings.setDefinitionErrorMessage('');
     await userEvent.click(ui.checkConfigurationButton(name).get());
-    expect(ui.validationSuccessMessage.getAll()[0]).toHaveTextContent(
-      'alert.tooltip.successsettings.almintegration.configuration_valid'
-    );
+    expect(
+      ui.validationMessage('settings.almintegration.configuration_valid').getAll()[0]
+    ).toBeInTheDocument();
   }
 
   async function deleteConfiguration(name: string) {

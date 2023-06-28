@@ -29,11 +29,11 @@ import org.sonar.db.permission.GlobalPermission;
 import org.sonar.db.project.ProjectDto;
 import org.sonar.server.component.ComponentCleanerService;
 import org.sonar.server.component.ComponentFinder;
+import org.sonar.server.project.Project;
 import org.sonar.server.project.ProjectLifeCycleListeners;
 import org.sonar.server.user.UserSession;
 
 import static java.util.Collections.singleton;
-import static org.sonar.server.project.Project.from;
 import static org.sonar.server.ws.KeyExamples.KEY_PROJECT_EXAMPLE_001;
 import static org.sonarqube.ws.client.project.ProjectsWsParameters.PARAM_PROJECT;
 
@@ -82,14 +82,14 @@ public class DeleteAction implements ProjectsWsAction {
       ProjectDto project = componentFinder.getProjectByKey(dbSession, key);
       checkPermission(project);
       componentCleanerService.delete(dbSession, project);
-      projectLifeCycleListeners.onProjectsDeleted(singleton(from(project)));
+      projectLifeCycleListeners.onProjectsDeleted(singleton(Project.fromProjectDtoWithTags(project)));
     }
 
     response.noContent();
   }
 
   private void checkPermission(ProjectDto project) {
-    if (!userSession.hasProjectPermission(UserRole.ADMIN, project)) {
+    if (!userSession.hasEntityPermission(UserRole.ADMIN, project)) {
       userSession.checkPermission(GlobalPermission.ADMINISTER);
     }
   }

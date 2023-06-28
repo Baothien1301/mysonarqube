@@ -21,3 +21,4 @@ export * from './SubnavigationAccordion';
 export * from './SubnavigationGroup';
 export * from './SubnavigationHeading';
 export * from './SubnavigationItem';
+export * from './SubnavigationSubheading';

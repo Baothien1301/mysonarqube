@@ -20,6 +20,7 @@
 package org.sonar.ce.task.projectanalysis.issue;
 
 import java.util.Date;
+import java.util.Set;
 import org.junit.Rule;
 import org.junit.Test;
 import org.sonar.api.rules.RuleType;
@@ -296,6 +297,7 @@ public class IssueLifecycleTest {
       .setStatus(STATUS_CLOSED)
       .setSeverity(BLOCKER)
       .setAssigneeUuid("base assignee uuid")
+      .setAssigneeLogin("base assignee login")
       .setAuthorLogin("base author")
       .setTags(newArrayList("base tag"))
       .setOnDisabledRule(true)
@@ -325,6 +327,7 @@ public class IssueLifecycleTest {
     assertThat(raw.resolution()).isEqualTo(RESOLUTION_FIXED);
     assertThat(raw.status()).isEqualTo(STATUS_CLOSED);
     assertThat(raw.assignee()).isEqualTo("base assignee uuid");
+    assertThat(raw.assigneeLogin()).isEqualTo("base assignee login");
     assertThat(raw.authorLogin()).isEqualTo("base author");
     assertThat(raw.tags()).containsOnly("base tag");
     assertThat(raw.effort()).isEqualTo(DEFAULT_DURATION);
@@ -353,6 +356,7 @@ public class IssueLifecycleTest {
       .setKey("RAW_KEY")
       .setRuleKey(XOO_X1)
       .setRuleDescriptionContextKey("spring")
+      .setCodeVariants(Set.of("foo", "bar"))
       .setCreationDate(parseDate("2015-10-01"))
       .setUpdateDate(parseDate("2015-10-02"))
       .setCloseDate(parseDate("2015-10-03"));
@@ -381,6 +385,7 @@ public class IssueLifecycleTest {
       .setStatus(STATUS_RESOLVED)
       .setSeverity(BLOCKER)
       .setAssigneeUuid("base assignee uuid")
+      .setAssigneeLogin("base assignee login")
       .setAuthorLogin("base author")
       .setTags(newArrayList("base tag"))
       .setOnDisabledRule(true)
@@ -390,6 +395,7 @@ public class IssueLifecycleTest {
       .setMessageFormattings(messageFormattings)
       .setGap(15d)
       .setRuleDescriptionContextKey("hibernate")
+      .setCodeVariants(Set.of("donut"))
       .setEffort(Duration.create(15L))
       .setManualSeverity(false)
       .setLocations(issueLocations)
@@ -407,8 +413,10 @@ public class IssueLifecycleTest {
     assertThat(raw.resolution()).isEqualTo(RESOLUTION_FALSE_POSITIVE);
     assertThat(raw.status()).isEqualTo(STATUS_RESOLVED);
     assertThat(raw.assignee()).isEqualTo("base assignee uuid");
+    assertThat(raw.assigneeLogin()).isEqualTo("base assignee login");
     assertThat(raw.authorLogin()).isEqualTo("base author");
     assertThat(raw.tags()).containsOnly("base tag");
+    assertThat(raw.codeVariants()).containsOnly("foo", "bar");
     assertThat(raw.effort()).isEqualTo(DEFAULT_DURATION);
     assertThat(raw.isOnDisabledRule()).isTrue();
     assertThat(raw.selectedAt()).isEqualTo(1000L);
@@ -422,6 +430,7 @@ public class IssueLifecycleTest {
     verify(updater).setPastSeverity(raw, BLOCKER, issueChangeContext);
     verify(updater).setPastLine(raw, 10);
     verify(updater).setRuleDescriptionContextKey(raw, "hibernate");
+    verify(updater).setCodeVariants(raw, Set.of("donut"), issueChangeContext);
     verify(updater).setPastMessage(raw, "message with code", messageFormattings, issueChangeContext);
     verify(updater).setPastEffort(raw, Duration.create(15L), issueChangeContext);
     verify(updater).setPastLocations(raw, issueLocations);

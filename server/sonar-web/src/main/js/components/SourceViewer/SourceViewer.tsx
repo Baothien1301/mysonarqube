@@ -42,6 +42,9 @@ import {
 } from '../../types/types';
 import { Alert } from '../ui/Alert';
 import { WorkspaceContext } from '../workspace/context';
+import SourceViewerCode from './SourceViewerCode';
+import { SourceViewerContext } from './SourceViewerContext';
+import SourceViewerHeader from './SourceViewerHeader';
 import DuplicationPopup from './components/DuplicationPopup';
 import {
   filterDuplicationBlocksByLine,
@@ -57,19 +60,15 @@ import {
 } from './helpers/indexing';
 import { LINES_TO_LOAD } from './helpers/lines';
 import loadIssues from './helpers/loadIssues';
-import SourceViewerCode from './SourceViewerCode';
-import { SourceViewerContext } from './SourceViewerContext';
-import SourceViewerHeader from './SourceViewerHeader';
 import './styles.css';
 
 export interface Props {
+  hideHeader?: boolean;
   aroundLine?: number;
   branchLike: BranchLike | undefined;
   component: string;
   componentMeasures?: Measure[];
   displayAllIssues?: boolean;
-  displayIssueLocationsCount?: boolean;
-  displayIssueLocationsLink?: boolean;
   displayLocationMarkers?: boolean;
   highlightedLine?: number;
   // `undefined` elements mean they are located in a different file,
@@ -487,10 +486,11 @@ export default class SourceViewer extends React.PureComponent<Props, State> {
           <DuplicationPopup
             blocks={filterDuplicationBlocksByLine(blocks, line)}
             branchLike={this.props.branchLike}
-            duplicatedFiles={duplicatedFiles}
             inRemovedComponent={isDuplicationBlockInRemovedComponent(blocks)}
+            duplicatedFiles={duplicatedFiles}
             openComponent={openComponent}
             sourceViewerFile={component}
+            duplicationHeader={translate('component_viewer.transition.duplication')}
           />
         )}
       </WorkspaceContext.Consumer>
@@ -503,8 +503,6 @@ export default class SourceViewer extends React.PureComponent<Props, State> {
       <SourceViewerCode
         branchLike={this.props.branchLike}
         displayAllIssues={this.props.displayAllIssues}
-        displayIssueLocationsCount={this.props.displayIssueLocationsCount}
-        displayIssueLocationsLink={this.props.displayIssueLocationsLink}
         displayLocationMarkers={this.props.displayLocationMarkers}
         duplications={this.state.duplications}
         duplicationsByLine={this.state.duplicationsByLine}
@@ -559,6 +557,7 @@ export default class SourceViewer extends React.PureComponent<Props, State> {
 
   render() {
     const { component, loading, sources, notAccessible, sourceRemoved } = this.state;
+    const { hideHeader } = this.props;
 
     if (loading) {
       return null;
@@ -587,7 +586,7 @@ export default class SourceViewer extends React.PureComponent<Props, State> {
     return (
       <SourceViewerContext.Provider value={{ branchLike: this.props.branchLike, file: component }}>
         <div className="source-viewer">
-          {this.renderHeader(component)}
+          {!hideHeader && this.renderHeader(component)}
           {sourceRemoved && (
             <Alert className="spacer-top" variant="warning">
               {translate('code_viewer.no_source_code_displayed_due_to_source_removed')}

@@ -18,13 +18,14 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import styled from '@emotion/styled';
+import { inRange } from 'lodash';
 import tw from 'twin.macro';
 import { getProp, themeColor, themeContrast } from '../helpers/theme';
 import { SizeLabel } from '../types/measures';
 
 export interface Props {
   size?: 'xs' | 'sm' | 'md';
-  value: SizeLabel;
+  value: number;
 }
 
 const SIZE_MAPPING = {
@@ -33,10 +34,30 @@ const SIZE_MAPPING = {
   md: '2rem',
 };
 
+const SIZE_IN_LOC = {
+  xs: 1000,
+  sm: 10_000,
+  md: 100_000,
+  l: 500_000,
+};
+
 export function SizeIndicator({ size = 'sm', value }: Props) {
+  let letter: SizeLabel;
+  if (inRange(value, 0, SIZE_IN_LOC.xs)) {
+    letter = 'XS';
+  } else if (inRange(value, SIZE_IN_LOC.xs, SIZE_IN_LOC.sm)) {
+    letter = 'S';
+  } else if (inRange(value, SIZE_IN_LOC.sm, SIZE_IN_LOC.md)) {
+    letter = 'M';
+  } else if (inRange(value, SIZE_IN_LOC.md, SIZE_IN_LOC.l)) {
+    letter = 'L';
+  } else {
+    letter = 'XL';
+  }
+
   return (
     <StyledContainer aria-hidden="true" size={SIZE_MAPPING[size]}>
-      {value}
+      {letter}
     </StyledContainer>
   );
 }
@@ -44,7 +65,7 @@ export function SizeIndicator({ size = 'sm', value }: Props) {
 const StyledContainer = styled.div<{ size: string }>`
   width: ${getProp('size')};
   height: ${getProp('size')};
-  font-size: ${({ size }) => (size === '2rem' ? '0.875rem' : '0.75rem')};
+  font-size: ${({ size }) => (size === '2rem' ? '0.875rem' : `calc(${size}/2)`)};
   color: ${themeContrast('sizeIndicator')};
   background-color: ${themeColor('sizeIndicator')};
 

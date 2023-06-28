@@ -29,7 +29,7 @@ import { BaseLink, LinkProps } from './Link';
 
 type AllowedButtonAttributes = Pick<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
-  'aria-label' | 'autoFocus' | 'id' | 'name' | 'role' | 'style' | 'title' | 'type'
+  'aria-label' | 'autoFocus' | 'id' | 'name' | 'role' | 'style' | 'title' | 'type' | 'form'
 >;
 
 export interface ButtonProps extends AllowedButtonAttributes {
@@ -38,7 +38,7 @@ export interface ButtonProps extends AllowedButtonAttributes {
   disabled?: boolean;
   icon?: React.ReactNode;
   innerRef?: React.Ref<HTMLButtonElement>;
-  onClick?: (event?: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => void;
+  onClick?: (event?: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => unknown;
 
   preventDefault?: boolean;
   reloadDocument?: LinkProps['reloadDocument'];
@@ -158,12 +158,24 @@ const BaseButton = styled.button`
   }
 `;
 
+const PrimaryStyle = (props: ThemedProps) => css`
+  background: ${themeColor('button')(props)};
+  backgroundhover: ${themeColor('buttonHover')(props)};
+  color: ${themeContrast('primary')(props)};
+  focus: ${themeColor('button', OPACITY_20_PERCENT)(props)};
+  border: ${themeBorder('default', 'transparent')(props)};
+`;
+
 export const ButtonPrimary: React.FC<ButtonProps> = styled(Button)`
-  --background: ${themeColor('button')};
-  --backgroundHover: ${themeColor('buttonHover')};
-  --color: ${themeContrast('primary')};
-  --focus: ${themeColor('button', OPACITY_20_PERCENT)};
-  --border: ${themeBorder('default', 'transparent')};
+  ${PrimaryStyle}
+`;
+
+export const DownloadButton = styled.a`
+  ${buttonStyle}
+  ${PrimaryStyle}
+  &:hover {
+    border-bottom-color: transparent;
+  }
 `;
 
 export const ButtonSecondary: React.FC<ButtonProps> = styled(Button)`
@@ -227,5 +239,62 @@ export const BareButton = styled.button`
 
   &:focus-visible {
     background-color: ${themeColor('dropdownMenuHover')};
+  }
+`;
+
+interface CodeViewerExpanderProps {
+  direction: 'UP' | 'DOWN';
+}
+
+export const CodeViewerExpander = styled(BareButton)<CodeViewerExpanderProps>`
+  ${tw`sw-flex sw-items-center sw-gap-2`}
+  ${tw`sw-px-2 sw-py-1`}
+  ${tw`sw-code`}
+  ${tw`sw-w-full`}
+  ${tw`sw-box-border`}
+
+  color: ${themeContrast('codeLineEllipsis')};
+  background-color: ${themeColor('codeLineEllipsis')};
+
+  &:hover {
+    color: ${themeContrast('codeLineEllipsisHover')};
+    background-color: ${themeColor('codeLineEllipsisHover')};
+  }
+
+  border-top: ${(props) =>
+    props.direction === 'DOWN' ? themeBorder('default', 'codeLineBorder') : 'none'};
+
+  border-bottom: ${(props) =>
+    props.direction === 'UP' ? themeBorder('default', 'codeLineBorder') : 'none'};
+`;
+
+export const IssueIndicatorButton = styled(BareButton)`
+  color: ${themeColor('codeLineMeta')};
+  text-decoration: none;
+
+  ${tw`sw-whitespace-nowrap`}
+`;
+
+export const DuplicationBlock = styled(BareButton)`
+  background-color: ${themeColor('codeLineDuplication')};
+  outline: none;
+
+  ${tw`sw-block`}
+  ${tw`sw-w-1 sw-h-full`}
+  ${tw`sw-ml-1/2`}
+  ${tw`sw-cursor-pointer`}
+`;
+
+export const LineSCMStyled = styled(BareButton)`
+  outline: none;
+
+  ${tw`sw-pr-2`}
+  ${tw`sw-truncate`}
+  ${tw`sw-whitespace-nowrap`}
+  ${tw`sw-cursor-pointer`}
+  ${tw`sw-w-full sw-h-full`}
+
+&:hover {
+    color: ${themeColor('codeLineMetaHover')};
   }
 `;

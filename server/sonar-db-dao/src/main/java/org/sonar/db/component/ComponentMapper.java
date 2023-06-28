@@ -30,7 +30,7 @@ import org.apache.ibatis.session.RowBounds;
 
 public interface ComponentMapper {
   @CheckForNull
-  ComponentDto selectByKeyCaseInsensitive(@Param("key") String key);
+  List<ComponentDto> selectByKeyCaseInsensitive(@Param("key") String key);
 
   @CheckForNull
   ComponentDto selectByKeyAndBranchOrPr(@Param("key") String key, @Nullable @Param("branch") String branch, @Nullable @Param("pullRequest") String pullRequest);
@@ -91,8 +91,6 @@ public interface ComponentMapper {
    * Return technical projects from a view or a sub-view
    */
   List<String> selectProjectsFromView(@Param("viewUuidLikeQuery") String viewUuidLikeQuery, @Param("rootViewUuid") String rootViewUuid);
-
-  void scrollForIndexing(@Param("branchUuid") @Nullable String branchUuid, ResultHandler<ComponentDto> handler);
 
   void scrollAllFilesForFileMove(@Param("branchUuid") String branchUuid, ResultHandler<FileMoveRowDto> handler);
 

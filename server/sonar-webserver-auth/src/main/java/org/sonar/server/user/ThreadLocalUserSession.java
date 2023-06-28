@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Optional;
 import javax.annotation.CheckForNull;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.permission.GlobalPermission;
-import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.GroupDto;
 import org.sonar.server.exceptions.UnauthorizedException;
 
@@ -129,8 +129,8 @@ public class ThreadLocalUserSession implements UserSession {
   }
 
   @Override
-  public UserSession checkProjectPermission(String projectPermission, ProjectDto project) {
-    get().checkProjectPermission(projectPermission, project);
+  public UserSession checkEntityPermission(String projectPermission, EntityDto entity) {
+    get().checkEntityPermission(projectPermission, entity);
     return this;
   }
 
@@ -141,7 +141,7 @@ public class ThreadLocalUserSession implements UserSession {
   }
 
   @Override
-  public UserSession checkChildProjectsPermission(String projectPermission, ProjectDto application) {
+  public UserSession checkChildProjectsPermission(String projectPermission, EntityDto application) {
     get().checkChildProjectsPermission(projectPermission, application);
     return this;
   }
@@ -174,13 +174,13 @@ public class ThreadLocalUserSession implements UserSession {
   }
 
   @Override
-  public boolean hasProjectPermission(String permission, ProjectDto project) {
-    return get().hasProjectPermission(permission, project);
+  public boolean hasEntityPermission(String permission, EntityDto entity) {
+    return get().hasEntityPermission(permission, entity);
   }
 
   @Override
-  public boolean hasProjectPermission(String permission, String projectUuid) {
-    return get().hasProjectPermission(permission, projectUuid);
+  public boolean hasEntityPermission(String permission, String entityUuid) {
+    return get().hasEntityPermission(permission, entityUuid);
   }
 
   @Override
@@ -189,8 +189,8 @@ public class ThreadLocalUserSession implements UserSession {
   }
 
   @Override
-  public boolean hasChildProjectsPermission(String permission, ProjectDto project) {
-    return get().hasChildProjectsPermission(permission, project);
+  public boolean hasChildProjectsPermission(String permission, EntityDto application) {
+    return get().hasChildProjectsPermission(permission, application);
   }
 
   @Override
@@ -209,8 +209,7 @@ public class ThreadLocalUserSession implements UserSession {
   }
 
   @Override
-  public List<ProjectDto> keepAuthorizedProjects(String permission, Collection<ProjectDto> projects) {
-    return get().keepAuthorizedProjects(permission, projects);
+  public <T extends EntityDto> List<T> keepAuthorizedEntities(String permission, Collection<T> entities) {
+    return get().keepAuthorizedEntities(permission, entities);
   }
-
 }

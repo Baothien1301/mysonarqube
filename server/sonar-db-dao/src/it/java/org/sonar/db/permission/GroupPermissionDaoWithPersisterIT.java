@@ -29,7 +29,8 @@ import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.audit.AuditPersister;
 import org.sonar.db.audit.model.GroupPermissionNewValue;
-import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.ProjectData;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.GroupDto;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,7 +44,7 @@ public class GroupPermissionDaoWithPersisterIT {
   private final AuditPersister auditPersister = mock(AuditPersister.class);
 
   @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
+  public DbTester db = DbTester.create(System2.INSTANCE, true);
 
   private final SequenceUuidFactory uuidFactory = new SequenceUuidFactory();
   private final ArgumentCaptor<GroupPermissionNewValue> newValueCaptor = ArgumentCaptor.forClass(GroupPermissionNewValue.class);
@@ -51,7 +52,7 @@ public class GroupPermissionDaoWithPersisterIT {
   private final GroupPermissionDao underTest = new GroupPermissionDao(auditPersister);
 
   private GroupDto group;
-  private ComponentDto project;
+  private ProjectData project;
   private GroupPermissionDto dto;
 
   @Test
@@ -63,7 +64,7 @@ public class GroupPermissionDaoWithPersisterIT {
     assertNewValue(newValue, dto.getUuid(), group.getUuid(), group.getName(), null, dto.getRole(), null, null, null);
     assertThat(newValue).hasToString("{\"permissionUuid\": \"1\", \"permission\": \"admin\", \"groupUuid\": \"guuid\", \"groupName\": \"gname\" }");
 
-    underTest.delete(dbSession, ADMIN, group.getUuid(), group.getName(), null, null);
+    underTest.delete(dbSession, ADMIN, group.getUuid(), group.getName(), null);
 
     verify(auditPersister).deleteGroupPermission(eq(dbSession), newValueCaptor.capture());
     newValue = newValueCaptor.getValue();
@@ -73,7 +74,7 @@ public class GroupPermissionDaoWithPersisterIT {
 
   @Test
   public void groupGlobalPermissionDeleteWithoutAffectedRowsIsNotPersisted() {
-    underTest.delete(dbSession, ADMIN, "group-uuid", "group-name", null, null);
+    underTest.delete(dbSession, ADMIN, "group-uuid", "group-name", null);
 
     verifyNoInteractions(auditPersister);
   }
@@ -84,24 +85,26 @@ public class GroupPermissionDaoWithPersisterIT {
 
     verify(auditPersister).addGroupPermission(eq(dbSession), newValueCaptor.capture());
     GroupPermissionNewValue newValue = newValueCaptor.getValue();
-    assertNewValue(newValue, dto.getUuid(), group.getUuid(), group.getName(), project.uuid(), dto.getRole(), project.getKey(),
-      project.name(), "TRK");
-    assertThat(newValue).hasToString("{\"permissionUuid\": \"1\", \"permission\": \"admin\", \"groupUuid\": \"guuid\", \"groupName\": \"gname\"," +
-      " \"componentUuid\": \"cuuid\", \"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
 
-    underTest.deleteByRootComponentUuid(dbSession, project);
+    assertNewValue(newValue, dto.getUuid(), group.getUuid(), group.getName(), project.projectUuid(), dto.getRole(), project.projectKey(),
+      project.getProjectDto().getName(), "TRK");
+    assertThat(newValue).hasToString("{\"permissionUuid\": \"1\", \"permission\": \"admin\", \"groupUuid\": \"guuid\", \"groupName\": \"gname\"," +
+      " \"componentUuid\": \"projectUuid\", \"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
+
+    underTest.deleteByEntityUuid(dbSession, project.getProjectDto());
 
     verify(auditPersister).deleteGroupPermission(eq(dbSession), newValueCaptor.capture());
     newValue = newValueCaptor.getValue();
-    assertNewValue(newValue, null, null, null, project.uuid(), null, project.getKey(), project.name(), "TRK");
-    assertThat(newValue).hasToString("{\"componentUuid\": \"cuuid\", \"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
+
+    assertNewValue(newValue, null, null, null, project.projectUuid(), null, project.projectKey(), project.getProjectDto().getName(), "TRK");
+    assertThat(newValue).hasToString("{\"componentUuid\": \"projectUuid\", \"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
   }
 
   @Test
   public void groupProjectPermissionDeleteByComponentWithoutAffectedRowsIsNotPersisted() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
 
-    underTest.deleteByRootComponentUuid(dbSession, project);
+    underTest.deleteByEntityUuid(dbSession, project);
 
     verifyNoInteractions(auditPersister);
   }
@@ -112,24 +115,26 @@ public class GroupPermissionDaoWithPersisterIT {
 
     verify(auditPersister).addGroupPermission(eq(dbSession), newValueCaptor.capture());
     GroupPermissionNewValue newValue = newValueCaptor.getValue();
-     assertNewValue(newValue, dto.getUuid(), null, null, project.uuid(), dto.getRole(), project.getKey(), project.name(), "TRK");
-    assertThat(newValue).hasToString("{\"permissionUuid\": \"1\", \"permission\": \"admin\", \"componentUuid\": \"cuuid\", "
+
+    assertNewValue(newValue, dto.getUuid(), null, null, project.projectUuid(), dto.getRole(), project.projectKey(), project.getProjectDto().getName(), "TRK");
+    assertThat(newValue).hasToString("{\"permissionUuid\": \"1\", \"permission\": \"admin\", \"componentUuid\": \"projectUuid\", "
       + "\"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
 
-    underTest.deleteByRootComponentUuidForAnyOne(dbSession, project);
+    underTest.deleteByEntityUuidForAnyOne(dbSession, project.getProjectDto());
 
     verify(auditPersister).deleteGroupPermission(eq(dbSession), newValueCaptor.capture());
     newValue = newValueCaptor.getValue();
-    assertNewValue(newValue, null, null, null, project.uuid(), null, project.getKey(), project.name(), "TRK");
-    assertThat(newValue).hasToString("{\"componentUuid\": \"cuuid\", \"componentKey\": \"cKey\", " +
+
+    assertNewValue(newValue, null, null, null, project.projectUuid(), null, project.projectKey(), project.getProjectDto().getName(), "TRK");
+    assertThat(newValue).hasToString("{\"componentUuid\": \"projectUuid\", \"componentKey\": \"cKey\", " +
       "\"componentName\": \"cname\", \"qualifier\": \"project\" }");
   }
 
   @Test
   public void groupProjectPermissionDeleteByComponentAndGroupWithoutAffectedRowsIsNotPersisted() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = db.components().insertPrivateProject().getProjectDto();
 
-    underTest.deleteByRootComponentUuidForAnyOne(dbSession, project);
+    underTest.deleteByEntityUuidForAnyOne(dbSession, project);
 
     verifyNoInteractions(auditPersister);
   }
@@ -140,26 +145,26 @@ public class GroupPermissionDaoWithPersisterIT {
 
     verify(auditPersister).addGroupPermission(eq(dbSession), newValueCaptor.capture());
     GroupPermissionNewValue newValue = newValueCaptor.getValue();
-    assertNewValue(newValue, dto.getUuid(), group.getUuid(), group.getName(), project.uuid(), dto.getRole(), project.getKey(), project.name(), "TRK");
+    assertNewValue(newValue, dto.getUuid(), group.getUuid(), group.getName(), project.projectUuid(), dto.getRole(), project.projectKey(), project.getProjectDto().getName(), "TRK");
     assertThat(newValue).hasToString("{\"permissionUuid\": \"1\", \"permission\": \"admin\", \"groupUuid\": \"guuid\", \"groupName\": \"gname\", "
-      + "\"componentUuid\": \"cuuid\", \"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
+      + "\"componentUuid\": \"projectUuid\", \"componentKey\": \"cKey\", \"componentName\": \"cname\", \"qualifier\": \"project\" }");
 
-    underTest.deleteByRootComponentUuidAndPermission(dbSession, dto.getRole(), project);
+    underTest.deleteByEntityAndPermission(dbSession, dto.getRole(), project.getProjectDto());
 
     verify(auditPersister).deleteGroupPermission(eq(dbSession), newValueCaptor.capture());
     newValue = newValueCaptor.getValue();
-    assertNewValue(newValue, null, null, null, project.uuid(), ADMIN, project.getKey(), project.name(), "TRK");
-    assertThat(newValue).hasToString("{\"permission\": \"admin\", \"componentUuid\": \"cuuid\", \"componentKey\": \"cKey\"," +
+    assertNewValue(newValue, null, null, null, project.projectUuid(), ADMIN, project.projectKey(), project.getProjectDto().getName(), "TRK");
+    assertThat(newValue).hasToString("{\"permission\": \"admin\", \"componentUuid\": \"projectUuid\", \"componentKey\": \"cKey\"," +
       " \"componentName\": \"cname\", \"qualifier\": \"project\" }");
   }
 
   @Test
   public void groupProjectPermissionDeleteByComponentAndPermissionWithoutAffectedRowsIsNotPersisted() {
     GroupDto group = db.users().insertGroup();
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
-    GroupPermissionDto dto = getGroupPermission(group, project);
+    ProjectData project = db.components().insertPrivateProject();
+    GroupPermissionDto dto = getGroupPermission(group, project.getProjectDto());
 
-    underTest.deleteByRootComponentUuidAndPermission(dbSession, dto.getRole(), project);
+    underTest.deleteByEntityAndPermission(dbSession, dto.getRole(), project.getProjectDto());
 
     verifyNoInteractions(auditPersister);
   }
@@ -173,15 +178,15 @@ public class GroupPermissionDaoWithPersisterIT {
 
   private void addGroupPermission() {
     group = db.users().insertGroup(g -> g.setUuid("guuid").setName("gname"));
-    project = db.components().insertPrivateProject(c -> c.setUuid("cuuid").setName("cname").setKey("cKey")).getMainBranchComponent();
-    dto = getGroupPermission(group, project);
-    underTest.insert(dbSession, dto, project, null);
+    project = db.components().insertPrivateProject(c -> c.setName("cname").setKey("cKey"), p -> p.setUuid("projectUuid"));
+    dto = getGroupPermission(group, project.getProjectDto());
+    underTest.insert(dbSession, dto, project.getProjectDto(), null);
   }
 
   private void addGroupPermissionWithoutGroup() {
-    project = db.components().insertPrivateProject(c -> c.setUuid("cuuid").setName("cname").setKey("cKey")).getMainBranchComponent();
-    dto = getGroupPermission(project);
-    underTest.insert(dbSession, dto, project, null);
+    project = db.components().insertPrivateProject(c -> c.setName("cname").setKey("cKey"), p -> p.setUuid("projectUuid"));
+    dto = getGroupPermission(project.getProjectDto());
+    underTest.insert(dbSession, dto, project.getProjectDto(), null);
   }
 
   private void addGroupPermissionWithoutComponent() {
@@ -190,21 +195,21 @@ public class GroupPermissionDaoWithPersisterIT {
     underTest.insert(dbSession, dto, null, null);
   }
 
-  private GroupPermissionDto getGroupPermission(@Nullable GroupDto group, @Nullable ComponentDto project) {
+  private GroupPermissionDto getGroupPermission(@Nullable GroupDto group, @Nullable ProjectDto project) {
     return new GroupPermissionDto()
       .setUuid(uuidFactory.create())
       .setGroupUuid(group != null ? group.getUuid() : null)
       .setGroupName(group != null ? group.getName() : null)
       .setRole(ADMIN)
-      .setComponentUuid(project != null ? project.uuid() : null)
-      .setComponentName(project != null ? project.name(): null);
+      .setEntityUuid(project != null ? project.getUuid() : null)
+      .setEntityName(project != null ? project.getName(): null);
   }
 
   private GroupPermissionDto getGroupPermission(GroupDto group) {
     return getGroupPermission(group, null);
   }
 
-  private GroupPermissionDto getGroupPermission(ComponentDto project) {
+  private GroupPermissionDto getGroupPermission(ProjectDto project) {
     return getGroupPermission(null, project);
   }
 }

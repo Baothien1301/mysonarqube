@@ -21,6 +21,7 @@ package org.sonar.db.component;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import org.sonar.api.resources.Qualifiers;
@@ -29,6 +30,7 @@ import org.sonar.core.util.Uuids;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.portfolio.PortfolioDto;
 import org.sonar.db.portfolio.PortfolioProjectDto;
 import org.sonar.db.project.ProjectDto;
@@ -36,6 +38,9 @@ import org.sonar.db.project.ProjectDto;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Arrays.asList;
+import static org.sonar.api.resources.Qualifiers.APP;
+import static org.sonar.api.resources.Qualifiers.SUBVIEW;
+import static org.sonar.api.resources.Qualifiers.VIEW;
 import static org.sonar.db.component.BranchType.BRANCH;
 import static org.sonar.db.portfolio.PortfolioDto.SelectionMode.NONE;
 
@@ -59,6 +64,12 @@ public class ComponentDbTester {
   public SnapshotDto insertProjectAndSnapshot(ComponentDto component) {
     insertComponentAndBranchAndProject(component, null, defaults(), defaults(), defaults());
     return insertSnapshot(component);
+  }
+
+  public ProjectData insertProjectDataAndSnapshot(ComponentDto component) {
+    ProjectData projectData = insertComponentAndBranchAndProject(component, null, defaults(), defaults(), defaults());
+    insertSnapshot(component);
+    return projectData;
   }
 
   public SnapshotDto insertPortfolioAndSnapshot(ComponentDto component) {
@@ -152,18 +163,17 @@ public class ComponentDbTester {
     return insertPrivateProjectWithCustomBranch(branchPopulator, componentDtoPopulator, projectDtoPopulator);
   }
 
-  public final ComponentDto insertFile(ProjectDto project) {
-    ComponentDto projectComponent = getComponentDto(project);
-    return insertComponent(ComponentTesting.newFileDto(projectComponent));
-  }
-
   public final ComponentDto insertFile(BranchDto branch) {
     ComponentDto projectComponent = getComponentDto(branch);
     return insertComponent(ComponentTesting.newFileDto(projectComponent));
   }
 
   public final ProjectData insertPrivateProject(String uuid, Consumer<ComponentDto> dtoPopulator) {
-    return insertComponentAndBranchAndProject(ComponentTesting.newPrivateProjectDto(uuid), true, defaults(), dtoPopulator);
+    if (useDifferentUuids) {
+      return insertComponentAndBranchAndProject(ComponentTesting.newPrivateProjectDto(), true, defaults(), dtoPopulator, p -> p.setUuid(uuid));
+    } else {
+      return insertComponentAndBranchAndProject(ComponentTesting.newPrivateProjectDto(uuid), true, defaults(), dtoPopulator);
+    }
   }
 
   public final ProjectData insertPrivateProjectWithCustomBranch(String branchKey) {
@@ -221,6 +231,12 @@ public class ComponentDbTester {
   public final PortfolioDto insertPrivatePortfolioDto() {
     ComponentDto component = insertComponentAndPortfolio(ComponentTesting.newPortfolio().setPrivate(true), true, defaults(), defaults());
     return getPortfolioDto(component);
+  }
+
+  public final PortfolioData insertPrivatePortfolioData() {
+    ComponentDto component = insertComponentAndPortfolio(ComponentTesting.newPortfolio().setPrivate(true), true, defaults(), defaults());
+    PortfolioDto portfolioDto = getPortfolioDto(component);
+    return new PortfolioData(portfolioDto, component);
   }
 
   public final PortfolioDto insertPrivatePortfolioDto(Consumer<ComponentDto> dtoPopulator) {
@@ -281,13 +297,27 @@ public class ComponentDbTester {
   }
 
   public final ComponentDto insertSubportfolio(ComponentDto parentPortfolio) {
-    ComponentDto subPortfolioComponent = ComponentTesting.newSubPortfolio(parentPortfolio);
-    return insertComponentAndPortfolio(subPortfolioComponent, true, defaults(), sp -> sp.setParentUuid(sp.getRootUuid()));
+    return insertSubportfolio(parentPortfolio, defaults());
+  }
+
+  public final ComponentDto insertSubportfolio(ComponentDto parentPortfolio, Consumer<ComponentDto> consumer) {
+    ComponentDto subPortfolioComponent = ComponentTesting.newSubPortfolio(parentPortfolio).setPrivate(true);
+    return insertComponentAndPortfolio(subPortfolioComponent, true, consumer, sp -> sp.setParentUuid(sp.getRootUuid()));
   }
 
   public void addPortfolioReference(String portfolioUuid, String... referencerUuids) {
     for (String uuid : referencerUuids) {
-      dbClient.portfolioDao().addReference(dbSession, portfolioUuid, uuid);
+      EntityDto entityDto = dbClient.entityDao().selectByUuid(dbSession, uuid)
+          .orElseThrow();
+      switch (entityDto.getQualifier()) {
+        case APP -> {
+          BranchDto appMainBranch = dbClient.branchDao().selectMainBranchByProjectUuid(dbSession, entityDto.getUuid())
+            .orElseThrow();
+          dbClient.portfolioDao().addReferenceBranch(dbSession, portfolioUuid, uuid, appMainBranch.getUuid());
+        }
+        case VIEW, SUBVIEW -> dbClient.portfolioDao().addReference(dbSession, portfolioUuid, uuid);
+        default -> throw new IllegalStateException("Unexpected value: " + entityDto.getQualifier());
+      }
     }
     db.commit();
   }
@@ -481,12 +511,23 @@ public class ComponentDbTester {
   }
 
   public SnapshotDto insertSnapshot(ProjectData project, Consumer<SnapshotDto> consumer) {
-    return insertSnapshot(project.getProjectDto(), consumer);
+    return insertSnapshot(project.getMainBranchDto(), consumer);
   }
 
+  /**
+   * Add a snapshot to the main branch of a project
+   * Should use insertSnapshot(org.sonar.db.component.BranchDto, java.util.function.Consumer<org.sonar.db.component.SnapshotDto>) instead
+   */
+  @Deprecated
   public SnapshotDto insertSnapshot(ProjectDto project, Consumer<SnapshotDto> consumer) {
-    SnapshotDto snapshotDto = SnapshotTesting.newAnalysis(project.getUuid());
+    BranchDto mainBranchDto = db.getDbClient().branchDao().selectMainBranchByProjectUuid(dbSession, project.getUuid()).orElseThrow();
+    SnapshotDto snapshotDto = SnapshotTesting.newAnalysis(mainBranchDto.getUuid());
     consumer.accept(snapshotDto);
+    return insertSnapshot(snapshotDto);
+  }
+
+  public SnapshotDto insertSnapshot(PortfolioDto portfolio) {
+    SnapshotDto snapshotDto = SnapshotTesting.newAnalysis(portfolio.getUuid());
     return insertSnapshot(snapshotDto);
   }
 

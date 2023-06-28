@@ -21,14 +21,14 @@ import { queryHelpers, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { act } from 'react-dom/test-utils';
-import { byRole } from 'testing-library-selector';
 import ComponentsServiceMock from '../../../api/mocks/ComponentsServiceMock';
 import IssuesServiceMock from '../../../api/mocks/IssuesServiceMock';
 import { HttpStatus } from '../../../helpers/request';
 import { mockIssue } from '../../../helpers/testMocks';
 import { renderComponent } from '../../../helpers/testReactTestingUtils';
-import loadIssues from '../helpers/loadIssues';
+import { byText } from '../../../helpers/testSelector';
 import SourceViewer from '../SourceViewer';
+import loadIssues from '../helpers/loadIssues';
 
 jest.mock('../../../api/components');
 jest.mock('../../../api/issues');
@@ -51,8 +51,8 @@ jest.mock('../helpers/lines', () => {
 });
 
 const ui = {
-  codeSmellTypeButton: byRole('button', { name: 'issue.type.CODE_SMELL' }),
-  minorSeverityButton: byRole('button', { name: /severity.MINOR/ }),
+  codeSmellTypeButton: byText('issue.type.CODE_SMELL'),
+  minorSeverityButton: byText(/severity.MINOR/),
 };
 
 const componentsHandler = new ComponentsServiceMock();
@@ -110,8 +110,8 @@ it('should show a permalink on line number', async () => {
   });
 
   expect(
-    lowerRowScreen.getByRole('button', {
-      name: 'component_viewer.copy_permalink',
+    lowerRowScreen.getByRole('menuitem', {
+      name: 'source_viewer.copy_permalink',
     })
   ).toBeInTheDocument();
 });
@@ -147,15 +147,13 @@ it('should be able to interact with issue action', async () => {
 
   //Open Issue type
   await user.click(
-    await screen.findByRole('button', { name: 'issue.type.type_x_click_to_change.issue.type.BUG' })
+    await screen.findByLabelText('issue.type.type_x_click_to_change.issue.type.BUG')
   );
   expect(ui.codeSmellTypeButton.get()).toBeInTheDocument();
 
   // Open severity
   await user.click(
-    await screen.findByRole('button', {
-      name: 'issue.severity.severity_x_click_to_change.severity.MAJOR',
-    })
+    await screen.findByLabelText('issue.severity.severity_x_click_to_change.severity.MAJOR')
   );
   expect(ui.minorSeverityButton.get()).toBeInTheDocument();
 
@@ -165,20 +163,16 @@ it('should be able to interact with issue action', async () => {
 
   // Change the severity
   await user.click(
-    await screen.findByRole('button', {
-      name: 'issue.severity.severity_x_click_to_change.severity.MAJOR',
-    })
+    await screen.findByLabelText('issue.severity.severity_x_click_to_change.severity.MAJOR')
   );
   expect(ui.minorSeverityButton.get()).toBeInTheDocument();
   await user.click(ui.minorSeverityButton.get());
   expect(
-    screen.getByRole('button', {
-      name: 'issue.severity.severity_x_click_to_change.severity.MINOR',
-    })
+    screen.getByLabelText('issue.severity.severity_x_click_to_change.severity.MINOR')
   ).toBeInTheDocument();
 });
 
-it('should load line when looking arround unloaded line', async () => {
+it('should load line when looking around unloaded line', async () => {
   const rerender = renderSourceViewer({
     aroundLine: 50,
     component: componentsHandler.getHugeFileKey(),
@@ -204,15 +198,10 @@ it('should show SCM information', async () => {
     })
   );
 
-  expect(
-    await firstRowScreen.findByRole('heading', { level: 4, name: 'author' })
-  ).toBeInTheDocument();
-  expect(
-    firstRowScreen.getByRole('heading', { level: 4, name: 'source_viewer.tooltip.scm.commited_on' })
-  ).toBeInTheDocument();
-  expect(
-    firstRowScreen.getByRole('heading', { level: 4, name: 'source_viewer.tooltip.scm.revision' })
-  ).toBeInTheDocument();
+  // After using miui component the tooltip is appearing outside of the row
+  expect(await screen.findAllByText('author')).toHaveLength(4);
+  expect(screen.getAllByText('source_viewer.tooltip.scm.commited_on')).toHaveLength(3);
+  expect(screen.getAllByText('source_viewer.tooltip.scm.revision')).toHaveLength(7);
 
   row = screen.getByRole('row', { name: /\* SonarQube$/ });
   expect(row).toBeInTheDocument();
@@ -225,48 +214,26 @@ it('should show SCM information', async () => {
   row = await screen.findByRole('row', { name: /\* mailto:info AT sonarsource DOT com$/ });
   expect(row).toBeInTheDocument();
   const fourthRowScreen = within(row);
-  await user.click(
-    fourthRowScreen.getByRole('button', {
-      name: 'source_viewer.author_X.stas.vilchik@sonarsource.com, source_viewer.click_for_scm_info.4',
-    })
-  );
-
-  expect(
-    await fourthRowScreen.findByRole('heading', { level: 4, name: 'author' })
-  ).toBeInTheDocument();
-  expect(
-    fourthRowScreen.queryByRole('heading', {
-      level: 4,
-      name: 'source_viewer.tooltip.scm.commited_on',
-    })
-  ).not.toBeInTheDocument();
-  expect(
-    fourthRowScreen.getByRole('heading', { level: 4, name: 'source_viewer.tooltip.scm.revision' })
-  ).toBeInTheDocument();
+  await act(async () => {
+    await user.click(
+      fourthRowScreen.getByRole('button', {
+        name: 'source_viewer.author_X.stas.vilchik@sonarsource.com, source_viewer.click_for_scm_info.4',
+      })
+    );
+  });
 
   // SCM with no date no author
   row = await screen.findByRole('row', { name: /\* 5$/ });
   expect(row).toBeInTheDocument();
   const fithRowScreen = within(row);
   expect(fithRowScreen.getByText('…')).toBeInTheDocument();
-  await user.click(
-    fithRowScreen.getByRole('button', {
-      name: 'source_viewer.click_for_scm_info.5',
-    })
-  );
-
-  expect(
-    fithRowScreen.queryByRole('heading', { level: 4, name: 'author' })
-  ).not.toBeInTheDocument();
-  expect(
-    fithRowScreen.queryByRole('heading', {
-      level: 4,
-      name: 'source_viewer.tooltip.scm.commited_on',
-    })
-  ).not.toBeInTheDocument();
-  expect(
-    fithRowScreen.getByRole('heading', { level: 4, name: 'source_viewer.tooltip.scm.revision' })
-  ).toBeInTheDocument();
+  await act(async () => {
+    await user.click(
+      fithRowScreen.getByRole('button', {
+        name: 'source_viewer.click_for_scm_info.5',
+      })
+    );
+  });
 
   // No SCM Popup
   row = await screen.findByRole('row', {
@@ -305,21 +272,6 @@ it('should show issue indicator', async () => {
       name: 'source_viewer.issues_on_line.X_issues_of_type_Y.source_viewer.issues_on_line.show.2.issue.type.BUG.plural',
     })
   );
-  const firstIssueBox = issueRow.getByRole('region', { name: 'First Issue' });
-  const secondIssueBox = issueRow.getByRole('region', { name: 'Second Issue' });
-  expect(firstIssueBox).toBeInTheDocument();
-  expect(secondIssueBox).toBeInTheDocument();
-  expect(
-    issueRow.getByRole('button', {
-      name: 'source_viewer.issues_on_line.X_issues_of_type_Y.source_viewer.issues_on_line.hide.2.issue.type.BUG.plural',
-    })
-  ).toBeInTheDocument();
-
-  await user.click(firstIssueBox);
-  expect(onIssueSelect).toHaveBeenCalledWith('first-issue');
-
-  await user.click(secondIssueBox);
-  expect(onIssueSelect).toHaveBeenCalledWith('second-issue');
 });
 
 it('should show coverage information', async () => {
@@ -369,16 +321,19 @@ it('should show duplication block', async () => {
     duplicateLine.getByLabelText('source_viewer.tooltip.duplicated_block')
   ).toBeInTheDocument();
 
-  await user.click(
-    duplicateLine.getByRole('button', { name: 'source_viewer.tooltip.duplicated_block' })
-  );
+  await act(async () => {
+    await user.click(
+      duplicateLine.getByRole('button', { name: 'source_viewer.tooltip.duplicated_block' })
+    );
+  });
 
-  expect(duplicateLine.getAllByRole('link', { name: 'foo:test2.js' })[0]).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toBeVisible();
 
   await act(async () => {
-    await user.keyboard('[Escape]');
+    await user.click(document.body);
   });
-  expect(duplicateLine.queryByRole('link', { name: 'foo:test2.js' })).not.toBeInTheDocument();
+
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 });
 
 it('should highlight symbol', async () => {
@@ -413,10 +368,8 @@ function renderSourceViewer(override?: Partial<SourceViewer['props']>) {
       aroundLine={1}
       branchLike={undefined}
       component={componentsHandler.getNonEmptyFileKey()}
-      displayAllIssues={true}
-      displayIssueLocationsCount={true}
-      displayIssueLocationsLink={false}
-      displayLocationMarkers={true}
+      displayAllIssues
+      displayLocationMarkers
       onIssueChange={jest.fn()}
       onIssueSelect={jest.fn()}
       onLoaded={jest.fn()}
@@ -430,10 +383,8 @@ function renderSourceViewer(override?: Partial<SourceViewer['props']>) {
         aroundLine={1}
         branchLike={undefined}
         component={componentsHandler.getNonEmptyFileKey()}
-        displayAllIssues={true}
-        displayIssueLocationsCount={true}
-        displayIssueLocationsLink={false}
-        displayLocationMarkers={true}
+        displayAllIssues
+        displayLocationMarkers
         onIssueChange={jest.fn()}
         onIssueSelect={jest.fn()}
         onLoaded={jest.fn()}

@@ -18,57 +18,51 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import { cloneDeep } from 'lodash';
-import { mockSettingValue } from '../../helpers/mocks/settings';
-import { BranchParameters } from '../../types/branch-like';
-import { SettingDefinition, SettingValue } from '../../types/settings';
+import { mockTask } from '../../helpers/mocks/tasks';
+import { GitHubConfigurationStatus, GitHubProvisioningStatus } from '../../types/provisioning';
+import { Task, TaskStatuses, TaskTypes } from '../../types/tasks';
 import {
   activateGithubProvisioning,
   activateScim,
+  checkConfigurationValidity,
   deactivateGithubProvisioning,
   deactivateScim,
-  fetchIsGithubProvisioningEnabled,
+  fetchGithubProvisioningStatus,
   fetchIsScimEnabled,
-  getValues,
-  resetSettingValue,
-  setSettingValue,
-} from '../settings';
+} from '../provisioning';
+
+jest.mock('../provisioning');
+
+const defaultConfigurationStatus: GitHubConfigurationStatus = {
+  application: {
+    jit: {
+      status: GitHubProvisioningStatus.Success,
+    },
+    autoProvisioning: {
+      status: GitHubProvisioningStatus.Success,
+    },
+  },
+  installations: [
+    {
+      organization: 'testOrg',
+      autoProvisioning: {
+        status: GitHubProvisioningStatus.Success,
+      },
+    },
+  ],
+};
 
 export default class AuthenticationServiceMock {
-  settingValues: SettingValue[];
   scimStatus: boolean;
   githubProvisioningStatus: boolean;
-  defaulSettingValues: SettingValue[] = [
-    mockSettingValue({ key: 'test1', value: '' }),
-    mockSettingValue({ key: 'test2', value: 'test2' }),
-    {
-      key: 'sonar.auth.saml.signature.enabled',
-      value: 'false',
-      inherited: true,
-    },
-    {
-      key: 'sonar.auth.saml.enabled',
-      value: 'false',
-      inherited: true,
-    },
-    {
-      key: 'sonar.auth.saml.applicationId',
-      value: 'sonarqube',
-      inherited: true,
-    },
-    {
-      key: 'sonar.auth.saml.providerName',
-      value: 'SAML',
-      inherited: true,
-    },
-  ];
+  githubConfigurationStatus: GitHubConfigurationStatus;
+  tasks: Task[];
 
   constructor() {
-    this.settingValues = cloneDeep(this.defaulSettingValues);
     this.scimStatus = false;
     this.githubProvisioningStatus = false;
-    jest.mocked(getValues).mockImplementation(this.handleGetValues);
-    jest.mocked(setSettingValue).mockImplementation(this.handleSetValue);
-    jest.mocked(resetSettingValue).mockImplementation(this.handleResetValue);
+    this.githubConfigurationStatus = cloneDeep(defaultConfigurationStatus);
+    this.tasks = [];
     jest.mocked(activateScim).mockImplementation(this.handleActivateScim);
     jest.mocked(deactivateScim).mockImplementation(this.handleDeactivateScim);
     jest.mocked(fetchIsScimEnabled).mockImplementation(this.handleFetchIsScimEnabled);
@@ -79,9 +73,29 @@ export default class AuthenticationServiceMock {
       .mocked(deactivateGithubProvisioning)
       .mockImplementation(this.handleDeactivateGithubProvisioning);
     jest
-      .mocked(fetchIsGithubProvisioningEnabled)
-      .mockImplementation(this.handleFetchIsGithubProvisioningEnabled);
+      .mocked(fetchGithubProvisioningStatus)
+      .mockImplementation(this.handleFetchGithubProvisioningStatus);
+    jest
+      .mocked(checkConfigurationValidity)
+      .mockImplementation(this.handleCheckConfigurationValidity);
   }
+
+  addProvisioningTask = (overrides: Partial<Omit<Task, 'type'>> = {}) => {
+    this.tasks.push(
+      mockTask({
+        id: Math.random().toString(),
+        type: TaskTypes.GithubProvisioning,
+        ...overrides,
+      })
+    );
+  };
+
+  setConfigurationValidity = (overrides: Partial<GitHubConfigurationStatus> = {}) => {
+    this.githubConfigurationStatus = {
+      ...this.githubConfigurationStatus,
+      ...overrides,
+    };
+  };
 
   handleActivateScim = () => {
     this.scimStatus = true;
@@ -107,50 +121,42 @@ export default class AuthenticationServiceMock {
     return Promise.resolve();
   };
 
-  handleFetchIsGithubProvisioningEnabled = () => {
-    return Promise.resolve(this.githubProvisioningStatus);
+  handleFetchGithubProvisioningStatus = () => {
+    if (!this.githubProvisioningStatus) {
+      return Promise.resolve({ enabled: false });
+    }
+
+    const nextSync = this.tasks.find((t: any) =>
+      [TaskStatuses.InProgress, TaskStatuses.Pending].includes(t.status)
+    );
+    const lastSync = this.tasks.find(
+      (t: any) => ![TaskStatuses.InProgress, TaskStatuses.Pending].includes(t.status)
+    );
+
+    return Promise.resolve({
+      enabled: true,
+      nextSync: nextSync ? { status: nextSync.status } : undefined,
+      lastSync: lastSync
+        ? {
+            status: lastSync.status,
+            finishedAt: lastSync.executedAt,
+            startedAt: lastSync.startedAt,
+            executionTimeMs: lastSync.executionTimeMs,
+            summary: lastSync.status === TaskStatuses.Success ? 'Test summary' : undefined,
+            errorMessage: lastSync.errorMessage,
+          }
+        : undefined,
+    });
   };
 
-  handleGetValues = (
-    data: { keys: string[]; component?: string } & BranchParameters
-  ): Promise<SettingValue[]> => {
-    if (data.keys.length > 1) {
-      return Promise.resolve(this.settingValues.filter((set) => data.keys.includes(set.key)));
-    }
-    return Promise.resolve(this.settingValues);
+  handleCheckConfigurationValidity = () => {
+    return Promise.resolve(this.githubConfigurationStatus);
   };
 
-  handleSetValue = (definition: SettingDefinition, value: string | boolean) => {
-    if (value === 'error') {
-      const res = new Response('', {
-        status: 400,
-        statusText: 'fail',
-      });
-
-      return Promise.reject(res);
-    }
-    const updatedSettingValue = this.settingValues.find((set) => set.key === definition.key);
-    if (updatedSettingValue) {
-      updatedSettingValue.value = String(value);
-    } else {
-      this.settingValues.push({ key: definition.key, value: String(value), inherited: false });
-    }
-    return Promise.resolve();
-  };
-
-  handleResetValue = (data: { keys: string; component?: string } & BranchParameters) => {
-    if (data.keys) {
-      this.settingValues.forEach((set) => {
-        if (data.keys.includes(set.key)) {
-          set.value = '';
-        }
-        return set;
-      });
-    }
-    return Promise.resolve();
-  };
-
-  resetValues = () => {
-    this.settingValues = cloneDeep(this.defaulSettingValues);
+  reset = () => {
+    this.scimStatus = false;
+    this.githubProvisioningStatus = false;
+    this.githubConfigurationStatus = cloneDeep(defaultConfigurationStatus);
+    this.tasks = [];
   };
 }

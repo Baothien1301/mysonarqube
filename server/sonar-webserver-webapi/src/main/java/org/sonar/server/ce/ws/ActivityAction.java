@@ -47,6 +47,7 @@ import org.sonar.db.ce.CeTaskQuery;
 import org.sonar.db.ce.CeTaskTypes;
 import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ComponentQuery;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.server.user.UserSession;
 import org.sonarqube.ws.Ce;
 import org.sonarqube.ws.Ce.ActivityResponse;
@@ -58,7 +59,6 @@ import static java.lang.Integer.max;
 import static java.lang.Integer.parseInt;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
-import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toSet;
 import static org.sonar.api.server.ws.WebService.Param.TEXT_QUERY;
@@ -78,7 +78,7 @@ import static org.sonar.server.ws.WsUtils.writeProtobuf;
 
 public class ActivityAction implements CeWsAction {
   private static final int MAX_PAGE_SIZE = 1000;
-  private static final String[] POSSIBLE_QUALIFIERS = new String[]{Qualifiers.PROJECT, Qualifiers.APP, Qualifiers.VIEW};
+  private static final String[] POSSIBLE_QUALIFIERS = new String[] {Qualifiers.PROJECT, Qualifiers.APP, Qualifiers.VIEW};
   private static final String INVALID_QUERY_PARAM_ERROR_MESSAGE = "%s and %s must not be set at the same time";
 
   private final UserSession userSession;
@@ -113,7 +113,9 @@ public class ActivityAction implements CeWsAction {
         new Change("7.6", format("The use of module keys in parameters '%s' is deprecated", TEXT_QUERY)),
         new Change("8.8", "field \"logs\" is dropped"),
         new Change("10.0", "Remove deprecated field 'componentId'"),
-        new Change("10.1", String.format("The use of module keys in parameter '%s' is removed", PARAM_COMPONENT)))
+        new Change("10.1", String.format("The use of module keys in parameter '%s' is removed", PARAM_COMPONENT)),
+        new Change("10.1", "Warnings field will be now be filled (it was always empty in the past).")
+      )
       .setSince("5.2");
 
     action.createParam(PARAM_COMPONENT)
@@ -166,8 +168,8 @@ public class ActivityAction implements CeWsAction {
   private ActivityResponse doHandle(Request request) {
 
     try (DbSession dbSession = dbClient.openSession(false)) {
-      ComponentDto component = loadComponent(dbSession, request);
-      checkPermission(component);
+      EntityDto entity = loadEntity(dbSession, request);
+      checkPermission(entity);
       // if a task searched by uuid is found all other parameters are ignored
       Optional<Ce.Task> taskSearchedById = searchTaskByUuid(dbSession, request);
       if (taskSearchedById.isPresent()) {
@@ -177,7 +179,7 @@ public class ActivityAction implements CeWsAction {
           Paging.forPageIndex(1).withPageSize(1).andTotal(1), 0);
       }
 
-      CeTaskQuery query = buildQuery(dbSession, request, component);
+      CeTaskQuery query = buildQuery(dbSession, request, entity);
 
       return buildPaginatedResponse(dbSession, query, parseInt(request.getP()), parseInt(request.getPs()));
     }
@@ -229,26 +231,26 @@ public class ActivityAction implements CeWsAction {
   }
 
   @CheckForNull
-  private ComponentDto loadComponent(DbSession dbSession, Request request) {
+  private EntityDto loadEntity(DbSession dbSession, Request request) {
     String componentKey = request.getComponent();
 
     if (componentKey != null) {
-      Optional<ComponentDto> foundComponent;
-      foundComponent = dbClient.componentDao().selectByKey(dbSession, componentKey);
+      Optional<EntityDto> foundComponent;
+      foundComponent = dbClient.entityDao().selectByKey(dbSession, componentKey);
       return checkFoundWithOptional(foundComponent, "Component '%s' does not exist", componentKey);
     } else {
       return null;
     }
   }
 
-  private void checkPermission(@Nullable ComponentDto component) {
+  private void checkPermission(@Nullable EntityDto entity) {
     // fail fast if not logged in
     userSession.checkLoggedIn();
 
-    if (component == null) {
+    if (entity == null) {
       userSession.checkIsSystemAdministrator();
     } else {
-      userSession.checkComponentPermission(UserRole.ADMIN, component);
+      userSession.checkEntityPermission(UserRole.ADMIN, entity);
     }
   }
 
@@ -264,10 +266,10 @@ public class ActivityAction implements CeWsAction {
     }
 
     Optional<CeActivityDto> activity = dbClient.ceActivityDao().selectByUuid(dbSession, textQuery);
-    return activity.map(ceActivityDto -> formatter.formatActivity(dbSession, ceActivityDto, null, emptyList()));
+    return activity.map(ceActivityDto -> formatter.formatActivity(dbSession, ceActivityDto, null));
   }
 
-  private CeTaskQuery buildQuery(DbSession dbSession, Request request, @Nullable ComponentDto component) {
+  private CeTaskQuery buildQuery(DbSession dbSession, Request request, @Nullable EntityDto entity) {
     CeTaskQuery query = new CeTaskQuery();
     query.setType(request.getType());
     query.setOnlyCurrents(parseBoolean(request.getOnlyCurrents()));
@@ -282,10 +284,10 @@ public class ActivityAction implements CeWsAction {
     }
 
     String componentQuery = request.getQ();
-    if (component != null) {
-      query.setMainComponentUuid(component.uuid());
+    if (entity != null) {
+      query.setEntityUuid(entity.getUuid());
     } else if (componentQuery != null) {
-      query.setMainComponentUuids(loadComponents(dbSession, componentQuery).stream()
+      query.setEntityUuids(loadComponents(dbSession, componentQuery).stream()
         .map(ComponentDto::uuid)
         .collect(toList()));
     }

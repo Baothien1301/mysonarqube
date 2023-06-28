@@ -25,6 +25,7 @@ import java.util.Set;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
 import org.apache.ibatis.annotations.Param;
+import org.sonar.db.component.KeyWithUuidDto;
 import org.sonar.db.project.ApplicationProjectDto;
 
 public interface PortfolioMapper {
@@ -66,6 +67,8 @@ public interface PortfolioMapper {
   List<PortfolioDto> selectByUuids(@Param("uuids") Collection<String> uuids);
 
   void update(PortfolioDto portfolio);
+
+  void updateVisibilityByPortfolioUuid(@Param("uuid") String uuid, @Param("newIsPrivate") boolean newIsPrivate);
 
   List<PortfolioDto> selectAllRoots();
 
@@ -111,4 +114,6 @@ public interface PortfolioMapper {
   List<ReferenceDto> selectAllReferencesToApplicationsInHierarchy(String rootUuid);
 
   List<PortfolioDto> selectRootOfReferencersToAppBranch(@Param("appUuid") String appUuid, @Param("appBranchKey") String appBranchKey);
+
+  List<KeyWithUuidDto> selectUuidsByKey(@Param("rootKey") String rootKey);
 }

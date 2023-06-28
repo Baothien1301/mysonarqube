@@ -38,7 +38,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.slf4j.event.Level;
 import org.sonar.api.testfixtures.log.LogTester;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.LoggerFactory;
 import org.sonar.core.util.stream.MoreCollectors;
 import org.sonar.db.dialect.Oracle;
 
@@ -62,6 +62,7 @@ import static org.sonar.db.DatabaseUtils.closeQuietly;
 import static org.sonar.db.DatabaseUtils.getDriver;
 import static org.sonar.db.DatabaseUtils.log;
 import static org.sonar.db.DatabaseUtils.tableColumnExists;
+import static org.sonar.db.DatabaseUtils.getColumnMetadata;
 import static org.sonar.db.DatabaseUtils.tableExists;
 import static org.sonar.db.DatabaseUtils.toUniqueAndSortedList;
 
@@ -140,6 +141,24 @@ public class DatabaseUtilsIT {
     String columnName = "columna";
     try (Connection connection = dbTester.openConnection()) {
       assertThat(tableColumnExists(connection, tableName, columnName)).isTrue();
+    }
+  }
+
+  @Test
+  public void getColumnMetadata_whenTableNameLowerCaseColumnUpperCase_shouldFindColumn() throws SQLException {
+    String tableName = "tablea";
+    String columnName = "COLUMNA";
+    try (Connection connection = dbTester.openConnection()) {
+      assertThat(getColumnMetadata(connection, tableName, columnName)).isNotNull();
+    }
+  }
+
+  @Test
+  public void getColumnMetadata_whenArgumentInUpperCase_shouldFindColumn() throws SQLException {
+    String tableName = "TABLEA";
+    String columnName = "COLUMNA";
+    try (Connection connection = dbTester.openConnection()) {
+      assertThat(getColumnMetadata(connection, tableName, columnName)).isNotNull();
     }
   }
 
@@ -392,7 +411,7 @@ public class DatabaseUtilsIT {
     SQLException next = new SQLException("this is next", "456");
     root.setNextException(next);
 
-    log(Loggers.get(getClass()), root);
+    log(LoggerFactory.getLogger(getClass()), root);
 
     assertThat(logTester.logs(Level.ERROR)).contains("SQL error: 456. Message: this is next");
   }

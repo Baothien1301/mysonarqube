@@ -19,9 +19,9 @@
  */
 import * as React from 'react';
 import { deleteApplication } from '../../api/application';
-import { deletePortfolio, deleteProject } from '../../api/components';
-import { Button } from '../../components/controls/buttons';
+import { deletePortfolio, deleteProject } from '../../api/project-management';
 import ConfirmButton from '../../components/controls/ConfirmButton';
+import { Button } from '../../components/controls/buttons';
 import { Router, withRouter } from '../../components/hoc/withRouter';
 import { addGlobalSuccessMessage } from '../../helpers/globalMessages';
 import { translate, translateWithParameters } from '../../helpers/l10n';
@@ -58,7 +58,7 @@ export class Form extends React.PureComponent<Props> {
     return (
       <ConfirmButton
         confirmButtonText={translate('delete')}
-        isDestructive={true}
+        isDestructive
         modalBody={translateWithParameters(
           'project_deletion.delete_resource_confirmation',
           component.name

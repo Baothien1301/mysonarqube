@@ -33,7 +33,6 @@ import javax.annotation.Nullable;
 import org.apache.ibatis.session.ResultHandler;
 import org.apache.ibatis.session.RowBounds;
 import org.sonar.api.resources.Qualifiers;
-import org.sonar.api.resources.Scopes;
 import org.sonar.db.Dao;
 import org.sonar.db.DbSession;
 import org.sonar.db.RowNotFoundException;
@@ -180,8 +179,8 @@ public class ComponentDao implements Dao {
     return Optional.ofNullable(mapper(session).selectByKeyAndBranchOrPr(key, null, pullRequestId));
   }
 
-  public Optional<ComponentDto> selectByKeyCaseInsensitive(DbSession session, String key) {
-    return Optional.ofNullable(mapper(session).selectByKeyCaseInsensitive(key));
+  public List<ComponentDto> selectByKeyCaseInsensitive(DbSession session, String key) {
+    return mapper(session).selectByKeyCaseInsensitive(key);
   }
 
   /**
@@ -237,17 +236,6 @@ public class ComponentDao implements Dao {
   public List<String> selectProjectsFromView(DbSession session, String viewUuid, String rootViewUuid) {
     var escapedViewUuid = viewUuid.replace("_", "\\_").replace("%", "\\%");
     return mapper(session).selectProjectsFromView("%." + escapedViewUuid + ".%", rootViewUuid);
-  }
-
-  /**
-   * Selects all components that are relevant for indexing. The result is not returned (since it is usually too big), but handed over to the <code>handler</code>
-   *
-   * @param session     the database session
-   * @param branchUuid the branch uuid, which is selected with all of its children
-   * @param handler     the action to be applied to every result
-   */
-  public void scrollForIndexing(DbSession session, @Nullable String branchUuid, ResultHandler<ComponentDto> handler) {
-    mapper(session).scrollForIndexing(branchUuid, handler);
   }
 
   /**
@@ -349,7 +337,12 @@ public class ComponentDao implements Dao {
 
   public void setPrivateForBranchUuid(DbSession session, String branchUuid, boolean isPrivate, String qualifier, String componentKey, String componentName) {
     ComponentNewValue componentNewValue = new ComponentNewValue(branchUuid, componentName, componentKey, isPrivate, qualifier);
+    //TODO we should log change to the visibility in EntityDao, not ComponentDao
     auditPersister.updateComponentVisibility(session, componentNewValue);
+    mapper(session).setPrivateForBranchUuid(branchUuid, isPrivate);
+  }
+
+  public void setPrivateForBranchUuidWithoutAuditLog(DbSession session, String branchUuid, boolean isPrivate) {
     mapper(session).setPrivateForBranchUuid(branchUuid, isPrivate);
   }
 

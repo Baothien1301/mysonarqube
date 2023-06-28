@@ -36,8 +36,8 @@ import okhttp3.ResponseBody;
 import org.apache.commons.lang.StringUtils;
 import org.sonar.alm.client.TimeoutConfiguration;
 import org.sonar.alm.client.github.security.AccessToken;
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonarqube.ws.client.OkHttpClientBuilder;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -51,7 +51,7 @@ import static java.util.Optional.ofNullable;
 
 public class GithubApplicationHttpClientImpl implements GithubApplicationHttpClient {
 
-  private static final Logger LOG = Loggers.get(GithubApplicationHttpClientImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(GithubApplicationHttpClientImpl.class);
   private static final Pattern NEXT_LINK_PATTERN = Pattern.compile("<([^<]+)>; rel=\"next\"");
   private static final String GH_API_VERSION_HEADER = "X-GitHub-Api-Version";
   private static final String GH_API_VERSION = "2022-11-28";
@@ -93,7 +93,8 @@ public class GithubApplicationHttpClientImpl implements GithubApplicationHttpCli
 
 
   private static void validateEndPoint(String endPoint) {
-    checkArgument(endPoint.startsWith("/") || endPoint.startsWith("http"), "endpoint must start with '/' or 'http'");
+    checkArgument(endPoint.startsWith("/") || endPoint.startsWith("http") || endPoint.isEmpty(),
+      "endpoint must start with '/' or 'http'");
   }
 
   private static Request newGetRequest(String appUrl, AccessToken token, String endPoint) {

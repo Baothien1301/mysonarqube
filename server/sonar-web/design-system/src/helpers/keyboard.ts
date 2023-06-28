@@ -40,6 +40,7 @@ export enum Key {
   Shift = 'Shift',
   Space = ' ',
   Tab = 'Tab',
+  Click = 'Click',
 }
 
 export function isShortcut(event: KeyboardEvent): boolean {
@@ -51,4 +52,10 @@ const INPUT_TAGS = ['INPUT', 'SELECT', 'TEXTAREA', 'UBCOMMENT'];
 export function isInput(event: KeyboardEvent): boolean {
   const { tagName } = event.target as HTMLElement;
   return INPUT_TAGS.includes(tagName);
+}
+
+export function isTextarea(
+  event: KeyboardEvent
+): event is KeyboardEvent & { target: HTMLTextAreaElement } {
+  return event.target instanceof HTMLTextAreaElement;
 }

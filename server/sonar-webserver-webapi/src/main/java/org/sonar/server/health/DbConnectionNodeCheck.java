@@ -19,8 +19,8 @@
  */
 package org.sonar.server.health;
 
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.IsAliveMapper;
@@ -29,7 +29,7 @@ import org.sonar.db.IsAliveMapper;
  * Checks Web Server can connect to the Database.
  */
 public class DbConnectionNodeCheck implements NodeHealthCheck {
-  private static final Logger LOGGER = Loggers.get(DbConnectionNodeCheck.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(DbConnectionNodeCheck.class);
   private static final Health RED_HEALTH = Health.builder().setStatus(Health.Status.RED).addCause("Can't connect to DB").build();
 
   private final DbClient dbClient;
@@ -50,7 +50,7 @@ public class DbConnectionNodeCheck implements NodeHealthCheck {
     try (DbSession dbSession = dbClient.openSession(false)) {
       return dbSession.getMapper(IsAliveMapper.class).isAlive() == IsAliveMapper.IS_ALIVE_RETURNED_VALUE;
     } catch (RuntimeException e) {
-      LOGGER.trace("DB connection is down: {}", e);
+      LOGGER.trace("DB connection is down: {}", e.getMessage(), e);
       return false;
     }
   }

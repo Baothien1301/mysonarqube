@@ -62,7 +62,7 @@ public class CreateActionIT {
   public UserSessionRule userSession = standalone();
 
   @Rule
-  public DbTester db = create();
+  public DbTester db = create(true);
   private final DbClient dbClient = db.getDbClient();
   private final WebhookDbTester webhookDbTester = db.webhooks();
   private final ComponentDbTester componentDbTester = db.components();
@@ -96,7 +96,7 @@ public class CreateActionIT {
   @Test
   public void create_a_webhook_with_400_length_project_key() {
     String longProjectKey = generateStringWithLength(400);
-    ComponentDto project = componentDbTester.insertPrivateProject(componentDto -> componentDto.setKey(longProjectKey)).getMainBranchComponent();
+    ProjectDto project = componentDbTester.insertPrivateProject(componentDto -> componentDto.setKey(longProjectKey)).getProjectDto();
 
     userSession.logIn().addProjectPermission(UserRole.ADMIN, project);
 
@@ -111,7 +111,7 @@ public class CreateActionIT {
     assertThat(response.getWebhook().getKey()).isNotNull();
     assertThat(response.getWebhook().getName()).isEqualTo(NAME_WEBHOOK_EXAMPLE_001);
     assertThat(response.getWebhook().getUrl()).isEqualTo(URL_WEBHOOK_EXAMPLE_001);
-    assertThat(response.getWebhook().getSecret()).isEqualTo("a_secret");
+    assertThat(response.getWebhook().getHasSecret()).isTrue();
   }
 
   @Test
@@ -128,7 +128,16 @@ public class CreateActionIT {
     assertThat(response.getWebhook().getKey()).isNotNull();
     assertThat(response.getWebhook().getName()).isEqualTo(NAME_WEBHOOK_EXAMPLE_001);
     assertThat(response.getWebhook().getUrl()).isEqualTo(URL_WEBHOOK_EXAMPLE_001);
-    assertThat(response.getWebhook().getSecret()).isEqualTo("a_secret");
+    assertThat(response.getWebhook().getHasSecret()).isTrue();
+
+    assertThat(webhookDbTester.selectWebhook(response.getWebhook().getKey()))
+      .isPresent()
+      .hasValueSatisfying(reloaded -> {
+        assertThat(reloaded.getName()).isEqualTo(NAME_WEBHOOK_EXAMPLE_001);
+        assertThat(reloaded.getUrl()).isEqualTo(URL_WEBHOOK_EXAMPLE_001);
+        assertThat(reloaded.getProjectUuid()).isNull();
+        assertThat(reloaded.getSecret()).isEqualTo("a_secret");
+      });
   }
 
   @Test
@@ -144,12 +153,12 @@ public class CreateActionIT {
     assertThat(response.getWebhook().getKey()).isNotNull();
     assertThat(response.getWebhook().getName()).isEqualTo(NAME_WEBHOOK_EXAMPLE_001);
     assertThat(response.getWebhook().getUrl()).isEqualTo(URL_WEBHOOK_EXAMPLE_001);
-    assertThat(response.getWebhook().hasSecret()).isFalse();
+    assertThat(response.getWebhook().getHasSecret()).isFalse();
   }
 
   @Test
   public void create_a_webhook_on_project() {
-    ComponentDto project = componentDbTester.insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = componentDbTester.insertPrivateProject().getProjectDto();
 
     userSession.logIn().addProjectPermission(UserRole.ADMIN, project);
 
@@ -163,20 +172,20 @@ public class CreateActionIT {
     assertThat(response.getWebhook().getKey()).isNotNull();
     assertThat(response.getWebhook().getName()).isEqualTo(NAME_WEBHOOK_EXAMPLE_001);
     assertThat(response.getWebhook().getUrl()).isEqualTo(URL_WEBHOOK_EXAMPLE_001);
-    assertThat(response.getWebhook().hasSecret()).isFalse();
+    assertThat(response.getWebhook().getHasSecret()).isFalse();
   }
 
   @Test
   public void fail_if_project_does_not_exist() {
     userSession.logIn();
     TestRequest request = wsActionTester.newRequest()
-      .setParam(PROJECT_KEY_PARAM, "inexistent-project-uuid")
+      .setParam(PROJECT_KEY_PARAM, "nonexistent-project-uuid")
       .setParam(NAME_PARAM, NAME_WEBHOOK_EXAMPLE_001)
       .setParam(URL_PARAM, URL_WEBHOOK_EXAMPLE_001);
 
     assertThatThrownBy(request::execute)
       .isInstanceOf(NotFoundException.class)
-      .hasMessage("Project 'inexistent-project-uuid' not found");
+      .hasMessage("Project 'nonexistent-project-uuid' not found");
   }
 
   @Test
@@ -285,11 +294,7 @@ public class CreateActionIT {
   }
 
   private static String generateStringWithLength(int length) {
-    StringBuilder sb = new StringBuilder(length);
-    for (int i = 0; i < length; i++) {
-      sb.append("x");
-    }
-    return sb.toString();
+    return "x".repeat(Math.max(0, length));
   }
 
 }

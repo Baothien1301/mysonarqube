@@ -17,7 +17,16 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import { withTheme } from '@emotion/react';
 import styled from '@emotion/styled';
+import {
+  DeferredSpinner,
+  LargeCenteredLayout,
+  Note,
+  PageContentFontWrapper,
+  themeBorder,
+  themeColor,
+} from 'design-system';
 import { debounce, keyBy } from 'lodash';
 import * as React from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -25,23 +34,16 @@ import { getMeasuresWithPeriod } from '../../../api/measures';
 import { getAllMetrics } from '../../../api/metrics';
 import withBranchStatusActions from '../../../app/components/branch-status/withBranchStatusActions';
 import { ComponentContext } from '../../../app/components/componentContext/ComponentContext';
-import ScreenPositionHelper from '../../../components/common/ScreenPositionHelper';
-import HelpTooltip from '../../../components/controls/HelpTooltip';
 import Suggestions from '../../../components/embed-docs-modal/Suggestions';
 import { Location, Router, withRouter } from '../../../components/hoc/withRouter';
 import { enhanceMeasure } from '../../../components/measure/utils';
 import '../../../components/search-navigator.css';
-import { Alert } from '../../../components/ui/Alert';
 import { getBranchLikeQuery, isPullRequest, isSameBranchLike } from '../../../helpers/branch-like';
 import { translate } from '../../../helpers/l10n';
-import {
-  addSideBarClass,
-  addWhitePageClass,
-  removeSideBarClass,
-  removeWhitePageClass,
-} from '../../../helpers/pages';
 import { BranchLike } from '../../../types/branch-like';
-import { ComponentQualifier, isPortfolioLike } from '../../../types/component';
+import { ComponentQualifier } from '../../../types/component';
+import { MeasurePageView } from '../../../types/measures';
+import { MetricKey } from '../../../types/metrics';
 import {
   ComponentMeasure,
   Dict,
@@ -53,6 +55,7 @@ import {
 import Sidebar from '../sidebar/Sidebar';
 import '../style.css';
 import {
+  Query,
   banQualityGateMeasure,
   getMeasuresPageMetricKeys,
   groupByDomains,
@@ -61,7 +64,6 @@ import {
   hasTree,
   hasTreemap,
   parseQuery,
-  Query,
   serializeQuery,
   sortMeasures,
 } from '../utils';
@@ -84,7 +86,7 @@ interface State {
   metrics: Dict<Metric>;
 }
 
-export class ComponentMeasuresApp extends React.PureComponent<Props, State> {
+class ComponentMeasuresApp extends React.PureComponent<Props, State> {
   mounted = false;
   state: State;
 
@@ -111,7 +113,7 @@ export class ComponentMeasuresApp extends React.PureComponent<Props, State> {
     );
   }
 
-  componentDidUpdate(prevProps: Props, prevState: State) {
+  componentDidUpdate(prevProps: Props) {
     const prevQuery = parseQuery(prevProps.location.query);
     const query = parseQuery(this.props.location.query);
 
@@ -122,17 +124,10 @@ export class ComponentMeasuresApp extends React.PureComponent<Props, State> {
     ) {
       this.fetchMeasures(this.state.metrics);
     }
-
-    if (prevState.measures.length === 0 && this.state.measures.length > 0) {
-      addWhitePageClass();
-      addSideBarClass();
-    }
   }
 
   componentWillUnmount() {
     this.mounted = false;
-    removeWhitePageClass();
-    removeSideBarClass();
   }
 
   fetchMeasures(metrics: State['metrics']) {
@@ -194,10 +189,10 @@ export class ComponentMeasuresApp extends React.PureComponent<Props, State> {
 
     const metric = this.getSelectedMetric(query, false);
     if (metric) {
-      if (query.view === 'treemap' && !hasTreemap(metric.key, metric.type)) {
-        query.view = 'tree';
-      } else if (query.view === 'tree' && !hasTree(metric.key)) {
-        query.view = 'list';
+      if (query.view === MeasurePageView.treemap && !hasTreemap(metric.key, metric.type)) {
+        query.view = MeasurePageView.tree;
+      } else if (query.view === MeasurePageView.tree && !hasTree(metric.key)) {
+        query.view = MeasurePageView.list;
       }
     }
 
@@ -221,67 +216,65 @@ export class ComponentMeasuresApp extends React.PureComponent<Props, State> {
   renderContent = (displayOverview: boolean, query: Query, metric?: Metric) => {
     const { branchLike, component } = this.props;
     const { leakPeriod } = this.state;
+
     if (displayOverview) {
       return (
-        <MeasureOverviewContainer
-          branchLike={branchLike}
-          className="layout-page-main"
-          domain={query.metric}
-          leakPeriod={leakPeriod}
-          metrics={this.state.metrics}
-          onIssueChange={this.handleIssueChange}
-          rootComponent={component}
-          router={this.props.router}
-          selected={query.selected}
-          updateQuery={this.updateQuery}
-        />
+        <StyledMain className="sw-rounded-1 sw-mb-4">
+          <MeasureOverviewContainer
+            branchLike={branchLike}
+            domain={query.metric}
+            leakPeriod={leakPeriod}
+            metrics={this.state.metrics}
+            onIssueChange={this.handleIssueChange}
+            rootComponent={component}
+            router={this.props.router}
+            selected={query.selected}
+            updateQuery={this.updateQuery}
+          />
+        </StyledMain>
       );
     }
 
     if (!metric) {
-      return <MeasuresEmpty />;
+      return (
+        <StyledMain className="sw-rounded-1 sw-p-6 sw-mb-4">
+          <MeasuresEmpty />
+        </StyledMain>
+      );
     }
 
     const hideDrilldown =
       isPullRequest(branchLike) &&
-      (metric.key === 'coverage' || metric.key === 'duplicated_lines_density');
+      (metric.key === MetricKey.coverage || metric.key === MetricKey.duplicated_lines_density);
 
     if (hideDrilldown) {
       return (
-        <main className="layout-page-main">
-          <div className="layout-page-main-inner">
-            <div className="note">{translate('component_measures.details_are_not_available')}</div>
-          </div>
-        </main>
+        <StyledMain className="sw-rounded-1 sw-p-6 sw-mb-4">
+          <Note>{translate('component_measures.details_are_not_available')}</Note>
+        </StyledMain>
       );
     }
 
     return (
-      <MeasureContent
-        branchLike={branchLike}
-        leakPeriod={leakPeriod}
-        metrics={this.state.metrics}
-        onIssueChange={this.handleIssueChange}
-        requestedMetric={metric}
-        rootComponent={component}
-        router={this.props.router}
-        selected={query.selected}
-        asc={query.asc}
-        updateQuery={this.updateQuery}
-        view={query.view}
-      />
+      <StyledMain className="sw-rounded-1 sw-mb-4">
+        <MeasureContent
+          branchLike={branchLike}
+          leakPeriod={leakPeriod}
+          metrics={this.state.metrics}
+          onIssueChange={this.handleIssueChange}
+          requestedMetric={metric}
+          rootComponent={component}
+          router={this.props.router}
+          selected={query.selected}
+          asc={query.asc}
+          updateQuery={this.updateQuery}
+          view={query.view}
+        />
+      </StyledMain>
     );
   };
 
   render() {
-    if (this.state.loading) {
-      return (
-        <div className="display-flex-justify-center huge-spacer-top">
-          <i className="spinner" />
-        </div>
-      );
-    }
-
     const { branchLike } = this.props;
     const { measures } = this.state;
     const { canBrowseAllChildProjects, qualifier } = this.props.component;
@@ -291,57 +284,39 @@ export class ComponentMeasuresApp extends React.PureComponent<Props, State> {
     const metric = this.getSelectedMetric(query, displayOverview);
 
     return (
-      <div id="component-measures">
+      <LargeCenteredLayout id="component-measures" className="sw-pt-8">
         <Suggestions suggestions="component_measures" />
         <Helmet defer={false} title={translate('layout.measures')} />
-        {measures.length > 0 ? (
-          <div className="layout-page">
-            <ScreenPositionHelper className="layout-page-side-outer">
-              {({ top }) => (
-                <div className="layout-page-side" style={{ top }}>
-                  <div className="layout-page-side-inner">
-                    {!canBrowseAllChildProjects && isPortfolioLike(qualifier) && (
-                      <Alert
-                        className="big-spacer-top big-spacer-right big-spacer-left it__portfolio_warning"
-                        variant="warning"
-                      >
-                        <AlertContent>
-                          {translate('component_measures.not_all_measures_are_shown')}
-                          <HelpTooltip
-                            className="spacer-left"
-                            overlay={translate(
-                              'component_measures.not_all_measures_are_shown.help'
-                            )}
-                          />
-                        </AlertContent>
-                      </Alert>
-                    )}
-                    <div className="layout-page-filters">
-                      <Sidebar
-                        measures={measures}
-                        selectedMetric={metric ? metric.key : query.metric}
-                        showFullMeasures={showFullMeasures}
-                        updateQuery={this.updateQuery}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </ScreenPositionHelper>
-            {this.renderContent(displayOverview, query, metric)}
-          </div>
-        ) : (
-          <MeasuresEmpty />
-        )}
-      </div>
+        <PageContentFontWrapper>
+          <DeferredSpinner
+            className="my-10 sw-flex sw-content-center"
+            loading={this.state.loading}
+          />
+
+          {measures.length > 0 ? (
+            <div className="sw-grid sw-grid-cols-12 sw-w-full">
+              <Sidebar
+                canBrowseAllChildProjects={!!canBrowseAllChildProjects}
+                measures={measures}
+                qualifier={qualifier}
+                selectedMetric={metric ? metric.key : query.metric}
+                showFullMeasures={showFullMeasures}
+                updateQuery={this.updateQuery}
+              />
+              <div className="sw-col-span-9 sw-ml-12">
+                {this.renderContent(displayOverview, query, metric)}
+              </div>
+            </div>
+          ) : (
+            <StyledMain className="sw-rounded-1 sw-p-6 sw-mb-4">
+              <MeasuresEmpty />
+            </StyledMain>
+          )}
+        </PageContentFontWrapper>
+      </LargeCenteredLayout>
     );
   }
 }
-
-const AlertContent = styled.div`
-  display: flex;
-  align-items: center;
-`;
 
 /*
  * This needs to be refactored: the issue
@@ -357,3 +332,8 @@ function AppWithComponentContext() {
 }
 
 export default AppWithComponentContext;
+
+const StyledMain = withTheme(styled.main`
+  background-color: ${themeColor('pageBlock')};
+  border: ${themeBorder('default', 'pageBlockBorder')};
+`);

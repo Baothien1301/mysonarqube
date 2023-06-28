@@ -40,21 +40,24 @@ import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.ce.CeQueueDto;
 import org.sonar.db.component.BranchDto;
+import org.sonar.db.component.BranchType;
 import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ComponentTesting;
+import org.sonar.db.component.PortfolioData;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.component.ResourceTypesRule;
 import org.sonar.db.permission.GlobalPermission;
 import org.sonar.db.permission.GroupPermissionDto;
 import org.sonar.db.permission.UserPermissionDto;
+import org.sonar.db.portfolio.PortfolioDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDto;
-import org.sonar.server.component.TestComponentFinder;
 import org.sonar.server.es.EsTester;
 import org.sonar.server.es.ProjectIndexer;
 import org.sonar.server.es.TestProjectIndexers;
 import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.ForbiddenException;
-import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.exceptions.UnauthorizedException;
 import org.sonar.server.permission.PermissionService;
 import org.sonar.server.permission.PermissionServiceImpl;
@@ -84,7 +87,7 @@ public class UpdateVisibilityActionIT {
     .collect(MoreCollectors.toSet(GlobalPermission.values().length));
 
   @Rule
-  public final DbTester dbTester = DbTester.create(System2.INSTANCE);
+  public final DbTester dbTester = DbTester.create(System2.INSTANCE, true);
   @Rule
   public final EsTester es = EsTester.createCustom(new FooIndexDefinition());
   @Rule
@@ -101,8 +104,7 @@ public class UpdateVisibilityActionIT {
   private final TestProjectIndexers projectIndexers = new TestProjectIndexers();
   private final Configuration configuration = mock(Configuration.class);
 
-  private final UpdateVisibilityAction underTest = new UpdateVisibilityAction(dbClient, TestComponentFinder.from(dbTester),
-    userSessionRule, projectIndexers, new SequenceUuidFactory(), configuration);
+  private final UpdateVisibilityAction underTest = new UpdateVisibilityAction(dbClient, userSessionRule, projectIndexers, new SequenceUuidFactory(), configuration);
   private final WsActionTester ws = new WsActionTester(underTest);
 
   private final Random random = new Random();
@@ -182,24 +184,25 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, randomVisibility);
 
     assertThatThrownBy(request::execute)
-      .isInstanceOf(NotFoundException.class)
-      .hasMessage("Component key 'foo' not found");
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Component must be a project, a portfolio or an application");
   }
 
   @Test
   public void execute_fails_with_BadRequestException_if_specified_component_is_neither_a_project_a_portfolio_nor_an_application() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    ComponentDto dir = ComponentTesting.newDirectory(project, "path");
-    ComponentDto file = ComponentTesting.newFileDto(project);
+    ProjectData project = randomPublicOrPrivateProject();
+    ComponentDto dir = ComponentTesting.newDirectory(project.getMainBranchComponent(), "path");
+    ComponentDto file = ComponentTesting.newFileDto(project.getMainBranchComponent());
     dbTester.components().insertComponents(dir, file);
-    ComponentDto application = dbTester.components().insertPublicApplication().getMainBranchComponent();
-    ComponentDto portfolio = dbTester.components().insertPrivatePortfolio();
-    ComponentDto subView = ComponentTesting.newSubPortfolio(portfolio);
-    ComponentDto projectCopy = newProjectCopy("foo", project, subView);
+    ProjectDto application = dbTester.components().insertPublicApplication().getProjectDto();
+    PortfolioData portfolio = dbTester.components().insertPrivatePortfolioData();
+    ComponentDto subView = ComponentTesting.newSubPortfolio(portfolio.getRootComponent());
+    ComponentDto projectCopy = newProjectCopy("foo", project.getMainBranchComponent(), subView);
     dbTester.components().insertComponents(subView, projectCopy);
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project, portfolio, application);
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto(), application);
+    userSessionRule.addPortfolioPermission(UserRole.ADMIN, portfolio.getPortfolioDto());
 
-    Stream.of(project, portfolio, application).forEach(c -> request
+    Stream.of(project.getProjectDto(), portfolio.getPortfolioDto(), application).forEach(c -> request
       .setParam(PARAM_PROJECT, c.getKey())
       .setParam(PARAM_VISIBILITY, randomVisibility)
       .execute());
@@ -259,24 +262,24 @@ public class UpdateVisibilityActionIT {
   @Test
   public void execute_throws_ForbiddenException_if_user_has_global_ADMIN_permission_even_if_sonar_allowPermissionManagementForProjectAdmins_is_set_to_false() {
     when(configuration.getBoolean(CORE_ALLOW_PERMISSION_MANAGEMENT_FOR_PROJECT_ADMINS_PROPERTY)).thenReturn(of(false));
-    ComponentDto project = dbTester.components().insertPublicProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPublicProject().getProjectDto();
     userSessionRule.setSystemAdministrator().addProjectPermission(UserRole.ADMIN, project);
     request.setParam(PARAM_PROJECT, project.getKey())
       .setParam(PARAM_VISIBILITY, "private");
 
     request.execute();
 
-    assertThat(isPrivateInDb(project)).isTrue();
+    assertThat(dbClient.projectDao().selectProjectByKey(dbSession, project.getKey()).get().isPrivate()).isTrue();
   }
 
   @Test
   public void execute_throws_BadRequestException_if_specified_component_has_pending_tasks() {
-    ComponentDto project = randomPublicOrPrivateProject();
+    ProjectData project = randomPublicOrPrivateProject();
     IntStream.range(0, 1 + Math.abs(random.nextInt(5)))
-      .forEach(i -> insertPendingTask(project));
-    request.setParam(PARAM_PROJECT, project.getKey())
+      .forEach(i -> insertPendingTask(project.getMainBranchDto()));
+    request.setParam(PARAM_PROJECT, project.projectKey())
       .setParam(PARAM_VISIBILITY, randomVisibility);
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project);
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto());
 
     assertThatThrownBy(request::execute)
       .isInstanceOf(BadRequestException.class)
@@ -285,12 +288,12 @@ public class UpdateVisibilityActionIT {
 
   @Test
   public void execute_throws_BadRequestException_if_main_component_of_specified_component_has_in_progress_tasks() {
-    ComponentDto project = randomPublicOrPrivateProject();
+    ProjectData project = randomPublicOrPrivateProject();
     IntStream.range(0, 1 + Math.abs(random.nextInt(5)))
-      .forEach(i -> insertInProgressTask(project));
-    request.setParam(PARAM_PROJECT, project.getKey())
+      .forEach(i -> insertInProgressTask(project.getMainBranchDto()));
+    request.setParam(PARAM_PROJECT, project.projectKey())
       .setParam(PARAM_VISIBILITY, randomVisibility);
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project);
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto());
 
     assertThatThrownBy(request::execute)
       .isInstanceOf(BadRequestException.class)
@@ -299,24 +302,24 @@ public class UpdateVisibilityActionIT {
 
   @Test
   public void execute_changes_private_flag_of_specified_project_and_all_children_to_specified_new_visibility() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    boolean initiallyPrivate = project.isPrivate();
+    ProjectData project = randomPublicOrPrivateProject();
+    boolean initiallyPrivate = project.getProjectDto().isPrivate();
 
-    BranchDto branchDto = ComponentTesting.newBranchDto(project);
+    BranchDto branchDto = ComponentTesting.newBranchDto(project.projectUuid(), BranchType.BRANCH);
     dbClient.branchDao().insert(dbSession, branchDto);
 
-    ComponentDto branch = ComponentTesting.newBranchComponent(project, branchDto);
-    ComponentDto dir = ComponentTesting.newDirectory(project, "path");
-    ComponentDto file = ComponentTesting.newFileDto(project);
+    ComponentDto branch = ComponentTesting.newBranchComponent(project.getProjectDto(), branchDto);
+    ComponentDto dir = ComponentTesting.newDirectory(project.getMainBranchComponent(), "path");
+    ComponentDto file = ComponentTesting.newFileDto(project.getMainBranchComponent());
 
     dbTester.components().insertComponents(branch, dir, file);
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project);
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto());
 
-    request.setParam(PARAM_PROJECT, project.getKey())
+    request.setParam(PARAM_PROJECT, project.projectKey())
       .setParam(PARAM_VISIBILITY, initiallyPrivate ? PUBLIC : PRIVATE)
       .execute();
 
-    assertThat(isPrivateInDb(project)).isEqualTo(!initiallyPrivate);
+    assertThat(dbClient.projectDao().selectProjectByKey(dbSession, project.projectKey()).get().isPrivate()).isEqualTo(!initiallyPrivate);
     assertThat(isPrivateInDb(branch)).isEqualTo(!initiallyPrivate);
     assertThat(isPrivateInDb(dir)).isEqualTo(!initiallyPrivate);
     assertThat(isPrivateInDb(file)).isEqualTo(!initiallyPrivate);
@@ -324,27 +327,27 @@ public class UpdateVisibilityActionIT {
 
   @Test
   public void execute_has_no_effect_if_specified_project_already_has_specified_visibility() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    boolean initiallyPrivate = project.isPrivate();
+    ProjectData project = randomPublicOrPrivateProject();
+    boolean initiallyPrivate = project.getProjectDto().isPrivate();
 
-    BranchDto branchDto = ComponentTesting.newBranchDto(project);
+    BranchDto branchDto = ComponentTesting.newBranchDto(project.getMainBranchComponent());
     dbClient.branchDao().insert(dbSession, branchDto);
 
-    ComponentDto branch = ComponentTesting.newBranchComponent(project, branchDto)
+    ComponentDto branch = ComponentTesting.newBranchComponent(project.getProjectDto(), branchDto)
       .setPrivate(initiallyPrivate);
-    ComponentDto dir = ComponentTesting.newDirectory(project, "path")
+    ComponentDto dir = ComponentTesting.newDirectory(project.getMainBranchComponent(), "path")
       // child is inconsistent with root (should not occur) and won't be fixed
       .setPrivate(!initiallyPrivate);
-    ComponentDto file = ComponentTesting.newFileDto(project)
+    ComponentDto file = ComponentTesting.newFileDto(project.getMainBranchComponent())
       .setPrivate(initiallyPrivate);
     dbTester.components().insertComponents(branch, dir, file);
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project);
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto());
 
-    request.setParam(PARAM_PROJECT, project.getKey())
+    request.setParam(PARAM_PROJECT, project.projectKey())
       .setParam(PARAM_VISIBILITY, initiallyPrivate ? PRIVATE : PUBLIC)
       .execute();
 
-    assertThat(isPrivateInDb(project)).isEqualTo(initiallyPrivate);
+    assertThat(isPrivateInDb(project.getMainBranchComponent())).isEqualTo(initiallyPrivate);
     assertThat(isPrivateInDb(branch)).isEqualTo(initiallyPrivate);
     assertThat(isPrivateInDb(dir)).isEqualTo(!initiallyPrivate);
     assertThat(isPrivateInDb(file)).isEqualTo(initiallyPrivate);
@@ -352,7 +355,7 @@ public class UpdateVisibilityActionIT {
 
   @Test
   public void execute_deletes_all_permissions_to_Anyone_on_specified_project_when_new_visibility_is_private() {
-    ComponentDto project = dbTester.components().insertPublicProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPublicProject().getProjectDto();
     UserDto user = dbTester.users().insertUser();
     GroupDto group = dbTester.users().insertGroup();
     unsafeGiveAllPermissionsToRootComponent(project, user, group);
@@ -362,12 +365,12 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PRIVATE)
       .execute();
 
-    verifyHasAllPermissionsButProjectPermissionsToGroupAnyOne(project, user, group);
+    verifyHasAllPermissionsButProjectPermissionsToGroupAnyOne(project.getUuid(), user, group);
   }
 
   @Test
   public void execute_does_not_delete_all_permissions_to_AnyOne_on_specified_project_if_already_private() {
-    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPrivateProject().getProjectDto();
     UserDto user = dbTester.users().insertUser();
     GroupDto group = dbTester.users().insertGroup();
     unsafeGiveAllPermissionsToRootComponent(project, user, group);
@@ -377,12 +380,12 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PRIVATE)
       .execute();
 
-    verifyStillHasAllPermissions(project, user, group);
+    verifyStillHasAllPermissions(project.getUuid(), user, group);
   }
 
   @Test
   public void execute_deletes_all_permissions_USER_and_BROWSE_of_specified_project_when_new_visibility_is_public() {
-    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPrivateProject().getProjectDto();
     UserDto user = dbTester.users().insertUser();
     GroupDto group = dbTester.users().insertGroup();
     unsafeGiveAllPermissionsToRootComponent(project, user, group);
@@ -392,12 +395,12 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PUBLIC)
       .execute();
 
-    verifyHasAllPermissionsButProjectPermissionsUserAndBrowse(project, user, group);
+    verifyHasAllPermissionsButProjectPermissionsUserAndBrowse(project.getUuid(), user, group);
   }
 
   @Test
   public void execute_does_not_delete_permissions_USER_and_BROWSE_of_specified_project_when_new_component_is_already_public() {
-    ComponentDto project = dbTester.components().insertPublicProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPublicProject().getProjectDto();
     UserDto user = dbTester.users().insertUser();
     GroupDto group = dbTester.users().insertGroup();
     unsafeGiveAllPermissionsToRootComponent(project, user, group);
@@ -407,38 +410,38 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PUBLIC)
       .execute();
 
-    verifyStillHasAllPermissions(project, user, group);
+    verifyStillHasAllPermissions(project.getUuid(), user, group);
   }
 
   @Test
   public void execute_updates_permission_of_specified_project_in_indexes_when_changing_visibility() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    boolean initiallyPrivate = project.isPrivate();
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project);
+    ProjectData project = randomPublicOrPrivateProject();
+    boolean initiallyPrivate = project.getProjectDto().isPrivate();
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto());
 
-    request.setParam(PARAM_PROJECT, project.getKey())
+    request.setParam(PARAM_PROJECT, project.projectKey())
       .setParam(PARAM_VISIBILITY, initiallyPrivate ? PUBLIC : PRIVATE)
       .execute();
 
-    assertThat(projectIndexers.hasBeenCalled(project.uuid(), ProjectIndexer.Cause.PERMISSION_CHANGE)).isTrue();
+    assertThat(projectIndexers.hasBeenCalled(project.projectUuid(), ProjectIndexer.Cause.PERMISSION_CHANGE)).isTrue();
   }
 
   @Test
   public void execute_does_not_update_permission_of_specified_project_in_indexes_if_already_has_specified_visibility() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    boolean initiallyPrivate = project.isPrivate();
-    userSessionRule.addProjectPermission(UserRole.ADMIN, project);
+    ProjectData project = randomPublicOrPrivateProject();
+    boolean initiallyPrivate = project.getProjectDto().isPrivate();
+    userSessionRule.addProjectPermission(UserRole.ADMIN, project.getProjectDto());
 
-    request.setParam(PARAM_PROJECT, project.getKey())
+    request.setParam(PARAM_PROJECT, project.projectKey())
       .setParam(PARAM_VISIBILITY, initiallyPrivate ? PRIVATE : PUBLIC)
       .execute();
 
-    assertThat(projectIndexers.hasBeenCalled(project.uuid())).isFalse();
+    assertThat(projectIndexers.hasBeenCalled(project.projectUuid())).isFalse();
   }
 
   @Test
   public void execute_grants_USER_and_CODEVIEWER_permissions_to_any_user_with_at_least_one_permission_when_making_project_private() {
-    ComponentDto project = dbTester.components().insertPublicProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPublicProject().getProjectDto();
     UserDto user1 = dbTester.users().insertUser();
     UserDto user2 = dbTester.users().insertUser();
     UserDto user3 = dbTester.users().insertUser();
@@ -451,65 +454,65 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PRIVATE)
       .execute();
 
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user1.getUuid(), project.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user1.getUuid(), project.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, "p1", "p2");
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user2.getUuid(), project.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user2.getUuid(), project.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, "p2");
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user3.getUuid(), project.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user3.getUuid(), project.getUuid()))
       .isEmpty();
   }
 
   @Test
   public void execute_grants_USER_and_CODEVIEWER_permissions_to_any_group_with_at_least_one_permission_when_making_project_private() {
-    ComponentDto project = dbTester.components().insertPublicProject().getMainBranchComponent();
+    ProjectDto project = dbTester.components().insertPublicProject().getProjectDto();
     GroupDto group1 = dbTester.users().insertGroup();
     GroupDto group2 = dbTester.users().insertGroup();
     GroupDto group3 = dbTester.users().insertGroup();
-    dbTester.users().insertProjectPermissionOnGroup(group1, "p1", project);
-    dbTester.users().insertProjectPermissionOnGroup(group1, "p2", project);
-    dbTester.users().insertProjectPermissionOnGroup(group2, "p2", project);
+    dbTester.users().insertEntityPermissionOnGroup(group1, "p1", project);
+    dbTester.users().insertEntityPermissionOnGroup(group1, "p2", project);
+    dbTester.users().insertEntityPermissionOnGroup(group2, "p2", project);
     userSessionRule.addProjectPermission(UserRole.ADMIN, project);
 
     request.setParam(PARAM_PROJECT, project.getKey())
       .setParam(PARAM_VISIBILITY, PRIVATE)
       .execute();
 
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group1.getUuid(), project.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group1.getUuid(), project.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, "p1", "p2");
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group2.getUuid(), project.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group2.getUuid(), project.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, "p2");
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group3.getUuid(), project.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group3.getUuid(), project.getUuid()))
       .isEmpty();
   }
 
   @Test
   public void update_a_portfolio_to_private() {
-    ComponentDto portfolio = dbTester.components().insertPublicPortfolio();
+    PortfolioDto portfolio = dbTester.components().insertPublicPortfolioDto();
     GroupDto group = dbTester.users().insertGroup();
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.ISSUE_ADMIN, portfolio);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.ISSUE_ADMIN, portfolio);
     UserDto user = dbTester.users().insertUser();
     dbTester.users().insertProjectPermissionOnUser(user, UserRole.ADMIN, portfolio);
-    userSessionRule.addProjectPermission(UserRole.ADMIN, portfolio);
+    userSessionRule.addPortfolioPermission(UserRole.ADMIN, portfolio);
 
     request.setParam(PARAM_PROJECT, portfolio.getKey())
       .setParam(PARAM_VISIBILITY, PRIVATE)
       .execute();
 
-    assertThat(dbClient.componentDao().selectByUuid(dbSession, portfolio.uuid()).get().isPrivate()).isTrue();
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), portfolio.uuid()))
+    assertThat(dbClient.portfolioDao().selectByUuid(dbSession, portfolio.getUuid()).get().isPrivate()).isTrue();
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), portfolio.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, UserRole.ISSUE_ADMIN);
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), portfolio.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), portfolio.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, UserRole.ADMIN);
   }
 
   @Test
   public void update_a_portfolio_to_public() {
-    ComponentDto portfolio = dbTester.components().insertPrivatePortfolio();
-    userSessionRule.addProjectPermission(UserRole.ADMIN, portfolio);
+    PortfolioDto portfolio = dbTester.components().insertPrivatePortfolioDto();
+    userSessionRule.addPortfolioPermission(UserRole.ADMIN, portfolio);
     GroupDto group = dbTester.users().insertGroup();
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.ISSUE_ADMIN, portfolio);
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.USER, portfolio);
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.CODEVIEWER, portfolio);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.ISSUE_ADMIN, portfolio);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.USER, portfolio);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.CODEVIEWER, portfolio);
     UserDto user = dbTester.users().insertUser();
     dbTester.users().insertProjectPermissionOnUser(user, UserRole.ADMIN, portfolio);
     dbTester.users().insertProjectPermissionOnUser(user, UserRole.USER, portfolio);
@@ -519,18 +522,18 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PUBLIC)
       .execute();
 
-    assertThat(dbClient.componentDao().selectByUuid(dbSession, portfolio.uuid()).get().isPrivate()).isFalse();
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), portfolio.uuid()))
+    assertThat(dbClient.componentDao().selectByUuid(dbSession, portfolio.getUuid()).get().isPrivate()).isFalse();
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), portfolio.getUuid()))
       .containsOnly(UserRole.ISSUE_ADMIN);
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), portfolio.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), portfolio.getUuid()))
       .containsOnly(UserRole.ADMIN);
   }
 
   @Test
   public void update_an_application_to_private() {
-    ComponentDto application = dbTester.components().insertPublicApplication().getMainBranchComponent();
+    ProjectDto application = dbTester.components().insertPublicApplication().getProjectDto();
     GroupDto group = dbTester.users().insertGroup();
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.ISSUE_ADMIN, application);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.ISSUE_ADMIN, application);
     UserDto user = dbTester.users().insertUser();
     dbTester.users().insertProjectPermissionOnUser(user, UserRole.ADMIN, application);
     userSessionRule.addProjectPermission(UserRole.ADMIN, application);
@@ -539,38 +542,38 @@ public class UpdateVisibilityActionIT {
       .setParam(PARAM_VISIBILITY, PRIVATE)
       .execute();
 
-    assertThat(dbClient.componentDao().selectByUuid(dbSession, application.uuid()).get().isPrivate()).isTrue();
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), application.uuid()))
+    assertThat(dbClient.projectDao().selectByUuid(dbSession, application.getUuid()).get().isPrivate()).isTrue();
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), application.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, UserRole.ISSUE_ADMIN);
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), application.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), application.getUuid()))
       .containsOnly(UserRole.USER, UserRole.CODEVIEWER, UserRole.ADMIN);
   }
 
   @Test
   public void update_an_application_to_public() {
-    ComponentDto portfolio = dbTester.components().insertPrivateApplication().getMainBranchComponent();
-    userSessionRule.addProjectPermission(UserRole.ADMIN, portfolio);
+    ProjectDto application = dbTester.components().insertPrivateApplication().getProjectDto();
+    userSessionRule.addProjectPermission(UserRole.ADMIN, application);
     GroupDto group = dbTester.users().insertGroup();
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.ISSUE_ADMIN, portfolio);
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.USER, portfolio);
-    dbTester.users().insertProjectPermissionOnGroup(group, UserRole.CODEVIEWER, portfolio);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.ISSUE_ADMIN, application);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.USER, application);
+    dbTester.users().insertEntityPermissionOnGroup(group, UserRole.CODEVIEWER, application);
     UserDto user = dbTester.users().insertUser();
-    dbTester.users().insertProjectPermissionOnUser(user, UserRole.ADMIN, portfolio);
-    dbTester.users().insertProjectPermissionOnUser(user, UserRole.USER, portfolio);
-    dbTester.users().insertProjectPermissionOnUser(user, UserRole.CODEVIEWER, portfolio);
+    dbTester.users().insertProjectPermissionOnUser(user, UserRole.ADMIN, application);
+    dbTester.users().insertProjectPermissionOnUser(user, UserRole.USER, application);
+    dbTester.users().insertProjectPermissionOnUser(user, UserRole.CODEVIEWER, application);
 
-    request.setParam(PARAM_PROJECT, portfolio.getKey())
+    request.setParam(PARAM_PROJECT, application.getKey())
       .setParam(PARAM_VISIBILITY, PUBLIC)
       .execute();
 
-    assertThat(dbClient.componentDao().selectByUuid(dbSession, portfolio.uuid()).get().isPrivate()).isFalse();
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), portfolio.uuid()))
+    assertThat(dbClient.projectDao().selectApplicationByKey(dbSession, application.getKey()).get().isPrivate()).isFalse();
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), application.getUuid()))
       .containsOnly(UserRole.ISSUE_ADMIN);
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), portfolio.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), application.getUuid()))
       .containsOnly(UserRole.ADMIN);
   }
 
-  private void unsafeGiveAllPermissionsToRootComponent(ComponentDto component, UserDto user, GroupDto group) {
+  private void unsafeGiveAllPermissionsToRootComponent(ProjectDto projectDto, UserDto user, GroupDto group) {
     Arrays.stream(GlobalPermission.values())
       .forEach(globalPermission -> {
         dbTester.users().insertPermissionOnAnyone(globalPermission);
@@ -579,117 +582,117 @@ public class UpdateVisibilityActionIT {
       });
     permissionService.getAllProjectPermissions()
       .forEach(permission -> {
-        unsafeInsertProjectPermissionOnAnyone(component, permission);
-        unsafeInsertProjectPermissionOnGroup(component, group, permission);
-        unsafeInsertProjectPermissionOnUser(component, user, permission);
+        unsafeInsertProjectPermissionOnAnyone(projectDto, permission);
+        unsafeInsertProjectPermissionOnGroup(projectDto, group, permission);
+        unsafeInsertProjectPermissionOnUser(projectDto, user, permission);
       });
   }
 
-  private void unsafeInsertProjectPermissionOnAnyone(ComponentDto component, String permission) {
+  private void unsafeInsertProjectPermissionOnAnyone(ProjectDto projectDto, String permission) {
     GroupPermissionDto dto = new GroupPermissionDto()
       .setUuid(Uuids.createFast())
       .setGroupUuid(null)
       .setRole(permission)
-      .setComponentUuid(component.uuid())
-      .setComponentName(component.name());
-    dbTester.getDbClient().groupPermissionDao().insert(dbTester.getSession(), dto, component, null);
+      .setEntityUuid(projectDto.getUuid())
+      .setEntityName(projectDto.getName());
+    dbTester.getDbClient().groupPermissionDao().insert(dbTester.getSession(), dto, projectDto, null);
     dbTester.commit();
   }
 
-  private void unsafeInsertProjectPermissionOnGroup(ComponentDto component, GroupDto group, String permission) {
+  private void unsafeInsertProjectPermissionOnGroup(ProjectDto projectDto, GroupDto group, String permission) {
     GroupPermissionDto dto = new GroupPermissionDto()
       .setUuid(Uuids.createFast())
       .setGroupUuid(group.getUuid())
       .setGroupName(group.getName())
       .setRole(permission)
-      .setComponentUuid(component.uuid())
-      .setComponentName(component.name());
-    dbTester.getDbClient().groupPermissionDao().insert(dbTester.getSession(), dto, component, null);
+      .setEntityUuid(projectDto.getUuid())
+      .setEntityName(projectDto.getName());
+    dbTester.getDbClient().groupPermissionDao().insert(dbTester.getSession(), dto, projectDto, null);
     dbTester.commit();
   }
 
-  private void unsafeInsertProjectPermissionOnUser(ComponentDto component, UserDto user, String permission) {
-    UserPermissionDto dto = new UserPermissionDto(Uuids.create(), permission, user.getUuid(), component.uuid());
+  private void unsafeInsertProjectPermissionOnUser(ProjectDto component, UserDto user, String permission) {
+    UserPermissionDto dto = new UserPermissionDto(Uuids.create(), permission, user.getUuid(), component.getUuid());
     dbTester.getDbClient().userPermissionDao().insert(dbTester.getSession(), dto, component, user, null);
     dbTester.commit();
   }
 
-  private void verifyHasAllPermissionsButProjectPermissionsToGroupAnyOne(ComponentDto component, UserDto user, GroupDto group) {
+  private void verifyHasAllPermissionsButProjectPermissionsToGroupAnyOne(String projectUuid, UserDto user, GroupDto group) {
     assertThat(dbClient.groupPermissionDao().selectGlobalPermissionsOfGroup(dbSession, null))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
     assertThat(dbClient.groupPermissionDao().selectGlobalPermissionsOfGroup(dbSession, group.getUuid()))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
     assertThat(dbClient.userPermissionDao().selectGlobalPermissionsOfUser(dbSession, user.getUuid()))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, null, component.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, null, projectUuid))
       .isEmpty();
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), component.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), projectUuid))
       .containsAll(permissionService.getAllProjectPermissions());
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), component.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), projectUuid))
       .containsAll(permissionService.getAllProjectPermissions());
   }
 
-  private void verifyHasAllPermissionsButProjectPermissionsUserAndBrowse(ComponentDto component, UserDto user, GroupDto group) {
+  private void verifyHasAllPermissionsButProjectPermissionsUserAndBrowse(String projectUuid, UserDto user, GroupDto group) {
     assertThat(dbClient.groupPermissionDao().selectGlobalPermissionsOfGroup(dbSession, null))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
     assertThat(dbClient.groupPermissionDao().selectGlobalPermissionsOfGroup(dbSession, group.getUuid()))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
     assertThat(dbClient.userPermissionDao().selectGlobalPermissionsOfUser(dbSession, user.getUuid()))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, null, component.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, null, projectUuid))
       .doesNotContain(UserRole.USER)
       .doesNotContain(UserRole.CODEVIEWER)
       .containsAll(PROJECT_PERMISSIONS_BUT_USER_AND_CODEVIEWER);
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), component.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), projectUuid))
       .doesNotContain(UserRole.USER)
       .doesNotContain(UserRole.CODEVIEWER)
       .containsAll(PROJECT_PERMISSIONS_BUT_USER_AND_CODEVIEWER);
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), component.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), projectUuid))
       .doesNotContain(UserRole.USER)
       .doesNotContain(UserRole.CODEVIEWER)
       .containsAll(PROJECT_PERMISSIONS_BUT_USER_AND_CODEVIEWER);
   }
 
-  private void verifyStillHasAllPermissions(ComponentDto component, UserDto user, GroupDto group) {
+  private void verifyStillHasAllPermissions(String projectUuid, UserDto user, GroupDto group) {
     assertThat(dbClient.groupPermissionDao().selectGlobalPermissionsOfGroup(dbSession, null))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
     assertThat(dbClient.groupPermissionDao().selectGlobalPermissionsOfGroup(dbSession, group.getUuid()))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
     assertThat(dbClient.userPermissionDao().selectGlobalPermissionsOfUser(dbSession, user.getUuid()))
       .containsAll(GLOBAL_PERMISSIONS_NAME_SET);
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, null, component.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, null, projectUuid))
       .containsAll(permissionService.getAllProjectPermissions());
-    assertThat(dbClient.groupPermissionDao().selectProjectPermissionsOfGroup(dbSession, group.getUuid(), component.uuid()))
+    assertThat(dbClient.groupPermissionDao().selectEntityPermissionsOfGroup(dbSession, group.getUuid(), projectUuid))
       .containsAll(permissionService.getAllProjectPermissions());
-    assertThat(dbClient.userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), component.uuid()))
+    assertThat(dbClient.userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), projectUuid))
       .containsAll(permissionService.getAllProjectPermissions());
   }
 
-  private void insertPendingTask(ComponentDto project) {
-    insertCeQueueDto(project, CeQueueDto.Status.PENDING);
+  private void insertPendingTask(BranchDto branch) {
+    insertCeQueueDto(branch, CeQueueDto.Status.PENDING);
   }
 
-  private void insertInProgressTask(ComponentDto project) {
-    insertCeQueueDto(project, CeQueueDto.Status.IN_PROGRESS);
+  private void insertInProgressTask(BranchDto branch) {
+    insertCeQueueDto(branch, CeQueueDto.Status.IN_PROGRESS);
   }
 
   private int counter = 0;
 
-  private void insertCeQueueDto(ComponentDto project, CeQueueDto.Status status) {
+  private void insertCeQueueDto(BranchDto branch, CeQueueDto.Status status) {
     dbClient.ceQueueDao().insert(dbTester.getSession(), new CeQueueDto()
       .setUuid("pending" + counter++)
-      .setComponentUuid(project.uuid())
-      .setMainComponentUuid(project.uuid())
+      .setComponentUuid(branch.getUuid())
+      .setEntityUuid(branch.getProjectUuid())
       .setTaskType("foo")
       .setStatus(status));
     dbTester.commit();
   }
 
-  private boolean isPrivateInDb(ComponentDto project) {
-    return dbClient.componentDao().selectByUuid(dbTester.getSession(), project.uuid()).get().isPrivate();
+  private boolean isPrivateInDb(ComponentDto component) {
+    return dbClient.componentDao().selectByUuid(dbTester.getSession(), component.uuid()).get().isPrivate();
   }
 
-  private ComponentDto randomPublicOrPrivateProject() {
-    return random.nextBoolean() ? dbTester.components().insertPublicProject().getMainBranchComponent() : dbTester.components().insertPrivateProject().getMainBranchComponent();
+  private ProjectData randomPublicOrPrivateProject() {
+    return random.nextBoolean() ? dbTester.components().insertPublicProject() : dbTester.components().insertPrivateProject();
   }
 }

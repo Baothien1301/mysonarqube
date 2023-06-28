@@ -19,13 +19,13 @@
  */
 package org.sonar.server.setting.ws;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
 import com.tngtech.java.junit.dataprovider.DataProvider;
 import com.tngtech.java.junit.dataprovider.DataProviderRunner;
 import com.tngtech.java.junit.dataprovider.UseDataProvider;
 import java.net.HttpURLConnection;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import javax.annotation.Nullable;
 import org.junit.Before;
@@ -46,13 +46,12 @@ import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ComponentTesting;
+import org.sonar.db.portfolio.PortfolioDto;
 import org.sonar.db.property.PropertyDbTester;
 import org.sonar.db.property.PropertyDto;
 import org.sonar.db.property.PropertyQuery;
 import org.sonar.process.ProcessProperties;
 import org.sonar.scanner.protocol.GsonHelper;
-import org.sonar.server.component.ComponentFinder;
-import org.sonar.server.component.TestComponentFinder;
 import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
@@ -63,7 +62,6 @@ import org.sonar.server.ws.TestRequest;
 import org.sonar.server.ws.TestResponse;
 import org.sonar.server.ws.WsActionTester;
 
-import static com.google.common.collect.Lists.newArrayList;
 import static java.lang.String.format;
 import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -84,19 +82,17 @@ public class SetActionIT {
   @Rule
   public DbTester db = DbTester.create(System2.INSTANCE);
 
-  private PropertyDbTester propertyDb = new PropertyDbTester(db);
-  private DbClient dbClient = db.getDbClient();
-  private DbSession dbSession = db.getSession();
-  private ComponentFinder componentFinder = TestComponentFinder.from(db);
+  private final PropertyDbTester propertyDb = new PropertyDbTester(db);
+  private final DbClient dbClient = db.getDbClient();
+  private final DbSession dbSession = db.getSession();
+  private final I18nRule i18n = new I18nRule();
+  private final PropertyDefinitions definitions = new PropertyDefinitions(System2.INSTANCE);
+  private final FakeSettingsNotifier settingsChangeNotifier = new FakeSettingsNotifier(dbClient);
+  private final SettingsUpdater settingsUpdater = new SettingsUpdater(dbClient, definitions);
+  private final SettingValidations validations = new SettingValidations(definitions, dbClient, i18n);
+  private final SetAction underTest = new SetAction(definitions, dbClient, userSession, settingsUpdater, settingsChangeNotifier, validations);
 
-  private I18nRule i18n = new I18nRule();
-  private PropertyDefinitions definitions = new PropertyDefinitions(System2.INSTANCE);
-  private FakeSettingsNotifier settingsChangeNotifier = new FakeSettingsNotifier(dbClient);
-  private SettingsUpdater settingsUpdater = new SettingsUpdater(dbClient, definitions);
-  private SettingValidations validations = new SettingValidations(definitions, dbClient, i18n);
-  private SetAction underTest = new SetAction(definitions, dbClient, componentFinder, userSession, settingsUpdater, settingsChangeNotifier, validations);
-
-  private WsActionTester ws = new WsActionTester(underTest);
+  private final WsActionTester ws = new WsActionTester(underTest);
 
   @Before
   public void setUp() {
@@ -158,6 +154,20 @@ public class SetActionIT {
   }
 
   @Test
+  public void persist_new_subportfolio_setting() {
+    propertyDb.insertProperty(newGlobalPropertyDto("my.key", "my global value"), null, null, null, null);
+    ComponentDto portfolio = db.components().insertPrivatePortfolio();
+    ComponentDto subportfolio = db.components().insertSubportfolio(portfolio);
+    logInAsProjectAdministrator(portfolio);
+
+    callForProjectSettingByKey("my.key", "my project value", subportfolio.getKey());
+
+    assertGlobalSetting("my.key", "my global value");
+    assertComponentSetting("my.key", "my project value", subportfolio.uuid());
+    assertThat(settingsChangeNotifier.wasCalled).isFalse();
+  }
+
+  @Test
   public void persist_project_property_with_project_admin_permission() {
     ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
@@ -184,7 +194,7 @@ public class SetActionIT {
 
   @Test
   public void persist_several_multi_value_setting() {
-    callForMultiValueGlobalSetting("my.key", newArrayList("first,Value", "second,Value", "third,Value"));
+    callForMultiValueGlobalSetting("my.key", List.of("first,Value", "second,Value", "third,Value"));
 
     String expectedValue = "first%2CValue,second%2CValue,third%2CValue";
     assertGlobalSetting("my.key", expectedValue);
@@ -193,7 +203,7 @@ public class SetActionIT {
 
   @Test
   public void persist_one_multi_value_setting() {
-    callForMultiValueGlobalSetting("my.key", newArrayList("first,Value"));
+    callForMultiValueGlobalSetting("my.key", List.of("first,Value"));
 
     assertGlobalSetting("my.key", "first%2CValue");
   }
@@ -208,7 +218,7 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("firstField")
           .name("First Field")
           .type(PropertyType.STRING)
@@ -219,10 +229,10 @@ public class SetActionIT {
           .build()))
       .build());
 
-    callForGlobalPropertySet("my.key", newArrayList(
-      GSON.toJson(ImmutableMap.of("firstField", "firstValue", "secondField", "secondValue")),
-      GSON.toJson(ImmutableMap.of("firstField", "anotherFirstValue", "secondField", "anotherSecondValue")),
-      GSON.toJson(ImmutableMap.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
+    callForGlobalPropertySet("my.key", List.of(
+      GSON.toJson(Map.of("firstField", "firstValue", "secondField", "secondValue")),
+      GSON.toJson(Map.of("firstField", "anotherFirstValue", "secondField", "anotherSecondValue")),
+      GSON.toJson(Map.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
 
     assertThat(dbClient.propertiesDao().selectGlobalProperties(dbSession)).hasSize(7);
     assertGlobalSetting("my.key", "1,2,3");
@@ -245,7 +255,7 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("firstField")
           .name("First Field")
           .type(PropertyType.STRING)
@@ -266,10 +276,10 @@ public class SetActionIT {
       newGlobalPropertyDto("my.key.4.firstField", "anotherOldFirstValue"),
       newGlobalPropertyDto("my.key.4.secondField", "anotherOldSecondValue"));
 
-    callForGlobalPropertySet("my.key", newArrayList(
-      GSON.toJson(ImmutableMap.of("firstField", "firstValue", "secondField", "secondValue")),
-      GSON.toJson(ImmutableMap.of("firstField", "anotherFirstValue", "secondField", "anotherSecondValue")),
-      GSON.toJson(ImmutableMap.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
+    callForGlobalPropertySet("my.key", List.of(
+      GSON.toJson(Map.of("firstField", "firstValue", "secondField", "secondValue")),
+      GSON.toJson(Map.of("firstField", "anotherFirstValue", "secondField", "anotherSecondValue")),
+      GSON.toJson(Map.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
 
     assertThat(dbClient.propertiesDao().selectGlobalProperties(dbSession)).hasSize(7);
     assertGlobalSetting("my.key", "1,2,3");
@@ -293,7 +303,7 @@ public class SetActionIT {
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
       .onQualifiers(Qualifiers.PROJECT)
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("firstField")
           .name("First Field")
           .type(PropertyType.STRING)
@@ -314,13 +324,13 @@ public class SetActionIT {
       newComponentPropertyDto("my.key.1.firstField", "componentSecondValue", project));
     logInAsProjectAdministrator(project);
 
-    callForComponentPropertySet("my.key", newArrayList(
-        GSON.toJson(ImmutableMap.of("firstField", "firstValue", "secondField", "secondValue")),
-        GSON.toJson(ImmutableMap.of("firstField", "anotherFirstValue", "secondField", "anotherSecondValue"))),
+    callForComponentPropertySet("my.key", List.of(
+        GSON.toJson(Map.of("firstField", "firstValue", "secondField", "secondValue")),
+        GSON.toJson(Map.of("firstField", "anotherFirstValue", "secondField", "anotherSecondValue"))),
       project.getKey());
 
     assertThat(dbClient.propertiesDao().selectGlobalProperties(dbSession)).hasSize(3);
-    assertThat(dbClient.propertiesDao().selectComponentProperties(dbSession, project.uuid())).hasSize(5);
+    assertThat(dbClient.propertiesDao().selectEntityProperties(dbSession, project.uuid())).hasSize(5);
     assertGlobalSetting("my.key", "1");
     assertGlobalSetting("my.key.1.firstField", "oldFirstValue");
     assertGlobalSetting("my.key.1.secondField", "oldSecondValue");
@@ -349,7 +359,7 @@ public class SetActionIT {
     dbClient.metricDao().insert(dbSession, newMetricDto().setKey("metric_key_2"));
     dbSession.commit();
 
-    callForMultiValueGlobalSetting("my_key", newArrayList("metric_key_1", "metric_key_2"));
+    callForMultiValueGlobalSetting("my_key", List.of("metric_key_1", "metric_key_2"));
 
     assertGlobalSetting("my_key", "metric_key_1,metric_key_2");
   }
@@ -369,7 +379,7 @@ public class SetActionIT {
     db.users().insertUser(newUserDto().setLogin("login.1"));
     db.users().insertUser(newUserDto().setLogin("login.2"));
 
-    callForMultiValueGlobalSetting("my.key", newArrayList("login.1", "login.2"));
+    callForMultiValueGlobalSetting("my.key", List.of("login.1", "login.2"));
 
     assertGlobalSetting("my.key", "login.1,login.2");
   }
@@ -629,44 +639,35 @@ public class SetActionIT {
 
   @Test
   public void fail_when_no_key() {
-    assertThatThrownBy(() -> {
-      callForGlobalSetting(null, "my value");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting(null, "my value"))
       .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   public void fail_when_empty_key_value() {
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("  ", "my value");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("  ", "my value"))
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessage("The 'key' parameter is missing");
   }
 
   @Test
   public void fail_when_no_value() {
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("my.key", null);
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("my.key", null))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Either 'value', 'values' or 'fieldValues' must be provided");
   }
 
   @Test
   public void fail_when_empty_value() {
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("my.key", "");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("my.key", ""))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("A non empty value must be provided");
   }
 
   @Test
   public void fail_when_one_empty_value_on_multi_value() {
-    assertThatThrownBy(() -> {
-      callForMultiValueGlobalSetting("my.key", newArrayList("oneValue", "  ", "anotherValue"));
-    })
+    List<String> values = List.of("oneValue", "  ", "anotherValue");
+    assertThatThrownBy(() -> callForMultiValueGlobalSetting("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("A non empty value must be provided");
   }
@@ -675,9 +676,7 @@ public class SetActionIT {
   public void throw_ForbiddenException_if_not_system_administrator() {
     userSession.logIn().setNonSystemAdministrator();
 
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("my.key", "my value");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("my.key", "my value"))
       .isInstanceOf(ForbiddenException.class)
       .hasMessage("Insufficient privileges");
   }
@@ -695,9 +694,7 @@ public class SetActionIT {
       .build());
     i18n.put("property.error.notInteger", "Not an integer error message");
 
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("my.key", "My Value");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("my.key", "My Value"))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Not an integer error message");
   }
@@ -718,9 +715,8 @@ public class SetActionIT {
     dbClient.metricDao().insert(dbSession, newMetricDto().setKey("metric_disabled_key").setEnabled(false));
     dbSession.commit();
 
-    assertThatThrownBy(() -> {
-      callForMultiValueGlobalSetting("my_key", newArrayList("metric_key", "metric_disabled_key"));
-    })
+    List<String> values = List.of("metric_key", "metric_disabled_key");
+    assertThatThrownBy(() -> callForMultiValueGlobalSetting("my_key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Error when validating metric setting with key 'my_key' and values [metric_key, metric_disabled_key]. A value is not a valid metric key.");
   }
@@ -740,9 +736,8 @@ public class SetActionIT {
     db.users().insertUser(newUserDto().setLogin("login.1"));
     db.users().insertUser(newUserDto().setLogin("login.2").setActive(false));
 
-    assertThatThrownBy(() -> {
-      callForMultiValueGlobalSetting("my.key", newArrayList("login.1", "login.2"));
-    })
+    List<String> values = List.of("login.1", "login.2");
+    assertThatThrownBy(() -> callForMultiValueGlobalSetting("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Error when validating login setting with key 'my.key' and values [login.1, login.2]. A value is not a valid login.");
   }
@@ -759,9 +754,8 @@ public class SetActionIT {
       .defaultValue("default")
       .build());
 
-    assertThatThrownBy(() -> {
-      callForMultiValueGlobalSetting("my.key", newArrayList("My Value", "My Other Value"));
-    })
+    List<String> values = List.of("My Value", "My Other Value");
+    assertThatThrownBy(() -> callForMultiValueGlobalSetting("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Error when validating setting with key 'my.key' and value [My Value, My Other Value]");
   }
@@ -779,9 +773,7 @@ public class SetActionIT {
       .onlyOnQualifiers(Qualifiers.PROJECT)
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("my.key", "42");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("my.key", "42"))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'my.key' cannot be global");
   }
@@ -811,8 +803,7 @@ public class SetActionIT {
 
   @Test
   public void fail_when_property_with_definition_when_component_qualifier_does_not_match() {
-    ComponentDto project = randomPublicOrPrivateProject();
-    ComponentDto file = db.components().insertComponent(ComponentTesting.newFileDto(project));
+    PortfolioDto portfolio = db.components().insertPrivatePortfolioDto();
     definitions.addComponent(PropertyDefinition
       .builder("my.key")
       .name("foo")
@@ -823,12 +814,10 @@ public class SetActionIT {
       .defaultValue("default")
       .onQualifiers(Qualifiers.PROJECT)
       .build());
-    i18n.put("qualifier." + file.qualifier(), "CptLabel");
-    logInAsProjectAdministrator(project);
+    i18n.put("qualifier." + portfolio.getQualifier(), "CptLabel");
+    logInAsPortfolioAdministrator(portfolio);
 
-    assertThatThrownBy(() -> {
-      callForProjectSettingByKey("my.key", "My Value", file.getKey());
-    })
+    assertThatThrownBy(() -> callForProjectSettingByKey("my.key", "My Value", portfolio.getKey()))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'my.key' cannot be set on a CptLabel");
   }
@@ -836,7 +825,7 @@ public class SetActionIT {
   @Test
   public void succeed_for_property_without_definition_when_set_on_project_component() {
     ComponentDto project = randomPublicOrPrivateProject();
-    succeedForPropertyWithoutDefinitionAndValidComponent(project, project);
+    succeedForPropertyWithoutDefinitionAndValidComponent(project);
   }
 
   @Test
@@ -856,14 +845,14 @@ public class SetActionIT {
   @Test
   public void succeed_for_property_without_definition_when_set_on_view_component() {
     ComponentDto view = db.components().insertPrivatePortfolio();
-    succeedForPropertyWithoutDefinitionAndValidComponent(view, view);
+    succeedForPropertyWithoutDefinitionAndValidComponent(view);
   }
 
   @Test
   public void succeed_for_property_without_definition_when_set_on_subview_component() {
     ComponentDto view = db.components().insertPrivatePortfolio();
     ComponentDto subview = db.components().insertComponent(ComponentTesting.newSubPortfolio(view));
-    succeedForPropertyWithoutDefinitionAndValidComponent(view, subview);
+    failForPropertyWithoutDefinitionOnUnsupportedComponent(view, subview);
   }
 
   @Test
@@ -874,30 +863,27 @@ public class SetActionIT {
     failForPropertyWithoutDefinitionOnUnsupportedComponent(view, projectCopy);
   }
 
-  private void succeedForPropertyWithoutDefinitionAndValidComponent(ComponentDto project, ComponentDto module) {
-    logInAsProjectAdministrator(project);
+  private void succeedForPropertyWithoutDefinitionAndValidComponent(ComponentDto entity) {
+    logInAsProjectAdministrator(entity);
 
-    callForProjectSettingByKey("my.key", "My Value", module.getKey());
+    callForProjectSettingByKey("my.key", "My Value", entity.getKey());
 
-    assertComponentSetting("my.key", "My Value", module.uuid());
+    assertComponentSetting("my.key", "My Value", entity.uuid());
   }
 
   private void failForPropertyWithoutDefinitionOnUnsupportedComponent(ComponentDto root, ComponentDto component) {
     i18n.put("qualifier." + component.qualifier(), "QualifierLabel");
     logInAsProjectAdministrator(root);
 
-    assertThatThrownBy(() -> {
-      callForProjectSettingByKey("my.key", "My Value", component.getKey());
-    })
-      .isInstanceOf(BadRequestException.class)
-      .hasMessage("Setting 'my.key' cannot be set on a QualifierLabel");
+    assertThatThrownBy(() -> callForProjectSettingByKey("my.key", "My Value", component.getKey()))
+      .isInstanceOf(NotFoundException.class)
+      .hasMessage(String.format("Component key '%s' not found", component.getKey()));
   }
 
   @Test
   public void fail_when_single_and_multi_value_provided() {
-    assertThatThrownBy(() -> {
-      call("my.key", "My Value", newArrayList("Another Value"), null, null);
-    })
+    List<String> value = List.of("Another Value");
+    assertThatThrownBy(() -> call("my.key", "My Value", value, null, null))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Either 'value', 'values' or 'fieldValues' must be provided");
   }
@@ -913,9 +899,7 @@ public class SetActionIT {
       .multiValues(true)
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalSetting("my.key", "My Value");
-    })
+    assertThatThrownBy(() -> callForGlobalSetting("my.key", "My Value"))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Parameter 'value' must be used for single value setting. Parameter 'values' must be used for multi value setting.");
   }
@@ -931,9 +915,7 @@ public class SetActionIT {
       .multiValues(false)
       .build());
 
-    assertThatThrownBy(() -> {
-      callForMultiValueGlobalSetting("my.key", newArrayList("My Value"));
-    })
+    assertThatThrownBy(() -> callForMultiValueGlobalSetting("my.key", List.of("My Value")))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Parameter 'value' must be used for single value setting. Parameter 'values' must be used for multi value setting.");
   }
@@ -948,7 +930,7 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("firstField")
           .name("First Field")
           .type(PropertyType.STRING)
@@ -959,12 +941,10 @@ public class SetActionIT {
           .build()))
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", newArrayList(
-        GSON.toJson(ImmutableMap.of("firstField", "firstValue", "secondField", "secondValue")),
-        GSON.toJson(ImmutableMap.of("firstField", "", "secondField", "")),
-        GSON.toJson(ImmutableMap.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
-    })
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", List.of(
+      GSON.toJson(Map.of("firstField", "firstValue", "secondField", "secondValue")),
+      GSON.toJson(Map.of("firstField", "", "secondField", "")),
+      GSON.toJson(Map.of("firstField", "yetFirstValue", "secondField", "yetSecondValue")))))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("A non empty value must be provided");
   }
@@ -979,7 +959,7 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("firstField")
           .name("First Field")
           .type(PropertyType.STRING)
@@ -990,19 +970,17 @@ public class SetActionIT {
           .build()))
       .build());
 
-    callForGlobalPropertySet("my.key", newArrayList(
-      GSON.toJson(ImmutableMap.of("firstField", "firstValue", "secondField", "secondValue")),
-      GSON.toJson(ImmutableMap.of("firstField", "anotherFirstValue", "secondField", "")),
-      GSON.toJson(ImmutableMap.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
+    callForGlobalPropertySet("my.key", List.of(
+      GSON.toJson(Map.of("firstField", "firstValue", "secondField", "secondValue")),
+      GSON.toJson(Map.of("firstField", "anotherFirstValue", "secondField", "")),
+      GSON.toJson(Map.of("firstField", "yetFirstValue", "secondField", "yetSecondValue"))));
 
     assertGlobalSetting("my.key", "1,2,3");
   }
 
   @Test
   public void fail_when_property_set_setting_is_not_defined() {
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", singletonList("{\"field\":\"value\"}"));
-    })
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", singletonList("{\"field\":\"value\"}")))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'my.key' is undefined");
   }
@@ -1017,16 +995,15 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("field")
           .name("Field")
           .type(PropertyType.STRING)
           .build()))
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", newArrayList(GSON.toJson(ImmutableMap.of("field", "value", "unknownField", "anotherValue"))));
-    })
+    List<String> values = List.of(GSON.toJson(Map.of("field", "value", "unknownField", "anotherValue")));
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Unknown field key 'unknownField' for setting 'my.key'");
   }
@@ -1041,16 +1018,15 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("field")
           .name("Field")
           .type(PropertyType.INTEGER)
           .build()))
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", newArrayList(GSON.toJson(ImmutableMap.of("field", "notAnInt"))));
-    })
+    List<String> values = List.of(GSON.toJson(Map.of("field", "notAnInt")));
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Error when validating setting with key 'my.key'. Field 'field' has incorrect value 'notAnInt'.");
   }
@@ -1065,16 +1041,15 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("field")
           .name("Field")
           .type(PropertyType.STRING)
           .build()))
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", newArrayList("{\"field\": null}"));
-    })
+    List<String> values = List.of("{\"field\": null}");
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("A non empty value must be provided");
   }
@@ -1089,16 +1064,15 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("field")
           .name("Field")
           .type(PropertyType.STRING)
           .build()))
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", newArrayList("incorrectJson:incorrectJson"));
-    })
+    List<String> values = List.of("incorrectJson:incorrectJson");
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("JSON 'incorrectJson:incorrectJson' does not respect expected format for setting 'my.key'. " +
         "Ex: {\"field1\":\"value1\", \"field2\":\"value2\"}");
@@ -1114,16 +1088,15 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(
+      .fields(List.of(
         PropertyFieldDefinition.build("field")
           .name("Field")
           .type(PropertyType.STRING)
           .build()))
       .build());
 
-    assertThatThrownBy(() -> {
-      callForGlobalPropertySet("my.key", newArrayList("[{\"field\":\"v1\"}, {\"field\":\"v2\"}]"));
-    })
+    List<String> values = List.of("[{\"field\":\"v1\"}, {\"field\":\"v2\"}]");
+    assertThatThrownBy(() -> callForGlobalPropertySet("my.key", values))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("JSON '[{\"field\":\"v1\"}, {\"field\":\"v2\"}]' does not respect expected format for setting 'my.key'. " +
         "Ex: {\"field1\":\"value1\", \"field2\":\"value2\"}");
@@ -1139,29 +1112,25 @@ public class SetActionIT {
       .subCategory("subCat")
       .type(PropertyType.PROPERTY_SET)
       .defaultValue("default")
-      .fields(newArrayList(PropertyFieldDefinition.build("firstField").name("First Field").type(PropertyType.STRING).build()))
+      .fields(List.of(PropertyFieldDefinition.build("firstField").name("First Field").type(PropertyType.STRING).build()))
       .build());
     i18n.put("qualifier." + Qualifiers.PROJECT, "Project");
     ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     logInAsProjectAdministrator(project);
 
-    assertThatThrownBy(() -> {
-      callForComponentPropertySet("my.key", newArrayList(
-        GSON.toJson(ImmutableMap.of("firstField", "firstValue"))), project.getKey());
-    })
+    List<String> values = List.of(GSON.toJson(Map.of("firstField", "firstValue")));
+    assertThatThrownBy(() -> callForComponentPropertySet("my.key", values, project.getKey()))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("Setting 'my.key' cannot be set on a Project");
   }
 
   @Test
   public void fail_when_component_not_found() {
-    assertThatThrownBy(() -> {
-      ws.newRequest()
-        .setParam("key", "foo")
-        .setParam("value", "2")
-        .setParam("component", "unknown")
-        .execute();
-    })
+    assertThatThrownBy(() -> ws.newRequest()
+      .setParam("key", "foo")
+      .setParam("value", "2")
+      .setParam("component", "unknown")
+      .execute())
       .isInstanceOf(NotFoundException.class)
       .hasMessage("Component key 'unknown' not found");
   }
@@ -1172,13 +1141,11 @@ public class SetActionIT {
     logInAsProjectAdministrator(project);
     String settingKey = ProcessProperties.Property.JDBC_URL.getKey();
 
-    assertThatThrownBy(() -> {
-      ws.newRequest()
-        .setParam("key", settingKey)
-        .setParam("value", "any value")
-        .setParam("component", project.getKey())
-        .execute();
-    })
+    assertThatThrownBy(() -> ws.newRequest()
+      .setParam("key", settingKey)
+      .setParam("value", "any value")
+      .setParam("component", project.getKey())
+      .execute())
       .isInstanceOf(IllegalArgumentException.class)
       .hasMessage(format("Setting '%s' can only be used in sonar.properties", settingKey));
   }
@@ -1199,7 +1166,7 @@ public class SetActionIT {
     PropertyDto result = dbClient.propertiesDao().selectGlobalProperty(key);
 
     assertThat(result)
-      .extracting(PropertyDto::getKey, PropertyDto::getValue, PropertyDto::getComponentUuid)
+      .extracting(PropertyDto::getKey, PropertyDto::getValue, PropertyDto::getEntityUuid)
       .containsExactly(key, value, null);
   }
 
@@ -1216,7 +1183,7 @@ public class SetActionIT {
 
     assertThat(result)
       .isNotNull()
-      .extracting(PropertyDto::getKey, PropertyDto::getValue, PropertyDto::getComponentUuid)
+      .extracting(PropertyDto::getKey, PropertyDto::getValue, PropertyDto::getEntityUuid)
       .containsExactly(key, value, componentUuid);
   }
 
@@ -1276,7 +1243,10 @@ public class SetActionIT {
 
       assertThat(property.getValue()).isEqualTo(value);
     }
+  }
 
+  private void logInAsPortfolioAdministrator(PortfolioDto portfolio) {
+    userSession.logIn().addPortfolioPermission(UserRole.ADMIN, portfolio);
   }
 
   private void logInAsProjectAdministrator(ComponentDto project) {

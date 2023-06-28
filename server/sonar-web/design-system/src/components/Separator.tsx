@@ -38,3 +38,7 @@ export const BlueGreySeparator = styled(BasicSeparator)`
 export const GreySeparator = styled(BasicSeparator)`
   background-color: ${themeColor('subnavigationBorder')};
 `;
+
+export const SubnavigationFlowSeparator = styled(BasicSeparator)`
+  background-color: ${themeColor('subnavigationExecutionFlowSeparator')};
+`;

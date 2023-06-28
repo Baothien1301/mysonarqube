@@ -48,7 +48,7 @@ import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.exceptions.UnauthorizedException;
-import org.sonar.server.management.ManagedInstanceChecker;
+import org.sonar.server.management.ManagedInstanceService;
 import org.sonar.server.tester.UserSessionRule;
 import org.sonar.server.user.ExternalIdentity;
 import org.sonar.server.ws.TestRequest;
@@ -57,11 +57,12 @@ import org.sonar.server.ws.WsActionTester;
 
 import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.sonar.db.property.PropertyTesting.newUserPropertyDto;
 import static org.sonar.test.JsonAssert.assertJson;
 
@@ -78,8 +79,10 @@ public class DeactivateActionIT {
   private final DbSession dbSession = db.getSession();
   private final UserAnonymizer userAnonymizer = new UserAnonymizer(db.getDbClient(), () -> "anonymized");
   private final UserDeactivator userDeactivator = new UserDeactivator(dbClient, userAnonymizer);
-  private final ManagedInstanceChecker managedInstanceChecker = mock(ManagedInstanceChecker.class);
-  private final WsActionTester ws = new WsActionTester(new DeactivateAction(dbClient, userSession, new UserJsonWriter(userSession), userDeactivator, managedInstanceChecker));
+  private final ManagedInstanceService managedInstanceService = mock(ManagedInstanceService.class);
+
+  private final WsActionTester ws = new WsActionTester(new DeactivateAction(dbClient, userSession, new UserJsonWriter(userSession), userDeactivator, managedInstanceService
+  ));
 
   @Test
   public void deactivate_user_and_delete_their_related_data() {
@@ -148,13 +151,13 @@ public class DeactivateActionIT {
     ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     db.properties().insertProperty(newUserPropertyDto(user), null, null, null, user.getLogin());
     db.properties().insertProperty(newUserPropertyDto(user), null, null, null, user.getLogin());
-    db.properties().insertProperty(newUserPropertyDto(user).setComponentUuid(project.uuid()), project.getKey(),
+    db.properties().insertProperty(newUserPropertyDto(user).setEntityUuid(project.uuid()), project.getKey(),
       project.name(), project.qualifier(), user.getLogin());
 
     deactivate(user.getLogin());
 
     assertThat(db.getDbClient().propertiesDao().selectByQuery(PropertyQuery.builder().setUserUuid(user.getUuid()).build(), dbSession)).isEmpty();
-    assertThat(db.getDbClient().propertiesDao().selectByQuery(PropertyQuery.builder().setUserUuid(user.getUuid()).setComponentUuid(project.uuid()).build(), dbSession)).isEmpty();
+    assertThat(db.getDbClient().propertiesDao().selectByQuery(PropertyQuery.builder().setUserUuid(user.getUuid()).setEntityUuid(project.uuid()).build(), dbSession)).isEmpty();
   }
 
   @Test
@@ -171,7 +174,7 @@ public class DeactivateActionIT {
     deactivate(user.getLogin());
 
     assertThat(db.getDbClient().userPermissionDao().selectGlobalPermissionsOfUser(dbSession, user.getUuid())).isEmpty();
-    assertThat(db.getDbClient().userPermissionDao().selectProjectPermissionsOfUser(dbSession, user.getUuid(), project.uuid())).isEmpty();
+    assertThat(db.getDbClient().userPermissionDao().selectEntityPermissionsOfUser(dbSession, user.getUuid(), project.uuid())).isEmpty();
   }
 
   @Test
@@ -213,11 +216,11 @@ public class DeactivateActionIT {
     ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
     ComponentDto anotherProject = db.components().insertPrivateProject().getMainBranchComponent();
     db.properties().insertProperty(new PropertyDto().setKey("sonar.issues.defaultAssigneeLogin").setValue(user.getLogin())
-      .setComponentUuid(project.uuid()), project.getKey(), project.name(), project.qualifier(), user.getLogin());
+      .setEntityUuid(project.uuid()), project.getKey(), project.name(), project.qualifier(), user.getLogin());
     db.properties().insertProperty(new PropertyDto().setKey("sonar.issues.defaultAssigneeLogin").setValue(user.getLogin())
-      .setComponentUuid(anotherProject.uuid()), anotherProject.getKey(), anotherProject.name(), anotherProject.qualifier(), user.getLogin());
+      .setEntityUuid(anotherProject.uuid()), anotherProject.getKey(), anotherProject.name(), anotherProject.qualifier(), user.getLogin());
     db.properties().insertProperty(new PropertyDto().setKey("other").setValue(user.getLogin())
-      .setComponentUuid(anotherProject.uuid()), anotherProject.getKey(), anotherProject.name(), anotherProject.qualifier(), user.getLogin());
+      .setEntityUuid(anotherProject.uuid()), anotherProject.getKey(), anotherProject.name(), anotherProject.qualifier(), user.getLogin());
 
     deactivate(user.getLogin());
 
@@ -432,15 +435,14 @@ public class DeactivateActionIT {
 
   @Test
   public void handle_whenUserManagedAndInstanceManaged_shouldThrowBadRequestException() {
-    BadRequestException badRequestException = BadRequestException.create("message");
-    doThrow(badRequestException).when(managedInstanceChecker).throwIfInstanceIsManaged();
-
     createAdminUser();
     logInAsSystemAdministrator();
-    UserDto user = db.users().insertUser(u -> u.setLocal(false));
+    UserDto user = db.users().insertUser();
+    when(managedInstanceService.isUserManaged(any(), eq(user.getLogin()))).thenReturn(true);
 
-    assertThatThrownBy(() -> deactivate(user.getLogin()))
-      .isEqualTo(badRequestException);
+    assertThatExceptionOfType(BadRequestException.class)
+      .isThrownBy(() -> deactivate(user.getLogin()))
+      .withMessage("Operation not allowed when the instance is externally managed.");
   }
 
   @Test
@@ -451,7 +453,6 @@ public class DeactivateActionIT {
     assertThatThrownBy(() -> deactivate(login))
       .isInstanceOf(UnauthorizedException.class)
       .hasMessage("Authentication is required");
-    verify(managedInstanceChecker, never()).throwIfInstanceIsManaged();
   }
 
   private void logInAsSystemAdministrator() {

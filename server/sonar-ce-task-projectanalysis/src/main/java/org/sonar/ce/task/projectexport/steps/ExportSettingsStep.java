@@ -22,7 +22,7 @@ package org.sonar.ce.task.projectexport.steps;
 import com.sonarsource.governance.projectdump.protobuf.ProjectDump;
 import java.util.List;
 import java.util.Set;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.LoggerFactory;
 import org.sonar.ce.task.projectexport.component.ComponentRepository;
 import org.sonar.ce.task.step.ComputationStep;
 import org.sonar.db.DbClient;
@@ -43,13 +43,11 @@ public class ExportSettingsStep implements ComputationStep {
 
   private final DbClient dbClient;
   private final ProjectHolder projectHolder;
-  private final ComponentRepository componentRepository;
   private final DumpWriter dumpWriter;
 
-  public ExportSettingsStep(DbClient dbClient, ProjectHolder projectHolder, ComponentRepository componentRepository, DumpWriter dumpWriter) {
+  public ExportSettingsStep(DbClient dbClient, ProjectHolder projectHolder,DumpWriter dumpWriter) {
     this.dbClient = dbClient;
     this.projectHolder = projectHolder;
-    this.componentRepository = componentRepository;
     this.dumpWriter = dumpWriter;
   }
 
@@ -63,22 +61,18 @@ public class ExportSettingsStep implements ComputationStep {
       final ProjectDump.Setting.Builder builder = ProjectDump.Setting.newBuilder();
       final List<PropertyDto> properties = dbSession.getMapper(ProjectExportMapper.class).selectPropertiesForExport(projectHolder.projectDto().getUuid())
         .stream()
-        .filter(dto -> dto.getComponentUuid() != null)
+        .filter(dto -> dto.getEntityUuid() != null)
         .filter(dto -> !IGNORED_KEYS.contains(dto.getKey()))
         .toList();
       for (PropertyDto property : properties) {
         builder.clear()
           .setKey(property.getKey())
           .setValue(defaultString(property.getValue()));
-
-        if (property.getComponentUuid() != null) {
-          builder.setComponentRef(componentRepository.getRef(property.getComponentUuid()));
-        }
         output.write(builder.build());
         ++count;
       }
 
-      Loggers.get(getClass()).debug("{} settings exported", count);
+      LoggerFactory.getLogger(getClass()).debug("{} settings exported", count);
     } catch (Exception e) {
       throw new IllegalStateException(format("Settings Export failed after processing %d settings successfully", count), e);
     }

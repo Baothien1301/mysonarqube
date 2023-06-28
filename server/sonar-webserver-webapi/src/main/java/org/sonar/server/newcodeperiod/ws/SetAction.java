@@ -42,6 +42,7 @@ import org.sonar.db.newcodeperiod.NewCodePeriodType;
 import org.sonar.db.project.ProjectDto;
 import org.sonar.server.component.ComponentFinder;
 import org.sonar.server.exceptions.NotFoundException;
+import org.sonar.server.newcodeperiod.CaycUtils;
 import org.sonar.server.user.UserSession;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -64,7 +65,8 @@ public class SetAction implements NewCodePeriodsWsAction {
 
   private static final Set<NewCodePeriodType> OVERALL_TYPES = EnumSet.of(PREVIOUS_VERSION, NUMBER_OF_DAYS);
   private static final Set<NewCodePeriodType> PROJECT_TYPES = EnumSet.of(PREVIOUS_VERSION, NUMBER_OF_DAYS, REFERENCE_BRANCH);
-  private static final Set<NewCodePeriodType> BRANCH_TYPES = EnumSet.of(PREVIOUS_VERSION, NUMBER_OF_DAYS, SPECIFIC_ANALYSIS, REFERENCE_BRANCH);
+  private static final Set<NewCodePeriodType> BRANCH_TYPES = EnumSet.of(PREVIOUS_VERSION, NUMBER_OF_DAYS, SPECIFIC_ANALYSIS,
+    REFERENCE_BRANCH);
 
   private final DbClient dbClient;
   private final UserSession userSession;
@@ -124,7 +126,7 @@ public class SetAction implements NewCodePeriodsWsAction {
         BEGIN_LIST +
         BEGIN_ITEM_LIST + "the uuid of an analysis, when type is " + SPECIFIC_ANALYSIS.name() + END_ITEM_LIST +
         BEGIN_ITEM_LIST + "no value, when type is " + PREVIOUS_VERSION.name() + END_ITEM_LIST +
-        BEGIN_ITEM_LIST + "a number, when type is " + NUMBER_OF_DAYS.name() + END_ITEM_LIST +
+        BEGIN_ITEM_LIST + "a number between 1 and 90, when type is " + NUMBER_OF_DAYS.name() + END_ITEM_LIST +
         BEGIN_ITEM_LIST + "a string, when type is " + REFERENCE_BRANCH.name() + END_ITEM_LIST +
         END_LIST
       );
@@ -154,7 +156,7 @@ public class SetAction implements NewCodePeriodsWsAction {
 
       if (projectKey != null) {
         project = getProject(dbSession, projectKey);
-        userSession.checkProjectPermission(UserRole.ADMIN, project);
+        userSession.checkEntityPermission(UserRole.ADMIN, project);
 
         if (branchKey != null) {
           branch = getBranch(dbSession, project, branchKey);
@@ -172,6 +174,11 @@ public class SetAction implements NewCodePeriodsWsAction {
 
       setValue(dbSession, dto, type, project, branch, valueStr);
 
+      if (!CaycUtils.isNewCodePeriodCompliant(dto.getType(), dto.getValue())) {
+        throw new IllegalArgumentException("Failed to set the New Code Definition. The given value is not compatible with the Clean as " +
+          "You Code methodology. Please refer to the documentation for compliant options.");
+      }
+
       newCodePeriodDao.upsert(dbSession, dto);
       dbSession.commit();
     }
@@ -180,26 +187,27 @@ public class SetAction implements NewCodePeriodsWsAction {
   private void setValue(DbSession dbSession, NewCodePeriodDto dto, NewCodePeriodType type, @Nullable ProjectDto project,
     @Nullable BranchDto branch, @Nullable String value) {
     switch (type) {
-      case PREVIOUS_VERSION:
-        Preconditions.checkArgument(value == null, "Unexpected value for type '%s'", type);
-        break;
-      case NUMBER_OF_DAYS:
+      case PREVIOUS_VERSION -> Preconditions.checkArgument(value == null, "Unexpected value for type '%s'", type);
+      case NUMBER_OF_DAYS -> {
         requireValue(type, value);
         dto.setValue(parseDays(value));
-        break;
-      case SPECIFIC_ANALYSIS:
-        requireValue(type, value);
-        requireBranch(type, branch);
-        SnapshotDto analysis = getAnalysis(dbSession, value, project, branch);
-        dto.setValue(analysis.getUuid());
-        break;
-      case REFERENCE_BRANCH:
+      }
+      case SPECIFIC_ANALYSIS -> {
+        checkValuesForSpecificBranch(type, value, project, branch);
+        dto.setValue(getAnalysis(dbSession, value, project, branch).getUuid());
+      }
+      case REFERENCE_BRANCH -> {
         requireValue(type, value);
         dto.setValue(value);
-        break;
-      default:
-        throw new IllegalStateException("Unexpected type: " + type);
+      }
+      default -> throw new IllegalStateException("Unexpected type: " + type);
     }
+  }
+
+  private static void checkValuesForSpecificBranch(NewCodePeriodType type, @Nullable String value, @Nullable ProjectDto project, @Nullable BranchDto branch) {
+    requireValue(type, value);
+    requireProject(type, project);
+    requireBranch(type, branch);
   }
 
   private static String parseDays(String value) {
@@ -216,6 +224,10 @@ public class SetAction implements NewCodePeriodsWsAction {
 
   private static void requireBranch(NewCodePeriodType type, @Nullable BranchDto branch) {
     Preconditions.checkArgument(branch != null, "New code definition type '%s' requires a branch", type);
+  }
+
+  private static void requireProject(NewCodePeriodType type, @Nullable ProjectDto project) {
+    Preconditions.checkArgument(project != null, "New code definition type '%s' requires a project", type);
   }
 
   private BranchDto getBranch(DbSession dbSession, ProjectDto project, String branchKey) {

@@ -31,7 +31,9 @@ import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ComponentUpdateDto;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.es.EsQueueDto;
+import org.sonar.db.project.ProjectDto;
 import org.sonar.server.es.EsClient;
 import org.sonar.server.es.EsTester;
 import org.sonar.server.es.IndexingResult;
@@ -103,7 +105,6 @@ public class ComponentIndexerIT {
     ComponentDoc doc = es.getDocuments(TYPE_COMPONENT, ComponentDoc.class).get(0);
     assertThat(doc.getId()).isEqualTo(project.uuid());
     assertThat(doc.getKey()).isEqualTo(project.getKey());
-    assertThat(doc.getProjectUuid()).isEqualTo(project.branchUuid());
     assertThat(doc.getName()).isEqualTo(project.name());
   }
 
@@ -134,22 +135,6 @@ public class ComponentIndexerIT {
 
     underTest.indexOnAnalysis(project.uuid());
     assertThatIndexContainsOnly(project);
-  }
-
-  @Test
-  public void indexOnAnalysis_updates_index_on_changes() {
-    ComponentDto project = db.components().insertPrivateProject().getMainBranchComponent();
-    underTest.indexOnAnalysis(project.uuid());
-    assertThatComponentHasName(project, project.name());
-
-    // modify
-    project.setName("NewName");
-    updateDb(project);
-
-    // verify that index is updated
-    underTest.indexOnAnalysis(project.uuid());
-    assertThatIndexContainsOnly(project);
-    assertThatComponentHasName(project, "NewName");
   }
 
   @Test
@@ -214,6 +199,28 @@ public class ComponentIndexerIT {
   }
 
   @Test
+  public void indexOnAnalysis_updates_index_on_changes() {
+  ProjectData project = db.components().insertPrivateProject();
+  underTest.indexOnAnalysis(project.projectUuid());
+  assertThatComponentHasName(project.projectUuid(), project.getProjectDto().getName());
+
+  // modify
+  ProjectDto projectDto = project.getProjectDto();
+  projectDto.setName("NewName");
+
+  db.getDbClient().projectDao().update(dbSession, projectDto);
+  db.commit();
+
+  // verify that index is updated
+  underTest.indexOnAnalysis(projectDto.getUuid());
+
+  assertThatIndexContainsOnly(projectDto.getUuid());
+  assertThatComponentHasName(projectDto.getUuid(), "NewName");
+}
+
+
+
+  @Test
   public void errors_during_indexing_are_recovered() {
     ComponentDto project1 = db.components().insertPrivateProject().getMainBranchComponent();
     es.lockWrites(TYPE_COMPONENT);
@@ -243,14 +250,6 @@ public class ComponentIndexerIT {
     return underTest.index(dbSession, items);
   }
 
-  private void updateDb(ComponentDto component) {
-    ComponentUpdateDto updateComponent = ComponentUpdateDto.copyFrom(component);
-    updateComponent.setBChanged(true);
-    dbClient.componentDao().update(dbSession, updateComponent, component.qualifier());
-    dbClient.componentDao().applyBChangesForBranchUuid(dbSession, component.branchUuid());
-    dbSession.commit();
-  }
-
   private IndexingResult recover() {
     Collection<EsQueueDto> items = db.getDbClient().esQueueDao().selectForRecovery(db.getSession(), System.currentTimeMillis() + 1_000L, 10);
     return underTest.index(db.getSession(), items);
@@ -265,7 +264,11 @@ public class ComponentIndexerIT {
       Arrays.stream(expectedComponents).map(ComponentDto::uuid).toArray(String[]::new));
   }
 
-  private void assertThatComponentHasName(ComponentDto component, String expectedName) {
+  private void assertThatIndexContainsOnly(String uuid) {
+    assertThat(es.getIds(TYPE_COMPONENT)).containsExactlyInAnyOrder(uuid);
+  }
+
+  private void assertThatComponentHasName(String uuid, String expectedName) {
     SearchHit[] hits = es.client()
       .search(EsClient.prepareSearch(TYPE_COMPONENT.getMainType())
         .source(new SearchSourceBuilder()
@@ -274,6 +277,6 @@ public class ComponentIndexerIT {
       .getHits();
     assertThat(hits)
       .extracting(SearchHit::getId)
-      .contains(component.uuid());
+      .contains(uuid);
   }
 }

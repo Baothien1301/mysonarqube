@@ -24,9 +24,9 @@ import { BranchParameters } from '../../types/branch-like';
 import {
   ExtendedSettingDefinition,
   SettingDefinition,
-  SettingsKey,
   SettingType,
   SettingValue,
+  SettingsKey,
 } from '../../types/settings';
 import {
   checkSecretKey,
@@ -39,6 +39,8 @@ import {
   resetSettingValue,
   setSettingValue,
 } from '../settings';
+
+jest.mock('../settings');
 
 const isEmptyField = (o: any) => isObject(o) && Object.values(o).some(isEmptyString);
 const isEmptyString = (i: any) => isString(i) && i.trim() === '';
@@ -132,7 +134,7 @@ export default class SettingsServiceMock {
 
   handleGetValue = (data: { key: string; component?: string } & BranchParameters) => {
     const setting = this.#settingValues.find((s) => s.key === data.key) as SettingValue;
-    return this.reply(setting);
+    return this.reply(setting ?? {});
   };
 
   handleGetValues = (data: { keys: string[]; component?: string } & BranchParameters) => {
@@ -160,6 +162,10 @@ export default class SettingsServiceMock {
     }
 
     this.set(definition.key, value);
+    const def = this.#definitions.find((d) => d.key === definition.key);
+    if (def === undefined) {
+      this.#definitions.push(definition as ExtendedSettingDefinition);
+    }
 
     return this.reply(undefined);
   };
@@ -188,11 +194,11 @@ export default class SettingsServiceMock {
   set = (key: string | SettingsKey, value: any) => {
     const setting = this.#settingValues.find((s) => s.key === key);
     if (setting) {
-      setting.value = value;
+      setting.value = String(value);
       setting.values = value;
       setting.fieldValues = value;
     } else {
-      this.#settingValues.push({ key, value, values: value, fieldValues: value });
+      this.#settingValues.push({ key, value: String(value), values: value, fieldValues: value });
     }
     return this;
   };

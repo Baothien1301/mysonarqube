@@ -17,11 +17,8 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import { Badge, BranchIcon, HoverLink, LightLabel, Note, QualifierIcon } from 'design-system';
 import * as React from 'react';
-import { colors } from '../../../app/theme';
-import Link from '../../../components/common/Link';
-import BranchIcon from '../../../components/icons/BranchIcon';
-import QualifierIcon from '../../../components/icons/QualifierIcon';
 import { getBranchLikeQuery } from '../../../helpers/branch-like';
 import { translate } from '../../../helpers/l10n';
 import { CodeScope, getComponentOverviewUrl, queryToSearch } from '../../../helpers/urls';
@@ -36,7 +33,9 @@ import { ComponentMeasure } from '../../../types/types';
 import { mostCommonPrefix } from '../utils';
 
 export function getTooltip(component: ComponentMeasure) {
-  const isFile = component.qualifier === 'FIL' || component.qualifier === 'UTS';
+  const isFile =
+    component.qualifier === ComponentQualifier.File ||
+    component.qualifier === ComponentQualifier.TestFile;
 
   if (isFile && component.path) {
     return component.path + '\n\n' + component.key;
@@ -75,8 +74,8 @@ export default function ComponentName({
     )
   ) {
     return (
-      <span className="max-width-100 display-inline-flex-center">
-        <span className="text-ellipsis" title={getTooltip(component)} aria-label={ariaLabel}>
+      <span className="sw-flex sw-items-center sw-overflow-hidden">
+        <div className="sw-truncate" title={getTooltip(component)} aria-label={ariaLabel}>
           {renderNameWithIcon(
             branchLike,
             component,
@@ -86,24 +85,22 @@ export default function ComponentName({
             canBrowse,
             newCodeSelected
           )}
-        </span>
+        </div>
         {component.branch ? (
-          <span className="text-ellipsis spacer-left">
-            <BranchIcon className="little-spacer-right" />
-            <span className="note">{component.branch}</span>
-          </span>
+          <div className="sw-truncate sw-ml-2">
+            <BranchIcon className="sw-mr-1" />
+            <Note>{component.branch}</Note>
+          </div>
         ) : (
-          <span className="spacer-left badge flex-1">{translate('branches.main_branch')}</span>
+          <Badge className="sw-ml-1" variant="default">
+            {translate('branches.main_branch')}
+          </Badge>
         )}
       </span>
     );
   }
   return (
-    <span
-      className="max-width-100 text-ellipsis"
-      title={getTooltip(component)}
-      aria-label={ariaLabel}
-    >
+    <span title={getTooltip(component)} aria-label={ariaLabel}>
       {renderNameWithIcon(branchLike, component, previous, rootComponent, unclickable, canBrowse)}
     </span>
   );
@@ -132,22 +129,17 @@ function renderNameWithIcon(
       ? component.branch
       : undefined;
     return (
-      <Link
-        className="display-inline-flex-center link-no-underline"
+      <HoverLink
+        icon={<QualifierIcon className="sw-mr-2" qualifier={component.qualifier} />}
         to={getComponentOverviewUrl(
-          component.refKey || component.key,
+          component.refKey ?? component.key,
           component.qualifier,
           { branch },
           codeType
         )}
       >
-        <QualifierIcon
-          className="little-spacer-right"
-          qualifier={component.qualifier}
-          fill={colors.primary}
-        />
-        <span>{name}</span>
-      </Link>
+        {name}
+      </HoverLink>
     );
   } else if (canBrowse) {
     const query = { id: rootComponent.key, ...getBranchLikeQuery(branchLike) };
@@ -155,41 +147,34 @@ function renderNameWithIcon(
       Object.assign(query, { selected: component.key });
     }
     return (
-      <Link
-        className="display-inline-flex-center link-no-underline"
+      <HoverLink
+        icon={<QualifierIcon className="sw-mr-2" qualifier={component.qualifier} />}
         to={{ pathname: '/code', search: queryToSearch(query) }}
       >
-        <QualifierIcon
-          className="little-spacer-right"
-          qualifier={component.qualifier}
-          fill={colors.primary}
-        />
-        <span>{name}</span>
-      </Link>
+        {name}
+      </HoverLink>
     );
   }
   return (
     <span>
-      <QualifierIcon
-        qualifier={component.qualifier}
-        fill={
-          component.qualifier === ComponentQualifier.Directory ? colors.orange : colors.neutral800
-        }
-      />{' '}
+      <QualifierIcon className="sw-mr-2 sw-align-text-bottom" qualifier={component.qualifier} />
       {name}
     </span>
   );
 }
 
 function renderName(component: ComponentMeasure, previous: ComponentMeasure | undefined) {
-  const areBothDirs = component.qualifier === 'DIR' && previous && previous.qualifier === 'DIR';
+  const areBothDirs =
+    component.qualifier === ComponentQualifier.Directory &&
+    previous &&
+    previous.qualifier === ComponentQualifier.Directory;
   const prefix =
     areBothDirs && previous !== undefined
       ? mostCommonPrefix([component.name + '/', previous.name + '/'])
       : '';
   return prefix ? (
     <span>
-      <span style={{ color: colors.secondFontColor }}>{prefix}</span>
+      <LightLabel>{prefix}</LightLabel>
       <span>{component.name.slice(prefix.length)}</span>
     </span>
   ) : (

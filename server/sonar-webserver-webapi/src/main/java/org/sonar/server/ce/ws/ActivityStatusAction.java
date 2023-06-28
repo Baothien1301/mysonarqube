@@ -31,7 +31,7 @@ import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.ce.CeActivityDto;
 import org.sonar.db.ce.CeQueueDto;
-import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.server.component.ComponentFinder;
 import org.sonar.server.user.UserSession;
 import org.sonar.server.ws.KeyExamples;
@@ -83,14 +83,14 @@ public class ActivityStatusAction implements CeWsAction {
 
   private ActivityStatusWsResponse doHandle(Request request) {
     try (DbSession dbSession = dbClient.openSession(false)) {
-      Optional<ComponentDto> component = searchComponent(dbSession, request);
-      String componentUuid = component.map(ComponentDto::uuid).orElse(null);
-      checkPermissions(component.orElse(null));
-      int pendingCount = dbClient.ceQueueDao().countByStatusAndMainComponentUuid(dbSession, CeQueueDto.Status.PENDING, componentUuid);
-      int inProgressCount = dbClient.ceQueueDao().countByStatusAndMainComponentUuid(dbSession, CeQueueDto.Status.IN_PROGRESS, componentUuid);
-      int failingCount = dbClient.ceActivityDao().countLastByStatusAndMainComponentUuid(dbSession, CeActivityDto.Status.FAILED, componentUuid);
+      Optional<EntityDto> entity = searchEntity(dbSession, request);
+      String entityUuid = entity.map(EntityDto::getUuid).orElse(null);
+      checkPermissions(entity.orElse(null));
+      int pendingCount = dbClient.ceQueueDao().countByStatusAndEntityUuid(dbSession, CeQueueDto.Status.PENDING, entityUuid);
+      int inProgressCount = dbClient.ceQueueDao().countByStatusAndEntityUuid(dbSession, CeQueueDto.Status.IN_PROGRESS, entityUuid);
+      int failingCount = dbClient.ceActivityDao().countLastByStatusAndEntityUuid(dbSession, CeActivityDto.Status.FAILED, entityUuid);
 
-      Optional<Long> creationDate = dbClient.ceQueueDao().selectCreationDateOfOldestPendingByMainComponentUuid(dbSession, componentUuid);
+      Optional<Long> creationDate = dbClient.ceQueueDao().selectCreationDateOfOldestPendingByEntityUuid(dbSession, entityUuid);
 
       ActivityStatusWsResponse.Builder builder = ActivityStatusWsResponse.newBuilder()
         .setPending(pendingCount)
@@ -106,17 +106,17 @@ public class ActivityStatusAction implements CeWsAction {
     }
   }
 
-  private Optional<ComponentDto> searchComponent(DbSession dbSession, Request request) {
-    ComponentDto component = null;
+  private Optional<EntityDto> searchEntity(DbSession dbSession, Request request) {
+    EntityDto entity = null;
     if (request.getComponentKey() != null) {
-      component = componentFinder.getByKey(dbSession, request.getComponentKey());
+      entity = componentFinder.getEntityByKey(dbSession, request.getComponentKey());
     }
-    return Optional.ofNullable(component);
+    return Optional.ofNullable(entity);
   }
 
-  private void checkPermissions(@Nullable ComponentDto component) {
-    if (component != null) {
-      userSession.checkComponentPermission(UserRole.ADMIN, component);
+  private void checkPermissions(@Nullable EntityDto entity) {
+    if (entity != null) {
+      userSession.checkEntityPermission(UserRole.ADMIN, entity);
     } else {
       userSession.checkIsSystemAdministrator();
     }

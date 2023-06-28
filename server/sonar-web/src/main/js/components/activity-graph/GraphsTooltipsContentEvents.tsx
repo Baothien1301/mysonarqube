@@ -28,23 +28,23 @@ interface Props {
 
 export default function GraphsTooltipsContentEvents({ addSeparator, events }: Props) {
   return (
-    <tbody>
-      <tr className="activity-graph-tooltip-line">
+    <>
+      <tr className="sw-h-8">
         <td colSpan={3}>
           {events.map((event) => (
-            <div className="little-spacer-bottom" key={event.key}>
-              <EventInner event={event} readonly={true} />
+            <div key={event.key}>
+              <EventInner event={event} readonly />
             </div>
           ))}
         </td>
       </tr>
       {addSeparator && (
         <tr>
-          <td className="activity-graph-tooltip-separator" colSpan={3}>
+          <td colSpan={3}>
             <hr />
           </td>
         </tr>
       )}
-    </tbody>
+    </>
   );
 }

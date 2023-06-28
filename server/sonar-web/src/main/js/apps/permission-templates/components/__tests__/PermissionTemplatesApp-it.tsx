@@ -21,7 +21,6 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserEvent } from '@testing-library/user-event/dist/types/setup/setup';
 import { uniq } from 'lodash';
-import { byLabelText, byRole } from 'testing-library-selector';
 import PermissionsServiceMock from '../../../../api/mocks/PermissionsServiceMock';
 import { mockPermissionGroup, mockPermissionUser } from '../../../../helpers/mocks/permissions';
 import { PERMISSIONS_ORDER_FOR_PROJECT_TEMPLATE } from '../../../../helpers/permissions';
@@ -30,6 +29,7 @@ import {
   findTooltipWithContent,
   renderAppWithAdminContext,
 } from '../../../../helpers/testReactTestingUtils';
+import { byLabelText, byRole } from '../../../../helpers/testSelector';
 import { ComponentQualifier } from '../../../../types/component';
 import { Permissions } from '../../../../types/permissions';
 import { PermissionGroup, PermissionUser } from '../../../../types/types';
@@ -286,7 +286,7 @@ describe('filtering', () => {
 
     expect(screen.getAllByRole('row').length).toBe(12);
     await ui.toggleFilterByPermission(Permissions.Admin);
-    expect(screen.getAllByRole('row').length).toBe(2);
+    expect(screen.getAllByRole('row').length).toBe(3);
     await ui.toggleFilterByPermission(Permissions.Admin);
     expect(screen.getAllByRole('row').length).toBe(12);
   });

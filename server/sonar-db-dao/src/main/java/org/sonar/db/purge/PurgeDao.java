@@ -29,8 +29,8 @@ import javax.annotation.Nullable;
 import org.sonar.api.utils.DateUtils;
 import org.sonar.api.utils.System2;
 import org.sonar.api.utils.TimeUtils;
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonar.core.util.stream.MoreCollectors;
 import org.sonar.db.Dao;
 import org.sonar.db.DbSession;
@@ -46,7 +46,7 @@ import static org.sonar.api.utils.DateUtils.dateToLong;
 import static org.sonar.db.DatabaseUtils.executeLargeInputs;
 
 public class PurgeDao implements Dao {
-  private static final Logger LOG = Loggers.get(PurgeDao.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PurgeDao.class);
   private static final Set<String> QUALIFIERS_PROJECT_VIEW = Set.of("TRK", "VW");
   private static final Set<String> QUALIFIER_SUBVIEW = Set.of("SVW");
   private static final String SCOPE_PROJECT = "PRJ";
@@ -241,7 +241,6 @@ public class PurgeDao implements Dao {
     commands.deleteWebhooks(rootUuid);
     commands.deleteWebhookDeliveries(rootUuid);
     commands.deleteLiveMeasures(rootUuid);
-    commands.deleteProjectMappings(rootUuid);
     commands.deleteProjectAlmSettings(rootUuid);
     commands.deletePermissions(rootUuid);
     commands.deleteNewCodePeriods(rootUuid);
@@ -256,6 +255,8 @@ public class PurgeDao implements Dao {
     commands.deleteProject(rootUuid);
     commands.deleteUserDismissedMessages(rootUuid);
     commands.deleteOutdatedProperties(rootUuid);
+    commands.deleteReportSchedules(rootUuid);
+    commands.deleteReportSubscriptions(rootUuid);
   }
 
   /**

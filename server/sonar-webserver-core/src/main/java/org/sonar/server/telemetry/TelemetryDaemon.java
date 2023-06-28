@@ -30,8 +30,8 @@ import java.util.concurrent.TimeUnit;
 import org.sonar.api.config.Configuration;
 import org.sonar.api.server.ServerSide;
 import org.sonar.api.utils.System2;
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonar.api.utils.text.JsonWriter;
 import org.sonar.server.property.InternalProperties;
 import org.sonar.server.util.AbstractStoppableScheduledExecutorServiceImpl;
@@ -48,7 +48,7 @@ public class TelemetryDaemon extends AbstractStoppableScheduledExecutorServiceIm
   private static final String I_PROP_LAST_PING = "telemetry.lastPing";
   private static final String I_PROP_OPT_OUT = "telemetry.optOut";
   private static final String LOCK_NAME = "TelemetryStat";
-  private static final Logger LOG = Loggers.get(TelemetryDaemon.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TelemetryDaemon.class);
   private static final String LOCK_DELAY_SEC = "sonar.telemetry.lock.delay";
   static final String I_PROP_MESSAGE_SEQUENCE = "telemetry.messageSeq";
 
@@ -114,7 +114,7 @@ public class TelemetryDaemon extends AbstractStoppableScheduledExecutorServiceIm
           updateTelemetryProps(now);
         }
       } catch (Exception e) {
-        LOG.debug("Error while checking SonarQube statistics: {}", e);
+        LOG.debug("Error while checking SonarQube statistics: {}", e.getMessage(), e);
       }
       // do not check at start up to exclude test instance which are not up for a long time
     };
@@ -150,6 +150,7 @@ public class TelemetryDaemon extends AbstractStoppableScheduledExecutorServiceIm
       dataJsonWriter.writeTelemetryData(json, statistics);
     }
     telemetryClient.upload(jsonString.toString());
+    dataLoader.reset();
   }
 
   private boolean shouldUploadStatistics(long now) {

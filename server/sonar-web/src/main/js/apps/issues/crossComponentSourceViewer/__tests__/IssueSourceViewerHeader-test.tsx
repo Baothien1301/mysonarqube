@@ -18,15 +18,15 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import * as React from 'react';
-import { byRole, byText } from 'testing-library-selector';
 import { mockMainBranch } from '../../../../helpers/mocks/branch-like';
 import { mockSourceViewerFile } from '../../../../helpers/mocks/sources';
 import { renderComponent } from '../../../../helpers/testReactTestingUtils';
+import { byRole, byText } from '../../../../helpers/testSelector';
 import IssueSourceViewerHeader, { Props } from '../IssueSourceViewerHeader';
 
 const ui = {
   expandAllLines: byRole('button', { name: 'source_viewer.expand_all_lines' }),
-  projectLink: byRole('link', { name: 'qualifier.TRK MyProject' }),
+  projectLink: byRole('link', { name: 'MyProject' }),
   projectName: byText('MyProject'),
   viewAllIssues: byRole('link', { name: 'source_viewer.view_all_issues' }),
 };
@@ -74,7 +74,7 @@ function renderIssueSourceViewerHeader(props: Partial<Props> = {}) {
   return renderComponent(
     <IssueSourceViewerHeader
       branchLike={mockMainBranch()}
-      expandable={true}
+      expandable
       onExpand={jest.fn()}
       sourceViewerFile={mockSourceViewerFile('foo/bar.ts', 'my-project')}
       {...props}

@@ -28,14 +28,16 @@ type AllowedRadioButtonAttributes = Pick<
   'aria-label' | 'autoFocus' | 'id' | 'name' | 'style' | 'title' | 'type'
 >;
 
-interface Props extends AllowedRadioButtonAttributes {
+interface PropsBase extends AllowedRadioButtonAttributes {
   checked: boolean;
   children?: React.ReactNode;
   className?: string;
   disabled?: boolean;
-  onCheck: (value: string) => void;
-  value: string;
 }
+
+type Props =
+  | ({ onCheck: (value: string) => void; value: string } & PropsBase)
+  | ({ onCheck: () => void; value: never } & PropsBase);
 
 export function RadioButton({
   checked,
@@ -53,7 +55,16 @@ export function RadioButton({
   };
 
   return (
-    <label className={classNames('sw-flex sw-items-center', className)}>
+    <label
+      className={classNames(
+        'sw-flex sw-items-center',
+        {
+          'sw-cursor-pointer': !disabled,
+          'sw-cursor-not-allowed': disabled,
+        },
+        className
+      )}
+    >
       <RadioButtonStyled
         aria-disabled={disabled}
         checked={checked}
@@ -72,6 +83,8 @@ export const RadioButtonStyled = styled.input`
   appearance: none; //disables native style
   border: ${themeBorder('default', 'radioBorder')};
 
+  ${tw`sw-cursor-pointer`}
+
   ${tw`sw-w-4 sw-min-w-4 sw-h-4 sw-min-h-4`}
   ${tw`sw-p-1 sw-mr-2`}
   ${tw`sw-inline-block`}
@@ -89,6 +102,7 @@ export const RadioButtonStyled = styled.input`
     outline: ${themeBorder('focus', 'radioFocusOutline')};
   }
 
+  &.is-checked,
   &:focus:checked,
   &:focus-visible:checked,
   &:hover:checked,
@@ -100,13 +114,13 @@ export const RadioButtonStyled = styled.input`
     border: ${themeBorder('default', 'radioBorder')};
   }
 
+  &.is-disabled,
   &:disabled {
     background: ${themeColor('radioDisabledBackground')};
     border: ${themeBorder('default', 'radioDisabledBorder')};
     background-clip: unset;
 
-    ${tw`sw-cursor-not-allowed`}
-
+    &.is-checked,
     &:checked {
       background-image: linear-gradient(
           to right,
@@ -117,9 +131,9 @@ export const RadioButtonStyled = styled.input`
           to right,
           ${themeColor('radioDisabledBackground')},
           ${themeColor('radioDisabledBackground')}
-        );
-      background-clip: content-box, padding-box;
-      border: ${themeBorder('default', 'radioDisabledBorder')};
+        ) !important;
+      background-clip: content-box, padding-box !important;
+      border: ${themeBorder('default', 'radioDisabledBorder')} !important;
     }
   }
 `;

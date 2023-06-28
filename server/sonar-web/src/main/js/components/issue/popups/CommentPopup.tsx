@@ -42,12 +42,12 @@ export default class CommentPopup extends React.PureComponent<CommentPopupProps>
 
     return (
       <DropdownOverlay placement={this.props.placement}>
-        <div className="issue-comment-bubble-popup">
+        <div className="sw-min-w-abs-500 issue-comment-bubble-popup">
           <CommentForm
             placeholder={this.props.placeholder}
             onCancel={this.handleCancelClick}
             onSaveComment={this.props.onComment}
-            showFormatHelp={true}
+            showFormatHelp
             comment={comment?.markdown}
             autoTriggered={autoTriggered}
           />

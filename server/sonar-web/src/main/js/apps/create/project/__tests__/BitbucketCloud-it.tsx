@@ -22,11 +22,12 @@ import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import selectEvent from 'react-select-event';
-import { byLabelText, byRole, byText } from 'testing-library-selector';
 import { searchForBitbucketCloudRepositories } from '../../../../api/alm-integrations';
 import AlmIntegrationsServiceMock from '../../../../api/mocks/AlmIntegrationsServiceMock';
 import AlmSettingsServiceMock from '../../../../api/mocks/AlmSettingsServiceMock';
+import NewCodePeriodsServiceMock from '../../../../api/mocks/NewCodePeriodsServiceMock';
 import { renderApp } from '../../../../helpers/testReactTestingUtils';
+import { byLabelText, byRole, byText } from '../../../../helpers/testSelector';
 import CreateProjectPage, { CreateProjectPageProps } from '../CreateProjectPage';
 
 jest.mock('../../../../api/alm-integrations');
@@ -34,6 +35,7 @@ jest.mock('../../../../api/alm-settings');
 
 let almIntegrationHandler: AlmIntegrationsServiceMock;
 let almSettingsHandler: AlmSettingsServiceMock;
+let newCodePeriodHandler: NewCodePeriodsServiceMock;
 
 const ui = {
   bitbucketCloudCreateProjectButton: byText(
@@ -48,12 +50,14 @@ const ui = {
 beforeAll(() => {
   almIntegrationHandler = new AlmIntegrationsServiceMock();
   almSettingsHandler = new AlmSettingsServiceMock();
+  newCodePeriodHandler = new NewCodePeriodsServiceMock();
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
   almIntegrationHandler.reset();
   almSettingsHandler.reset();
+  newCodePeriodHandler.reset();
 });
 
 it('should ask for PAT when it is not set yet and show the import project feature afterwards', async () => {
@@ -120,9 +124,7 @@ it('should show import project feature when PAT is already set', async () => {
   expect(screen.getByText('BitbucketCloud Repo 1')).toBeInTheDocument();
   expect(screen.getByText('BitbucketCloud Repo 2')).toBeInTheDocument();
 
-  projectItem = screen.getByRole('row', {
-    name: 'qualifier.TRK BitbucketCloud Repo 1 project opens_in_new_window onboarding.create_project.bitbucketcloud.link onboarding.create_project.repository_imported',
-  });
+  projectItem = screen.getByRole('row', { name: /BitbucketCloud Repo 1/ });
   expect(
     within(projectItem).getByText('onboarding.create_project.repository_imported')
   ).toBeInTheDocument();
@@ -135,14 +137,24 @@ it('should show import project feature when PAT is already set', async () => {
     '/dashboard?id=key'
   );
 
-  projectItem = screen.getByRole('row', {
-    name: 'BitbucketCloud Repo 2 project opens_in_new_window onboarding.create_project.bitbucketcloud.link onboarding.create_project.set_up',
-  });
-  const importProjectButton = within(projectItem).getByRole('button', {
+  projectItem = screen.getByRole('row', { name: /BitbucketCloud Repo 2/ });
+  const setupButton = within(projectItem).getByRole('button', {
     name: 'onboarding.create_project.set_up',
   });
 
-  await user.click(importProjectButton);
+  await user.click(setupButton);
+
+  expect(
+    screen.getByRole('heading', { name: 'onboarding.create_project.new_code_definition.title' })
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByRole('radio', { name: 'new_code_definition.global_setting' }));
+  await user.click(
+    screen.getByRole('button', {
+      name: 'onboarding.create_project.new_code_definition.create_project',
+    })
+  );
+
   expect(await screen.findByText('/dashboard?id=key')).toBeInTheDocument();
 });
 
@@ -185,9 +197,9 @@ it('should show no result message when there are no projects', async () => {
     await selectEvent.select(ui.instanceSelector.get(), [/conf-bitbucketcloud-2/]);
   });
 
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'onboarding.create_project.bitbucketcloud.no_projects'
-  );
+  expect(
+    screen.getByText('onboarding.create_project.bitbucketcloud.no_projects')
+  ).toBeInTheDocument();
 });
 
 it('should have load more', async () => {

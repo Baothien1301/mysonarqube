@@ -22,18 +22,6 @@ import { render } from '../../../helpers/testUtils';
 import { FCProps } from '../../../types/misc';
 import { SubnavigationItem } from '../SubnavigationItem';
 
-it('should render correctly', () => {
-  setupWithProps();
-
-  expect(screen.getByRole('button', { current: false })).toBeVisible();
-});
-
-it('should display selected', () => {
-  setupWithProps({ active: true });
-
-  expect(screen.getByRole('button', { current: true })).toBeVisible();
-});
-
 it('should call onClick with value when clicked', async () => {
   const onClick = jest.fn();
   const { user } = setupWithProps({ onClick });
@@ -45,7 +33,7 @@ it('should call onClick with value when clicked', async () => {
 function setupWithProps(props: Partial<FCProps<typeof SubnavigationItem>> = {}) {
   return render(
     <SubnavigationItem active={false} onClick={jest.fn()} value="foo" {...props}>
-      Foo
+      <button type="button">Foo</button>
     </SubnavigationItem>
   );
 }

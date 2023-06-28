@@ -60,18 +60,3 @@
     margin-left: 0;
   }
 }
-
-#security_hotspots .hotspot-content {
-  max-width: 962px; /* 1280px - 300px - 18px */
-  background: white;
-  box-sizing: border-box;
-}
-
-#security_hotspots .invisible {
-  height: 0;
-  overflow: hidden;
-}
-
-#security_hotspots .hotspots-list-single-category .hotspot-category .hotspot-category-header {
-  color: var(--blue);
-}

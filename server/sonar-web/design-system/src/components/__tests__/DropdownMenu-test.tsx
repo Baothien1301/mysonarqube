@@ -32,8 +32,8 @@ import {
   ItemNavLink,
   ItemRadioButton,
 } from '../DropdownMenu';
-import { MenuIcon } from '../icons/MenuIcon';
 import Tooltip from '../Tooltip';
+import { MenuIcon } from '../icons/MenuIcon';
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -81,15 +81,17 @@ function renderDropdownMenu() {
       <ItemHeader>My header</ItemHeader>
       <ItemNavLink to="/test">Test menu item</ItemNavLink>
       <ItemDivider />
-      <ItemLink disabled={true} to="/test-disabled">
+      <ItemLink disabled to="/test-disabled">
         Test disabled item
       </ItemLink>
       <ItemButton icon={<MenuIcon />} onClick={noop}>
         Button
       </ItemButton>
       <ItemDangerButton onClick={noop}>DangerButton</ItemDangerButton>
-      <ItemCopy copyValue="copy">Copy</ItemCopy>
-      <ItemCheckbox checked={true} onCheck={noop}>
+      <ItemCopy copyValue="copy" tooltipOverlay="overlay">
+        Copy
+      </ItemCopy>
+      <ItemCheckbox checked onCheck={noop}>
         Checkbox item
       </ItemCheckbox>
       <ItemRadioButton checked={false} onCheck={noop} value="radios">

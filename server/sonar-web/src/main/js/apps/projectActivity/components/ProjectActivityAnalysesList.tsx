@@ -17,16 +17,19 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import styled from '@emotion/styled';
 import classNames from 'classnames';
 import { isEqual } from 'date-fns';
+import { Badge, DeferredSpinner, LightLabel, themeColor } from 'design-system';
 import * as React from 'react';
 import Tooltip from '../../../components/controls/Tooltip';
 import DateFormatter from '../../../components/intl/DateFormatter';
 import { toShortISO8601String } from '../../../helpers/dates';
 import { translate } from '../../../helpers/l10n';
+
 import { ComponentQualifier } from '../../../types/component';
 import { ParsedAnalysis } from '../../../types/project-activity';
-import { activityQueryChanged, getAnalysesByVersionByDay, Query } from '../utils';
+import { Query, activityQueryChanged, getAnalysesByVersionByDay } from '../utils';
 import ProjectActivityAnalysis from './ProjectActivityAnalysis';
 
 interface Props {
@@ -52,7 +55,15 @@ export default class ProjectActivityAnalysesList extends React.PureComponent<Pro
   scrollContainer?: HTMLUListElement | null;
 
   componentDidUpdate(prevProps: Props) {
-    if (this.scrollContainer && activityQueryChanged(prevProps.query, this.props.query)) {
+    const selectedDate = this.props.query.selectedDate
+      ? this.props.query.selectedDate.valueOf()
+      : null;
+
+    if (
+      this.scrollContainer &&
+      activityQueryChanged(prevProps.query, this.props.query) &&
+      !this.props.analyses.some(({ date }) => date.valueOf() === selectedDate)
+    ) {
       this.scrollContainer.scrollTop = 0;
     }
   }
@@ -99,13 +110,15 @@ export default class ProjectActivityAnalysesList extends React.PureComponent<Pro
       (byVersionByDay.length === 1 && Object.keys(byVersionByDay[0].byDay).length > 0);
     if (this.props.analyses.length === 0 || !hasFilteredData) {
       return (
-        <div className="boxed-group-inner">
+        <div>
           {this.props.initializing ? (
-            <div className="text-center">
-              <i className="spinner" />
+            <div className="sw-p-4 sw-body-sm">
+              <DeferredSpinner />
             </div>
           ) : (
-            <span className="note">{translate('no_results')}</span>
+            <div className="sw-p-4 sw-body-sm">
+              <LightLabel>{translate('no_results')}</LightLabel>
+            </div>
           )}
         </div>
       );
@@ -113,9 +126,10 @@ export default class ProjectActivityAnalysesList extends React.PureComponent<Pro
 
     return (
       <ul
-        className="project-activity-versions-list"
+        className="it__project-activity-versions-list sw-box-border sw-overflow-auto sw-grow sw-shrink-0 sw-py-0 sw-px-4"
         ref={(element) => (this.scrollContainer = element)}
         style={{
+          height: 'calc(100vh - 250px)',
           marginTop:
             this.props.project.qualifier === ComponentQualifier.Project
               ? LIST_MARGIN_TOP
@@ -127,29 +141,37 @@ export default class ProjectActivityAnalysesList extends React.PureComponent<Pro
           if (days.length <= 0) {
             return null;
           }
+
           return (
             <li key={version.key || 'noversion'}>
               {version.version && (
-                <div className={classNames('project-activity-version-badge', { first: idx === 0 })}>
+                <VersionTagStyled
+                  className={classNames(
+                    'sw-sticky sw-top-0 sw-left-0 sw-pb-1 -sw-ml-4 sw-z-normal',
+                    {
+                      'sw-top-0 sw-pt-0': idx === 0,
+                    }
+                  )}
+                >
                   <Tooltip
                     mouseEnterDelay={0.5}
                     overlay={`${translate('version')} ${version.version}`}
                   >
-                    <h2 className="analysis-version">{version.version}</h2>
+                    <Badge className="sw-p-1">{version.version}</Badge>
                   </Tooltip>
-                </div>
+                </VersionTagStyled>
               )}
-              <ul className="project-activity-days-list">
+              <ul className="it__project-activity-days-list">
                 {days.map((day) => (
                   <li
-                    className="project-activity-day"
+                    className="it__project-activity-day sw-mt-1 sw-mb-4"
                     data-day={toShortISO8601String(Number(day))}
                     key={day}
                   >
-                    <h3>
-                      <DateFormatter date={Number(day)} long={true} />
-                    </h3>
-                    <ul className="project-activity-analyses-list">
+                    <div className="sw-body-md-highlight sw-mb-3">
+                      <DateFormatter date={Number(day)} long />
+                    </div>
+                    <ul className="it__project-activity-analyses-list">
                       {version.byDay[day] != null &&
                         version.byDay[day].map((analysis) => this.renderAnalysis(analysis))}
                     </ul>
@@ -160,11 +182,15 @@ export default class ProjectActivityAnalysesList extends React.PureComponent<Pro
           );
         })}
         {this.props.analysesLoading && (
-          <li className="text-center">
-            <i className="spinner" />
+          <li className="sw-text-center">
+            <DeferredSpinner />
           </li>
         )}
       </ul>
     );
   }
 }
+
+const VersionTagStyled = styled.div`
+  background-color: ${themeColor('backgroundSecondary')};
+`;

@@ -20,11 +20,10 @@
 import { screen } from '@testing-library/react';
 import { range } from 'lodash';
 import * as React from 'react';
-import { byRole } from 'testing-library-selector';
 import { mockSourceLine, mockSourceViewerFile } from '../../../../helpers/mocks/sources';
-import { mockIssue } from '../../../../helpers/testMocks';
 import { renderComponent } from '../../../../helpers/testReactTestingUtils';
-import SnippetViewer from '../SnippetViewer';
+import { byRole } from '../../../../helpers/testSelector';
+import SnippetViewer, { SnippetViewerProps } from '../SnippetViewer';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -91,7 +90,7 @@ it('should render additional child in line', () => {
   expect(screen.getByTestId('additional-child')).toBeInTheDocument();
 });
 
-function renderSnippetViewer(props: Partial<SnippetViewer['props']> = {}) {
+function renderSnippetViewer(props: Partial<SnippetViewerProps> = {}) {
   return renderComponent(
     <SnippetViewer
       component={mockSourceViewerFile()}
@@ -102,8 +101,6 @@ function renderSnippetViewer(props: Partial<SnippetViewer['props']> = {}) {
       highlightedLocationMessage={{ index: 0, text: '' }}
       highlightedSymbols={[]}
       index={0}
-      issue={mockIssue()}
-      lastSnippetOfLastGroup={false}
       loadDuplications={jest.fn()}
       locations={[]}
       locationsByLine={{}}

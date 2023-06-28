@@ -39,12 +39,12 @@ import org.sonar.db.component.ComponentKeyUpdaterDao;
 import org.sonar.db.component.ProjectLinkDao;
 import org.sonar.db.component.SnapshotDao;
 import org.sonar.db.duplication.DuplicationDao;
+import org.sonar.db.entity.EntityDao;
 import org.sonar.db.es.EsQueueDao;
 import org.sonar.db.event.EventComponentChangeDao;
 import org.sonar.db.event.EventDao;
 import org.sonar.db.issue.IssueChangeDao;
 import org.sonar.db.issue.IssueDao;
-import org.sonar.db.mapping.ProjectMappingsDao;
 import org.sonar.db.measure.LiveMeasureDao;
 import org.sonar.db.measure.MeasureDao;
 import org.sonar.db.metric.MetricDao;
@@ -77,6 +77,8 @@ import org.sonar.db.qualityprofile.QProfileEditUsersDao;
 import org.sonar.db.qualityprofile.QualityProfileDao;
 import org.sonar.db.qualityprofile.QualityProfileExportDao;
 import org.sonar.db.report.RegulatoryReportDao;
+import org.sonar.db.report.ReportScheduleDao;
+import org.sonar.db.report.ReportSubscriptionDao;
 import org.sonar.db.rule.RuleDao;
 import org.sonar.db.rule.RuleRepositoryDao;
 import org.sonar.db.scannercache.ScannerAnalysisCacheDao;
@@ -166,7 +168,6 @@ public class DbClient {
   private final LiveMeasureDao liveMeasureDao;
   private final WebhookDao webhookDao;
   private final WebhookDeliveryDao webhookDeliveryDao;
-  private final ProjectMappingsDao projectMappingsDao;
   private final NewCodePeriodDao newCodePeriodDao;
   private final ProjectDao projectDao;
   private final PortfolioDao portfolioDao;
@@ -178,6 +179,10 @@ public class DbClient {
   private final ScannerAnalysisCacheDao scannerAnalysisCacheDao;
   private final ScimUserDao scimUserDao;
   private final ScimGroupDao scimGroupDao;
+  private final EntityDao entityDao;
+
+  private final ReportScheduleDao reportScheduleDao;
+  private final ReportSubscriptionDao reportSubscriptionDao;
 
   public DbClient(Database database, MyBatis myBatis, DBSessions dbSessions, Dao... daos) {
     this.database = database;
@@ -250,7 +255,6 @@ public class DbClient {
     liveMeasureDao = getDao(map, LiveMeasureDao.class);
     webhookDao = getDao(map, WebhookDao.class);
     webhookDeliveryDao = getDao(map, WebhookDeliveryDao.class);
-    projectMappingsDao = getDao(map, ProjectMappingsDao.class);
     internalComponentPropertiesDao = getDao(map, InternalComponentPropertiesDao.class);
     newCodePeriodDao = getDao(map, NewCodePeriodDao.class);
     projectDao = getDao(map, ProjectDao.class);
@@ -263,6 +267,9 @@ public class DbClient {
     scannerAnalysisCacheDao = getDao(map, ScannerAnalysisCacheDao.class);
     scimUserDao = getDao(map, ScimUserDao.class);
     scimGroupDao = getDao(map, ScimGroupDao.class);
+    entityDao = getDao(map, EntityDao.class);
+    reportScheduleDao = getDao(map, ReportScheduleDao.class);
+    reportSubscriptionDao = getDao(map, ReportSubscriptionDao.class);
   }
 
   public DbSession openSession(boolean batch) {
@@ -543,10 +550,6 @@ public class DbClient {
     return webhookDeliveryDao;
   }
 
-  public ProjectMappingsDao projectMappingsDao() {
-    return projectMappingsDao;
-  }
-
   public InternalComponentPropertiesDao internalComponentPropertiesDao() {
     return internalComponentPropertiesDao;
   }
@@ -581,6 +584,18 @@ public class DbClient {
 
   public ScimGroupDao scimGroupDao() {
     return scimGroupDao;
+  }
+
+  public EntityDao entityDao() {
+    return entityDao;
+  }
+
+  public ReportScheduleDao reportScheduleDao(){
+    return reportScheduleDao;
+  }
+
+  public ReportSubscriptionDao reportSubscriptionDao() {
+    return reportSubscriptionDao;
   }
 }
 

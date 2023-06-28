@@ -20,12 +20,10 @@
         p.is_empty as empty,
         p.text_value as textValue,
         p.clob_value as clobValue,
-        p.component_uuid as componentUuid,
+        p.entity_uuid as entityUuid,
         p.user_uuid as userUuid
         from properties p
-        join components pr on p.component_uuid=pr.uuid
-        join project_branches pb on pb.uuid = pr.uuid
-        where p.user_uuid is null and pb.project_uuid=#{projectUuid,jdbcType=VARCHAR} and pb.branch_type='BRANCH' and pb.exclude_from_purge = ${_true}
+        where p.entity_uuid=#{projectUuid,jdbcType=VARCHAR} and p.user_uuid is null
     </select>
 
     <select id="selectLinksForExport" parameterType="string" resultType="org.sonar.db.component.ProjectLinkDto">
@@ -38,9 +36,7 @@
         p.created_at as "createdAt",
         p.updated_at as "updatedAt"
         from project_links p
-        join components proj on proj.uuid = p.project_uuid
-        join project_branches pb on pb.uuid = proj.uuid
-        where pb.project_uuid=#{projectUuid,jdbcType=VARCHAR} and pb.branch_type='BRANCH' and pb.exclude_from_purge = ${_true}
+        where p.project_uuid=#{projectUuid,jdbcType=VARCHAR}
         order by p.uuid
     </select>
 

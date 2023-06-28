@@ -66,6 +66,7 @@ interface ItemProps {
   className?: string;
   children: React.ReactNode;
   destructive?: boolean;
+  disabled?: boolean;
   label?: string;
   tooltipOverlay?: React.ReactNode;
   tooltipPlacement?: Placement;
@@ -114,7 +115,8 @@ export class ActionsDropdownItem extends React.PureComponent<ItemProps> {
       children = (
         <ButtonPlain
           className={className}
-          preventDefault={true}
+          disabled={this.props.disabled}
+          preventDefault
           id={this.props.id}
           onClick={this.handleClick}
           aria-label={label}

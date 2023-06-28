@@ -17,8 +17,8 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import styled from '@emotion/styled';
 
+import styled from '@emotion/styled';
 import classNames from 'classnames';
 import {
   format,
@@ -47,7 +47,7 @@ import { FocusOutHandler } from './FocusOutHandler';
 import { InputField } from './InputField';
 import { InputSelect } from './InputSelect';
 import { InteractiveIcon } from './InteractiveIcon';
-import OutsideClickHandler from './OutsideClickHandler';
+import { OutsideClickHandler } from './OutsideClickHandler';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 import { CloseIcon } from './icons/CloseIcon';
 import { Popup } from './popups';
@@ -76,7 +76,8 @@ interface Props {
   showClearButton?: boolean;
   size?: InputSizeKeys;
   value?: Date;
-  valueFormatter: (date?: Date) => string;
+  valueFormatter?: (date?: Date) => string;
+  zLevel?: PopupZLevel;
 }
 
 interface State {
@@ -142,7 +143,9 @@ export class DatePicker extends React.PureComponent<Props, State> {
       id,
       placeholder,
       showClearButton = true,
+      valueFormatter = (date?: Date) => (date ? format(date, 'MMM d, yyyy') : ''),
       size,
+      zLevel = PopupZLevel.Global,
     } = this.props;
     const { lastHovered, currentMonth, open } = this.state;
 
@@ -153,10 +156,12 @@ export class DatePicker extends React.PureComponent<Props, State> {
     const selectedDays = selectedDay ? [selectedDay] : [];
     let highlighted: Matcher = false;
     const lastHoveredOrValue = lastHovered ?? selectedDay;
+
     if (highlightFrom && lastHoveredOrValue) {
       highlighted = { from: highlightFrom, to: lastHoveredOrValue };
       selectedDays.push(highlightFrom);
     }
+
     if (highlightTo && lastHoveredOrValue) {
       highlighted = { from: lastHoveredOrValue, to: highlightTo };
       selectedDays.push(highlightTo);
@@ -167,7 +172,7 @@ export class DatePicker extends React.PureComponent<Props, State> {
         <OutsideClickHandler onClickOutside={this.closeCalendar}>
           <EscKeydownHandler onKeydown={this.closeCalendar}>
             <Popup
-              allowResizing={true}
+              allowResizing
               className="sw-overflow-visible" //Necessary for the month & year selectors
               overlay={
                 open ? (
@@ -203,7 +208,7 @@ export class DatePicker extends React.PureComponent<Props, State> {
                 ) : null
               }
               placement={alignRight ? PopupPlacement.BottomRight : PopupPlacement.BottomLeft}
-              zLevel={PopupZLevel.Global}
+              zLevel={zLevel}
             >
               <span
                 className={classNames('sw-relative sw-inline-block sw-cursor-pointer', className)}
@@ -218,14 +223,16 @@ export class DatePicker extends React.PureComponent<Props, State> {
                   onClick={this.openCalendar}
                   onFocus={this.openCalendar}
                   placeholder={placeholder}
-                  readOnly={true}
+                  readOnly
                   ref={inputRef}
                   size={size}
-                  title={this.props.valueFormatter(selectedDay)}
+                  title={valueFormatter(selectedDay)}
                   type="text"
-                  value={this.props.valueFormatter(selectedDay)}
+                  value={valueFormatter(selectedDay)}
                 />
+
                 <StyledCalendarIcon fill="datePickerIcon" />
+
                 {selectedDay !== undefined && showClearButton && (
                   <StyledInteractiveIcon
                     Icon={CloseIcon}
@@ -327,16 +334,21 @@ function getCustomCalendarNavigation({
     const { goToMonth, nextMonth, previousMonth } = useCalendarNavigation();
 
     const baseDate = startOfMonth(displayMonth); // reference date
+
     const months = range(MONTHS_IN_A_YEAR).map((month) => {
       const monthValue = setMonth(baseDate, month);
+
       return {
         label: format(monthValue, 'MMM'),
         value: monthValue,
       };
     });
+
     const startYear = fromYear ?? getYear(Date.now()) - YEARS_TO_DISPLAY;
+
     const years = range(startYear, toYear ? toYear + 1 : undefined).map((year) => {
       const yearValue = setYear(baseDate, year);
+
       return {
         label: String(year),
         value: yearValue,
@@ -349,37 +361,53 @@ function getCustomCalendarNavigation({
           Icon={ChevronLeftIcon}
           aria-label={ariaPreviousMonthLabel}
           className="sw-mr-2"
-          onClick={() => previousMonth && goToMonth(previousMonth)}
+          onClick={() => {
+            if (previousMonth) {
+              goToMonth(previousMonth);
+            }
+          }}
           size="small"
         />
-        <InputSelect
-          isClearable={false}
-          onChange={(value) => {
-            if (value) {
-              goToMonth(value.value);
-            }
-          }}
-          options={months}
-          size="full"
-          value={months.find((m) => isSameMonth(m.value, displayMonth))}
-        />
-        <InputSelect
-          className="sw-ml-1"
-          isClearable={false}
-          onChange={(value) => {
-            if (value) {
-              goToMonth(value.value);
-            }
-          }}
-          options={years}
-          size="full"
-          value={years.find((y) => isSameYear(y.value, displayMonth))}
-        />
+
+        <span data-testid="month-select">
+          <InputSelect
+            isClearable={false}
+            onChange={(value) => {
+              if (value) {
+                goToMonth(value.value);
+              }
+            }}
+            options={months}
+            size="full"
+            value={months.find((m) => isSameMonth(m.value, displayMonth))}
+          />
+        </span>
+
+        <span data-testid="year-select">
+          <InputSelect
+            className="sw-ml-1"
+            data-testid="year-select"
+            isClearable={false}
+            onChange={(value) => {
+              if (value) {
+                goToMonth(value.value);
+              }
+            }}
+            options={years}
+            size="full"
+            value={years.find((y) => isSameYear(y.value, displayMonth))}
+          />
+        </span>
+
         <InteractiveIcon
           Icon={ChevronRightIcon}
           aria-label={ariaNextMonthLabel}
           className="sw-ml-2"
-          onClick={() => nextMonth && goToMonth(nextMonth)}
+          onClick={() => {
+            if (nextMonth) {
+              goToMonth(nextMonth);
+            }
+          }}
           size="small"
         />
       </nav>

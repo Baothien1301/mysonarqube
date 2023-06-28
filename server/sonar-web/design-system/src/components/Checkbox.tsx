@@ -32,6 +32,7 @@ interface Props {
   className?: string;
   disabled?: boolean;
   id?: string;
+  label?: string;
   loading?: boolean;
   onCheck: (checked: boolean, id?: string) => void;
   onClick?: (event: React.MouseEvent<HTMLInputElement>) => void;
@@ -47,6 +48,7 @@ export function Checkbox({
   children,
   className,
   id,
+  label,
   loading = false,
   onCheck,
   onFocus,
@@ -65,7 +67,7 @@ export function Checkbox({
     <CheckboxContainer className={className} disabled={disabled}>
       {right && children}
       <AccessibleCheckbox
-        aria-label={title}
+        aria-label={label ?? title}
         checked={checked}
         disabled={disabled ?? loading}
         id={id}
@@ -75,7 +77,7 @@ export function Checkbox({
         type="checkbox"
       />
       <DeferredSpinner loading={loading}>
-        <StyledCheckbox aria-hidden={true} data-clickable="true" title={title}>
+        <StyledCheckbox aria-hidden data-clickable="true" title={title}>
           <CheckboxIcon checked={checked} thirdState={thirdState} />
         </StyledCheckbox>
       </DeferredSpinner>
@@ -138,6 +140,7 @@ export const AccessibleCheckbox = styled.input`
   padding: 0;
   white-space: nowrap;
   width: 1px;
+  appearance: none;
 
   &:focus,
   &:active {

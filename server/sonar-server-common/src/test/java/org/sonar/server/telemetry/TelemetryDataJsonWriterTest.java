@@ -48,6 +48,8 @@ import static org.apache.commons.lang.RandomStringUtils.randomAlphabetic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.sonar.db.newcodeperiod.NewCodePeriodType.NUMBER_OF_DAYS;
+import static org.sonar.db.newcodeperiod.NewCodePeriodType.PREVIOUS_VERSION;
 import static org.sonar.test.JsonAssert.assertJson;
 
 @RunWith(DataProviderRunner.class)
@@ -60,6 +62,13 @@ public class TelemetryDataJsonWriterTest {
   private final System2 system2 = mock(System2.class);
 
   private final TelemetryDataJsonWriter underTest = new TelemetryDataJsonWriter(List.of(extension), system2);
+
+  private static final int NCD_ID = 12345;
+
+  private static final TelemetryData.NewCodeDefinition NCD_INSTANCE =
+    new TelemetryData.NewCodeDefinition(PREVIOUS_VERSION.name(), "", "instance");
+  private static final TelemetryData.NewCodeDefinition NCD_PROJECT =
+    new TelemetryData.NewCodeDefinition(NUMBER_OF_DAYS.name(), "30", "project");
 
   @Test
   public void write_server_id_version_and_sequence() {
@@ -218,17 +227,17 @@ public class TelemetryDataJsonWriterTest {
 
   @Test
   @UseDataProvider("getFeatureFlagEnabledStates")
-  public void write_docker_flag(boolean isInDocker) {
+  public void write_container_flag(boolean isIncontainer) {
     TelemetryData data = telemetryBuilder()
-      .setInDocker(isInDocker)
+      .setInContainer(isIncontainer)
       .build();
 
     String json = writeTelemetryData(data);
     assertJson(json).isSimilarTo("""
       {
-        "docker": %s
+        "container": %s
       }
-      """.formatted(isInDocker));
+      """.formatted(isIncontainer));
   }
 
   @DataProvider
@@ -268,6 +277,26 @@ public class TelemetryDataJsonWriterTest {
         }
         """);
     }
+  }
+
+  @Test
+  public void writeTelemetryData_shouldWriteCloudUsage() {
+    TelemetryData data = telemetryBuilder().build();
+
+    String json = writeTelemetryData(data);
+    assertJson(json).isSimilarTo("""
+      {
+        "cloudUsage": {
+          "kubernetes": true,
+          "kubernetesVersion": "1.27",
+          "kubernetesPlatform": "linux/amd64",
+          "kubernetesProvider": "5.4.181-99.354.amzn2.x86_64",
+          "officialHelmChart": "10.1.0",
+          "officialImage": false,
+          "containerRuntime": "docker"
+        }
+      }
+      """);
   }
 
   @Test
@@ -414,7 +443,8 @@ public class TelemetryDataJsonWriterTest {
             "vulnerabilities": 3,
             "securityHotspots": 4,
             "technicalDebt": 60,
-            "developmentCost": 30
+            "developmentCost": 30,
+            "ncdId": 12345
           },
           {
             "projectUuid": "uuid-1",
@@ -428,7 +458,8 @@ public class TelemetryDataJsonWriterTest {
             "vulnerabilities": 6,
             "securityHotspots": 8,
             "technicalDebt": 120,
-            "developmentCost": 60
+            "developmentCost": 60,
+            "ncdId": 12345
           },
           {
             "projectUuid": "uuid-2",
@@ -442,7 +473,8 @@ public class TelemetryDataJsonWriterTest {
             "vulnerabilities": 9,
             "securityHotspots": 12,
             "technicalDebt": 180,
-            "developmentCost": 90
+            "developmentCost": 90,
+            "ncdId": 12345
           }
         ]
       }
@@ -497,6 +529,75 @@ public class TelemetryDataJsonWriterTest {
     );
   }
 
+  @Test
+  public void writes_all_branches() {
+    TelemetryData data = telemetryBuilder()
+      .setBranches(attachBranches())
+      .build();
+
+    String json = writeTelemetryData(data);
+    assertJson(json).isSimilarTo("""
+      {
+        "branches": [
+          {
+            "projectUuid": "projectUuid1",
+            "branchUuid": "branchUuid1",
+            "ncdId": 12345,
+            "greenQualityGateCount": 1,
+            "analysisCount": 2,
+            "excludeFromPurge": true
+          },
+          {
+            "projectUuid": "projectUuid2",
+            "branchUuid": "branchUuid2",
+            "ncdId": 12345,
+            "greenQualityGateCount": 0,
+            "analysisCount": 2,
+            "excludeFromPurge": true
+          }
+        ]
+      }
+      """);
+  }
+
+  @Test
+  public void writes_new_code_definitions() {
+    TelemetryData data = telemetryBuilder()
+      .setNewCodeDefinitions(attachNewCodeDefinitions())
+      .build();
+
+    String json = writeTelemetryData(data);
+    assertJson(json).isSimilarTo("""
+      {
+        "new-code-definitions": [
+          {
+            "ncdId": %s,
+            "type": "%s",
+            "value": "%s",
+            "scope": "%s"
+          },
+          {
+            "ncdId": %s,
+            "type": "%s",
+            "value": "%s",
+            "scope": "%s"
+          },
+        ]
+
+      }
+      """.formatted(NCD_INSTANCE.hashCode(), NCD_INSTANCE.type(), NCD_INSTANCE.value(), NCD_INSTANCE.scope(), NCD_PROJECT.hashCode(),
+      NCD_PROJECT.type(), NCD_PROJECT.value(), NCD_PROJECT.scope()));
+  }
+
+  @Test
+  public void writes_instance_new_code_definition() {
+    TelemetryData data = telemetryBuilder().build();
+
+    String json = writeTelemetryData(data);
+    assertThat(json).contains("ncdId");
+
+  }
+
   private static TelemetryData.Builder telemetryBuilder() {
     return TelemetryData.builder()
       .setServerId("foo")
@@ -504,7 +605,9 @@ public class TelemetryDataJsonWriterTest {
       .setMessageSequenceNumber(1L)
       .setPlugins(Collections.emptyMap())
       .setManagedInstanceInformation(new TelemetryData.ManagedInstanceInformation(false, null))
-      .setDatabase(new TelemetryData.Database("H2", "11"));
+      .setCloudUsage(new TelemetryData.CloudUsage(true, "1.27", "linux/amd64", "5.4.181-99.354.amzn2.x86_64", "10.1.0", "docker", false))
+      .setDatabase(new TelemetryData.Database("H2", "11"))
+      .setNcdId(NCD_ID);
   }
 
   @NotNull
@@ -535,7 +638,8 @@ public class TelemetryDataJsonWriterTest {
       .setPRCount((i + 1L) * 2L)
       .setQG("qg-" + i).setCi("ci-" + i)
       .setScm("scm-" + i)
-      .setDevops("devops-" + i);
+      .setDevops("devops-" + i)
+      .setNcdId(NCD_ID);
   }
 
   private static TelemetryData.ProjectStatistics.Builder getProjectStatisticsWithMetricBuilder(int i) {
@@ -551,6 +655,15 @@ public class TelemetryDataJsonWriterTest {
     return List.of(new TelemetryData.QualityGate("uuid-0", "non-compliant"),
       new TelemetryData.QualityGate("uuid-1", "compliant"),
       new TelemetryData.QualityGate("uuid-2", "over-compliant"));
+  }
+
+  private List<TelemetryData.Branch> attachBranches() {
+    return List.of(new TelemetryData.Branch("projectUuid1", "branchUuid1", NCD_ID, 1, 2, true),
+      new TelemetryData.Branch("projectUuid2", "branchUuid2", NCD_ID, 0, 2, true));
+  }
+
+  private List<TelemetryData.NewCodeDefinition> attachNewCodeDefinitions() {
+    return List.of(NCD_INSTANCE, NCD_PROJECT);
   }
 
   @DataProvider

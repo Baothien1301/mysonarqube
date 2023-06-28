@@ -17,6 +17,9 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import { withTheme } from '@emotion/react';
+import styled from '@emotion/styled';
+import { themeBorder, themeColor } from 'design-system';
 import * as React from 'react';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
 import { translate } from '../../../helpers/l10n';
@@ -41,7 +44,6 @@ export interface HotspotSnippetContainerRendererProps {
   loading: boolean;
   locations: { [line: number]: LinearIssueLocation[] };
   selectedHotspotLocation?: number;
-  onCommentButtonClick: () => void;
   onExpandBlock: (direction: ExpandDirection) => Promise<void>;
   onSymbolClick: (symbols: string[]) => void;
   onLocationSelect: (index: number) => void;
@@ -60,7 +62,7 @@ export async function animateExpansion(
   expandBlock: (direction: ExpandDirection) => Promise<void>,
   direction: ExpandDirection
 ) {
-  const wrapper = scrollableRef.current?.querySelector<HTMLElement>('.snippet');
+  const wrapper = scrollableRef.current?.querySelector<HTMLElement>('.it__source-viewer-code');
   const table = wrapper?.firstChild as HTMLElement;
 
   if (!wrapper || !table) {
@@ -130,11 +132,10 @@ export default function HotspotSnippetContainerRenderer(
     () => (
       <HotspotPrimaryLocationBox
         hotspot={hotspot}
-        onCommentClick={props.onCommentButtonClick}
         secondaryLocationSelected={secondaryLocationSelected}
       />
     ),
-    [hotspot, secondaryLocationSelected, props.onCommentButtonClick]
+    [hotspot, secondaryLocationSelected]
   );
 
   const renderHotspotBoxInLine = (line: SourceLine) =>
@@ -148,35 +149,41 @@ export default function HotspotSnippetContainerRenderer(
   return (
     <>
       {!loading && sourceLines.length === 0 && (
-        <p className="spacer-bottom">{translate('hotspots.no_associated_lines')}</p>
+        <p className="sw-my-4">{translate('hotspots.no_associated_lines')}</p>
       )}
-      <HotspotSnippetHeader hotspot={hotspot} component={component} branchLike={branchLike} />
-      <div className="hotspot-snippet-container bordered" ref={scrollableRef}>
-        <DeferredSpinner className="big-spacer" loading={loading}>
-          {sourceLines.length > 0 && (
-            <SnippetViewer
-              component={sourceViewerFile}
-              displayLineNumberOptions={false}
-              displaySCM={false}
-              expandBlock={(_i, direction) =>
-                animateExpansion(scrollableRef, props.onExpandBlock, direction)
-              }
-              handleSymbolClick={props.onSymbolClick}
-              highlightedLocationMessage={highlightedLocation}
-              highlightedSymbols={highlightedSymbols}
-              index={0}
-              issue={hotspot}
-              lastSnippetOfLastGroup={false}
-              locations={secondaryLocations}
-              locationsByLine={primaryLocations}
-              onLocationSelect={props.onLocationSelect}
-              renderAdditionalChildInLine={renderHotspotBoxInLine}
-              renderDuplicationPopup={noop}
-              snippet={sourceLines}
-            />
-          )}
-        </DeferredSpinner>
-      </div>
+
+      <SourceFileWrapper className="sw-box-border sw-w-full sw-rounded-1" ref={scrollableRef}>
+        <HotspotSnippetHeader hotspot={hotspot} component={component} branchLike={branchLike} />
+
+        <DeferredSpinner className="big-spacer" loading={loading} />
+
+        {!loading && sourceLines.length > 0 && (
+          <SnippetViewer
+            component={sourceViewerFile}
+            displayLineNumberOptions={false}
+            displaySCM={false}
+            expandBlock={(_i, direction) =>
+              animateExpansion(scrollableRef, props.onExpandBlock, direction)
+            }
+            handleSymbolClick={props.onSymbolClick}
+            highlightedLocationMessage={highlightedLocation}
+            highlightedSymbols={highlightedSymbols}
+            index={0}
+            locations={secondaryLocations}
+            locationsByLine={primaryLocations}
+            onLocationSelect={props.onLocationSelect}
+            renderAdditionalChildInLine={renderHotspotBoxInLine}
+            renderDuplicationPopup={noop}
+            snippet={sourceLines}
+            hideLocationIndex={secondaryLocations.length !== 0}
+          />
+        )}
+      </SourceFileWrapper>
     </>
   );
 }
+
+const SourceFileWrapper = withTheme(styled.div`
+  background-color: ${themeColor('codeLine')};
+  border: ${themeBorder('default', 'codeLineBorder')};
+`);

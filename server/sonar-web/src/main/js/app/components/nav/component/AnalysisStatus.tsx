@@ -63,15 +63,9 @@ export function AnalysisStatus(props: HeaderMetaProps) {
   if (currentTask?.status === TaskStatuses.Failed) {
     return (
       <>
-        <FlagMessage ariaLabel={translate('alert.tooltip.error')} variant="error">
+        <FlagMessage variant="error">
           <span>{translate('project_navigation.analysis_status.failed')}</span>
-          <Link
-            className="sw-ml-1"
-            blurAfterClick={true}
-            onClick={openModal}
-            preventDefault={true}
-            to={{}}
-          >
+          <Link className="sw-ml-1" blurAfterClick onClick={openModal} preventDefault to={{}}>
             {translate('project_navigation.analysis_status.details_link')}
           </Link>
         </FlagMessage>
@@ -90,15 +84,9 @@ export function AnalysisStatus(props: HeaderMetaProps) {
   if (warnings.length > 0) {
     return (
       <>
-        <FlagMessage ariaLabel={translate('alert.tooltip.warning')} variant="warning">
+        <FlagMessage variant="warning">
           <span>{translate('project_navigation.analysis_status.warnings')}</span>
-          <Link
-            className="sw-ml-1"
-            blurAfterClick={true}
-            onClick={openModal}
-            preventDefault={true}
-            to={{}}
-          >
+          <Link className="sw-ml-1" blurAfterClick onClick={openModal} preventDefault to={{}}>
             {translate('project_navigation.analysis_status.details_link')}
           </Link>
         </FlagMessage>

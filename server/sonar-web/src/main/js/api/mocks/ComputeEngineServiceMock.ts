@@ -58,6 +58,8 @@ const DEFAULT_WORKERS = {
 
 const CANCELABLE_TASK_STATUSES = [TaskStatuses.Pending];
 
+jest.mock('../ce');
+
 export default class ComputeEngineServiceMock {
   tasks: Task[];
   workers = { ...DEFAULT_WORKERS };
@@ -68,7 +70,7 @@ export default class ComputeEngineServiceMock {
     jest.mocked(getActivity).mockImplementation(this.handleGetActivity);
     (getStatus as jest.Mock).mockImplementation(this.handleGetStatus);
     (getTypes as jest.Mock).mockImplementation(this.handleGetTypes);
-    (getTask as jest.Mock).mockImplementation(this.handleGetTask);
+    jest.mocked(getTask).mockImplementation(this.handleGetTask);
     (getWorkers as jest.Mock).mockImplementation(this.handleGetWorkers);
     (setWorkerCount as jest.Mock).mockImplementation(this.handleSetWorkerCount);
 
@@ -115,6 +117,17 @@ export default class ComputeEngineServiceMock {
       );
     });
 
+    results.sort((a, b) => {
+      const getMaxDate = (t: Task) =>
+        Math.max(
+          +new Date(t.submittedAt),
+          +new Date(t.startedAt ?? 0),
+          +new Date(t.executedAt ?? 0)
+        );
+
+      return getMaxDate(b) - getMaxDate(a);
+    });
+
     if (data.onlyCurrents) {
       // This is more complex in real life, but it's a good enough approximation to suit tests.
       results = Object.values(groupBy(results, (t) => t.componentKey))
@@ -123,13 +136,14 @@ export default class ComputeEngineServiceMock {
     }
 
     const page = data.p ?? 1;
-    const paginationIndex = (page - 1) * PAGE_SIZE;
+    const pageSize = data.ps ?? PAGE_SIZE;
+    const paginationIndex = (page - 1) * pageSize;
 
     return Promise.resolve({
-      tasks: results.slice(paginationIndex, paginationIndex + PAGE_SIZE),
+      tasks: results.slice(paginationIndex, paginationIndex + pageSize),
       paging: {
         pageIndex: page,
-        pageSize: PAGE_SIZE,
+        pageSize,
         total: results.length,
       },
     });

@@ -30,6 +30,7 @@ import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
 import org.sonar.db.component.BranchDto;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.permission.GlobalPermission;
 import org.sonar.db.portfolio.PortfolioDto;
 import org.sonar.db.project.ProjectDto;
@@ -174,8 +175,13 @@ public class UserSessionRule implements TestRule, UserSession {
     setCurrentUserSession(userSession);
   }
 
-  public UserSessionRule registerComponents(ComponentDto... componentDtos) {
-    ensureAbstractMockUserSession().registerComponents(componentDtos);
+  public UserSessionRule registerPortfolios(ComponentDto... portfolios) {
+    ensureAbstractMockUserSession().registerComponents(portfolios);
+    return this;
+  }
+
+  public UserSessionRule registerPortfolios(PortfolioDto... portfolioDtos) {
+    ensureAbstractMockUserSession().registerPortfolios(portfolioDtos);
     return this;
   }
 
@@ -185,11 +191,6 @@ public class UserSessionRule implements TestRule, UserSession {
   }
 
   public UserSessionRule registerApplication(ProjectDto application, ProjectDto... appProjects) {
-    ensureAbstractMockUserSession().registerApplication(application, appProjects);
-    return this;
-  }
-
-  public UserSessionRule registerApplication(ComponentDto application, ComponentDto... appProjects) {
     ensureAbstractMockUserSession().registerApplication(application, appProjects);
     return this;
   }
@@ -204,7 +205,7 @@ public class UserSessionRule implements TestRule, UserSession {
     return this;
   }
 
-  public UserSession registerBranches(BranchDto ...branchDtos){
+  public UserSessionRule registerBranches(BranchDto... branchDtos) {
     ensureAbstractMockUserSession().registerBranches(branchDtos);
     return this;
   }
@@ -213,6 +214,7 @@ public class UserSessionRule implements TestRule, UserSession {
     ensureAbstractMockUserSession().addProjectPermission(projectPermission, projectDto);
     return this;
   }
+
 
   public UserSessionRule addPortfolioPermission(String portfolioPermission, PortfolioDto... portfolioDto) {
     ensureAbstractMockUserSession().addPortfolioPermission(portfolioPermission, portfolioDto);
@@ -258,13 +260,13 @@ public class UserSessionRule implements TestRule, UserSession {
   }
 
   @Override
-  public boolean hasProjectPermission(String permission, ProjectDto project) {
-    return currentUserSession.hasProjectPermission(permission, project);
+  public boolean hasEntityPermission(String permission, EntityDto entity) {
+    return currentUserSession.hasEntityPermission(permission, entity.getUuid());
   }
 
   @Override
-  public boolean hasProjectPermission(String permission, String projectUuid) {
-    return currentUserSession.hasProjectPermission(permission, projectUuid);
+  public boolean hasEntityPermission(String permission, String entityUuid) {
+    return currentUserSession.hasEntityPermission(permission, entityUuid);
   }
 
   @Override
@@ -273,8 +275,8 @@ public class UserSessionRule implements TestRule, UserSession {
   }
 
   @Override
-  public boolean hasChildProjectsPermission(String permission, ProjectDto component) {
-    return currentUserSession.hasChildProjectsPermission(permission, component);
+  public boolean hasChildProjectsPermission(String permission, EntityDto application) {
+    return currentUserSession.hasChildProjectsPermission(permission, application);
   }
 
   @Override
@@ -293,8 +295,8 @@ public class UserSessionRule implements TestRule, UserSession {
   }
 
   @Override
-  public List<ProjectDto> keepAuthorizedProjects(String permission, Collection<ProjectDto> projects) {
-    return currentUserSession.keepAuthorizedProjects(permission, projects);
+  public <T extends EntityDto> List<T> keepAuthorizedEntities(String permission, Collection<T> entities) {
+    return currentUserSession.keepAuthorizedEntities(permission, entities);
   }
 
   @Override
@@ -370,8 +372,8 @@ public class UserSessionRule implements TestRule, UserSession {
   }
 
   @Override
-  public UserSession checkProjectPermission(String projectPermission, ProjectDto project) {
-    currentUserSession.checkProjectPermission(projectPermission, project);
+  public UserSession checkEntityPermission(String projectPermission, EntityDto entity) {
+    currentUserSession.checkEntityPermission(projectPermission, entity);
     return this;
   }
 
@@ -382,7 +384,7 @@ public class UserSessionRule implements TestRule, UserSession {
   }
 
   @Override
-  public UserSession checkChildProjectsPermission(String projectPermission, ProjectDto application) {
+  public UserSession checkChildProjectsPermission(String projectPermission, EntityDto application) {
     currentUserSession.checkChildProjectsPermission(projectPermission, application);
     return this;
   }

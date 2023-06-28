@@ -21,7 +21,6 @@ import {
   DisabledTabLink,
   Dropdown,
   ItemNavLink,
-  Link,
   NavBarTabLink,
   NavBarTabs,
   PopupZLevel,
@@ -305,7 +304,7 @@ export class Menu extends React.PureComponent<Props> {
                 ? translate('layout.settings', component.qualifier)
                 : translate('layout.settings')
             }
-            withChevron={true}
+            withChevron
             to={{}}
             {...a11yAttrs}
           />
@@ -342,6 +341,7 @@ export class Menu extends React.PureComponent<Props> {
     const isApplication = this.isApplication();
     const label = translate(isProject ? 'project' : 'application', 'info.title');
     const isApplicationChildInaccessble = this.isApplicationChildInaccessble();
+    const query = this.getQuery();
 
     if (isPullRequest(this.props.branchLike)) {
       return null;
@@ -353,16 +353,10 @@ export class Menu extends React.PureComponent<Props> {
 
     return (
       (isProject || isApplication) && (
-        <li className="sw-body-md sw-pb-4">
-          <Link
-            onClick={this.props.onToggleProjectInfo}
-            preventDefault={true}
-            ref={(node: HTMLAnchorElement | null) => (this.projectInfoLink = node)}
-            to={{}}
-          >
-            {label}
-          </Link>
-        </li>
+        <NavBarTabLink
+          to={{ pathname: '/project/information', search: new URLSearchParams(query).toString() }}
+          text={label}
+        />
       )
     );
   };
@@ -603,9 +597,9 @@ export class Menu extends React.PureComponent<Props> {
           <NavBarTabLink
             active={open}
             onClick={onToggleClick}
-            preventDefault={true}
+            preventDefault
             text={translate('more')}
-            withChevron={true}
+            withChevron
             to={{}}
             {...a11yAttrs}
           />

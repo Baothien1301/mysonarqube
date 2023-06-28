@@ -19,12 +19,10 @@
  */
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import { byRole } from 'testing-library-selector';
 import SettingsServiceMock from '../../../../api/mocks/SettingsServiceMock';
 import { renderComponent } from '../../../../helpers/testReactTestingUtils';
+import { byRole } from '../../../../helpers/testSelector';
 import EncryptionApp from '../EncryptionApp';
-
-jest.mock('../../../../api/settings');
 
 let settingsMock: SettingsServiceMock;
 

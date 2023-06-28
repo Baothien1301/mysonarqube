@@ -89,7 +89,7 @@ public class LoadCrossProjectDuplicationsRepositoryStepIT {
   private CrossProjectDuplicationStatusHolder crossProjectDuplicationStatusHolder = mock(CrossProjectDuplicationStatusHolder.class);
 
   @Rule
-  public DbTester dbTester = DbTester.create(System2.INSTANCE);
+  public DbTester dbTester = DbTester.create(System2.INSTANCE, true);
 
   private DbClient dbClient = dbTester.getDbClient();
   private DbSession dbSession = dbTester.getSession();
@@ -101,8 +101,7 @@ public class LoadCrossProjectDuplicationsRepositoryStepIT {
 
   @Before
   public void setUp() {
-    ComponentDto project = ComponentTesting.newPrivateProjectDto();
-    dbTester.components().insertComponent(project);
+    ComponentDto project = dbTester.components().insertPrivateProject().getMainBranchComponent();
     SnapshotDto projectSnapshot = SnapshotTesting.newAnalysis(project);
     dbClient.snapshotDao().insert(dbSession, projectSnapshot);
     dbSession.commit();
@@ -315,8 +314,7 @@ public class LoadCrossProjectDuplicationsRepositoryStepIT {
   }
 
   private ComponentDto createProject(String projectKey) {
-    ComponentDto project = ComponentTesting.newPrivateProjectDto().setKey(projectKey);
-    return dbTester.components().insertComponent(project);
+    return dbTester.components().insertPrivateProject(p->p.setKey(projectKey)).getMainBranchComponent();
   }
 
   private SnapshotDto createProjectSnapshot(ComponentDto project) {

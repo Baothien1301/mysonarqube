@@ -18,6 +18,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 import styled from '@emotion/styled';
+import { ElementType } from 'react';
 import tw from 'twin.macro';
 import { themeColor, themeContrast } from '../helpers/theme';
 
@@ -50,9 +51,17 @@ export function TextMuted({ text, className }: { className?: string; text: strin
   );
 }
 
-export function PageTitle({ text, className }: { className?: string; text: string }) {
+export function PageTitle({
+  text,
+  className,
+  as = 'h1',
+}: {
+  as?: ElementType;
+  className?: string;
+  text: string;
+}) {
   return (
-    <StyledPageTitle className={className} title={text}>
+    <StyledPageTitle as={as} className={className} title={text}>
       {text}
     </StyledPageTitle>
   );
@@ -86,6 +95,7 @@ const StyledMutedText = styled(StyledText)`
 `;
 
 export const StyledPageTitle = styled(StyledText)`
+  ${tw`sw-block`};
   ${tw`sw-text-base`}
   color: ${themeColor('facetHeader')};
 `;
@@ -104,4 +114,16 @@ export const LightPrimary = styled.span`
 
 export const PageContentFontWrapper = styled.div`
   color: ${themeColor('pageContent')};
+`;
+
+export const Highlight = styled.strong`
+  color: ${themeColor('pageContentDark')};
+
+  ${tw`sw-body-sm-highlight`}
+`;
+
+export const Note = styled.span`
+  color: ${themeColor('pageContentLight')};
+
+  ${tw`sw-body-sm`}
 `;

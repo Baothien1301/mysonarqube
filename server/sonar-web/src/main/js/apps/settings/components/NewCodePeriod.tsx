@@ -23,20 +23,24 @@ import { getNewCodePeriod, setNewCodePeriod } from '../../../api/newCodePeriod';
 import DocLink from '../../../components/common/DocLink';
 import { ResetButtonLink, SubmitButton } from '../../../components/controls/buttons';
 import AlertSuccessIcon from '../../../components/icons/AlertSuccessIcon';
+import NewCodeDefinitionDaysOption from '../../../components/new-code-definition/NewCodeDefinitionDaysOption';
+import NewCodeDefinitionPreviousVersionOption from '../../../components/new-code-definition/NewCodeDefinitionPreviousVersionOption';
+import NewCodeDefinitionWarning from '../../../components/new-code-definition/NewCodeDefinitionWarning';
 import DeferredSpinner from '../../../components/ui/DeferredSpinner';
 import { translate } from '../../../helpers/l10n';
-import { NewCodePeriodSettingType } from '../../../types/types';
-import BaselineSettingDays from '../../projectBaseline/components/BaselineSettingDays';
-import BaselineSettingPreviousVersion from '../../projectBaseline/components/BaselineSettingPreviousVersion';
-import { validateDays } from '../../projectBaseline/utils';
+import {
+  getNumberOfDaysDefaultValue,
+  isNewCodeDefinitionCompliant,
+} from '../../../helpers/new-code-definition';
+import { NewCodeDefinitionType } from '../../../types/new-code-definition';
 
 interface State {
-  currentSetting?: NewCodePeriodSettingType;
+  currentSetting?: NewCodeDefinitionType;
   days: string;
   loading: boolean;
-  currentSettingValue?: string | number;
+  currentSettingValue?: string;
   saving: boolean;
-  selected?: NewCodePeriodSettingType;
+  selected?: NewCodeDefinitionType;
   success: boolean;
 }
 
@@ -44,7 +48,7 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
   mounted = false;
   state: State = {
     loading: true,
-    days: '30',
+    days: getNumberOfDaysDefaultValue(),
     saving: false,
     success: false,
   };
@@ -63,7 +67,7 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
       .then(({ type, value }) => {
         this.setState(({ days }) => ({
           currentSetting: type,
-          days: type === NewCodePeriodSettingType.NUMBER_OF_DAYS ? String(value) : days,
+          days: type === NewCodeDefinitionType.NumberOfDays ? String(value) : days,
           loading: false,
           currentSettingValue: value,
           selected: type,
@@ -78,7 +82,7 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
     this.setState({ days, success: false });
   };
 
-  onSelectSetting = (selected: NewCodePeriodSettingType) => {
+  onSelectSetting = (selected: NewCodeDefinitionType) => {
     this.setState({ selected, success: false });
   };
 
@@ -86,9 +90,7 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
     this.setState(({ currentSetting, currentSettingValue, days }) => ({
       selected: currentSetting,
       days:
-        currentSetting === NewCodePeriodSettingType.NUMBER_OF_DAYS
-          ? String(currentSettingValue)
-          : days,
+        currentSetting === NewCodeDefinitionType.NumberOfDays ? String(currentSettingValue) : days,
     }));
   };
 
@@ -98,25 +100,29 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
     const { days, selected } = this.state;
 
     const type = selected;
-    const value = type === NewCodePeriodSettingType.NUMBER_OF_DAYS ? days : undefined;
+    const value = type === NewCodeDefinitionType.NumberOfDays ? days : undefined;
 
     this.setState({ saving: true, success: false });
     setNewCodePeriod({
-      type: type as NewCodePeriodSettingType,
+      type: type as NewCodeDefinitionType,
       value,
     }).then(
       () => {
-        this.setState({
-          saving: false,
-          currentSetting: type,
-          currentSettingValue: value || undefined,
-          success: true,
-        });
+        if (this.mounted) {
+          this.setState({
+            saving: false,
+            currentSetting: type,
+            currentSettingValue: value || undefined,
+            success: true,
+          });
+        }
       },
       () => {
-        this.setState({
-          saving: false,
-        });
+        if (this.mounted) {
+          this.setState({
+            saving: false,
+          });
+        }
       }
     );
   };
@@ -127,10 +133,11 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
 
     const isChanged =
       selected !== currentSetting ||
-      (selected === NewCodePeriodSettingType.NUMBER_OF_DAYS &&
-        String(days) !== currentSettingValue);
+      (selected === NewCodeDefinitionType.NumberOfDays && String(days) !== currentSettingValue);
 
-    const isValid = selected !== NewCodePeriodSettingType.NUMBER_OF_DAYS || validateDays(days);
+    const isValid =
+      selected !== NewCodeDefinitionType.NumberOfDays ||
+      isNewCodeDefinitionCompliant({ type: NewCodeDefinitionType.NumberOfDays, value: days });
 
     return (
       <>
@@ -179,23 +186,27 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
                   </div>
 
                   <div className="settings-definition-right">
-                    {loading ? (
-                      <DeferredSpinner />
-                    ) : (
+                    <DeferredSpinner loading={loading} timeout={500}>
                       <form onSubmit={this.onSubmit}>
-                        <BaselineSettingPreviousVersion
-                          isDefault={true}
+                        <NewCodeDefinitionPreviousVersionOption
+                          isDefault
                           onSelect={this.onSelectSetting}
-                          selected={selected === NewCodePeriodSettingType.PREVIOUS_VERSION}
+                          selected={selected === NewCodeDefinitionType.PreviousVersion}
                         />
-                        <BaselineSettingDays
-                          className="spacer-top"
+                        <NewCodeDefinitionDaysOption
+                          className="spacer-top sw-mb-4"
                           days={days}
                           isChanged={isChanged}
                           isValid={isValid}
                           onChangeDays={this.onSelectDays}
                           onSelect={this.onSelectSetting}
-                          selected={selected === NewCodePeriodSettingType.NUMBER_OF_DAYS}
+                          selected={selected === NewCodeDefinitionType.NumberOfDays}
+                        />
+                        <NewCodeDefinitionWarning
+                          newCodeDefinitionType={currentSetting}
+                          newCodeDefinitionValue={currentSettingValue}
+                          isBranchSupportEnabled={undefined}
+                          level="global"
                         />
                         {isChanged && (
                           <div className="big-spacer-top">
@@ -220,7 +231,7 @@ export default class NewCodePeriod extends React.PureComponent<{}, State> {
                           </div>
                         )}
                       </form>
-                    )}
+                    </DeferredSpinner>
                   </div>
                 </div>
               </li>

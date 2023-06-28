@@ -50,8 +50,11 @@ import org.sonar.db.issue.IssueDto;
 import org.sonar.db.metric.MetricDto;
 import org.sonar.db.newcodeperiod.NewCodePeriodType;
 import org.sonar.db.permission.GlobalPermission;
+import org.sonar.db.portfolio.PortfolioDto;
 import org.sonar.db.portfolio.PortfolioProjectDto;
 import org.sonar.db.project.ProjectDto;
+import org.sonar.db.report.ReportScheduleDto;
+import org.sonar.db.report.ReportSubscriptionDto;
 import org.sonar.db.rule.RuleDto;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDto;
@@ -162,13 +165,11 @@ public class PurgeCommandsIT {
     dbTester.components().insertComponent(newFileDto(directory1));
     dbTester.components().insertComponent(newFileDto(directory2));
 
-    directory1 = dbTester.components().insertComponent(ComponentTesting.newDirectory(branch, "a")
-      .setMainBranchProjectUuid(project.uuid()));
-    directory2 = dbTester.components().insertComponent(ComponentTesting.newDirectory(branch, "b")
-      .setMainBranchProjectUuid(project.uuid()));
-    dbTester.components().insertComponent(newFileDto(branch, project.uuid()).setMainBranchProjectUuid(project.uuid()));
-    dbTester.components().insertComponent(newFileDto(directory1).setMainBranchProjectUuid(project.uuid()));
-    dbTester.components().insertComponent(newFileDto(directory2).setMainBranchProjectUuid(project.uuid()));
+    directory1 = dbTester.components().insertComponent(ComponentTesting.newDirectory(branch, "a"));
+    directory2 = dbTester.components().insertComponent(ComponentTesting.newDirectory(branch, "b"));
+    dbTester.components().insertComponent(newFileDto(branch, project.uuid()));
+    dbTester.components().insertComponent(newFileDto(directory1));
+    dbTester.components().insertComponent(newFileDto(directory2));
 
     underTest.deleteNonMainBranchComponentsByProjectUuid(project.uuid());
 
@@ -558,7 +559,7 @@ public class PurgeCommandsIT {
     underTest.deleteIssues(projectOrView.uuid());
 
     assertThat(dbTester.countSql("select count(uuid) from new_code_reference_issues where issue_key in (" +
-      String.join(", ", issueKeys) + ")")).isZero();
+                                 String.join(", ", issueKeys) + ")")).isZero();
   }
 
   @Test
@@ -738,6 +739,42 @@ public class PurgeCommandsIT {
       .containsExactlyInAnyOrder(tuple(portfolio1.getUuid(), project.getUuid(), Set.of("anotherBranch")));
   }
 
+  @Test
+  public void deleteReportSchedules_shouldDeleteReportShedules_if_root_is_branch() {
+    BranchDto mainBranch = dbTester.components().insertPrivateProject().getMainBranchDto();
+    BranchDto mainBranch2 = dbTester.components().insertPrivateProject().getMainBranchDto();
+    dbTester.getDbClient().reportScheduleDao().upsert(dbTester.getSession(), new ReportScheduleDto().setUuid("uuid")
+      .setBranchUuid(mainBranch.getUuid())
+      .setLastSendTimeInMs(1));
+    dbTester.getDbClient().reportScheduleDao().upsert(dbTester.getSession(), new ReportScheduleDto().setUuid("uuid2")
+      .setBranchUuid(mainBranch2.getUuid())
+      .setLastSendTimeInMs(2));
+    PurgeCommands purgeCommands = new PurgeCommands(dbTester.getSession(), profiler, system2);
+
+    purgeCommands.deleteReportSchedules(mainBranch.getUuid());
+    assertThat(dbTester.getDbClient().reportScheduleDao().selectAll(dbTester.getSession())).hasSize(1)
+      .extracting(r -> r.getUuid()).containsExactly("uuid2");
+  }
+
+  @Test
+  public void deleteReportSubscriptions_shouldDeleteReportSubscriptions_if_root_is_branch() {
+    BranchDto mainBranch = dbTester.components().insertPrivateProject().getMainBranchDto();
+    BranchDto mainBranch2 = dbTester.components().insertPrivateProject().getMainBranchDto();
+    dbTester.getDbClient().reportSubscriptionDao().insert(dbTester.getSession(), new ReportSubscriptionDto().setUuid("uuid")
+      .setUserUuid("userUuid")
+      .setBranchUuid(mainBranch.getUuid()));
+
+    dbTester.getDbClient().reportSubscriptionDao().insert(dbTester.getSession(), new ReportSubscriptionDto().setUuid("uuid2")
+      .setUserUuid("userUuid")
+      .setBranchUuid(mainBranch2.getUuid()));
+
+    PurgeCommands purgeCommands = new PurgeCommands(dbTester.getSession(), profiler, system2);
+
+    purgeCommands.deleteReportSubscriptions(mainBranch.getUuid());
+    assertThat(dbTester.getDbClient().reportSubscriptionDao().selectAll(dbTester.getSession())).hasSize(1)
+      .extracting(r -> r.getUuid()).containsExactly("uuid2");
+  }
+
   private void addPermissions(ComponentDto root) {
     if (!root.isPrivate()) {
       dbTester.users().insertProjectPermissionOnAnyone("foo1", root);
@@ -810,7 +847,7 @@ public class PurgeCommandsIT {
   }
 
   private int countPropertiesOf(ComponentDto componentDto) {
-    return dbTester.countSql("select count(1) from properties where component_uuid='" + componentDto.uuid() + "'");
+    return dbTester.countSql("select count(1) from properties where entity_uuid='" + componentDto.uuid() + "'");
   }
 
   private int countEventsOf(SnapshotDto analysis) {
@@ -843,7 +880,7 @@ public class PurgeCommandsIT {
       "PROPERTIES",
       "UUID", newUuid(),
       "PROP_KEY", randomAlphabetic(10),
-      "COMPONENT_UUID", component.uuid(),
+      "ENTITY_UUID", component.uuid(),
       "TEXT_VALUE", randomAlphabetic(10),
       "IS_EMPTY", isEmpty,
       "CREATED_AT", 1L);
@@ -869,14 +906,14 @@ public class PurgeCommandsIT {
 
   @DataProvider
   public static Object[] projects() {
-    return new Object[] {
+    return new Object[]{
       ComponentTesting.newPrivateProjectDto(), ComponentTesting.newPublicProjectDto(),
     };
   }
 
   @DataProvider
   public static Object[] views() {
-    return new Object[] {
+    return new Object[]{
       ComponentTesting.newPortfolio(), ComponentTesting.newApplication()
     };
   }

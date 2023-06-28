@@ -39,12 +39,12 @@ import org.sonar.db.component.ComponentKeyUpdaterDao;
 import org.sonar.db.component.ProjectLinkDao;
 import org.sonar.db.component.SnapshotDao;
 import org.sonar.db.duplication.DuplicationDao;
+import org.sonar.db.entity.EntityDao;
 import org.sonar.db.es.EsQueueDao;
 import org.sonar.db.event.EventComponentChangeDao;
 import org.sonar.db.event.EventDao;
 import org.sonar.db.issue.IssueChangeDao;
 import org.sonar.db.issue.IssueDao;
-import org.sonar.db.mapping.ProjectMappingsDao;
 import org.sonar.db.measure.LiveMeasureDao;
 import org.sonar.db.measure.MeasureDao;
 import org.sonar.db.metric.MetricDao;
@@ -77,6 +77,8 @@ import org.sonar.db.qualityprofile.QProfileEditUsersDao;
 import org.sonar.db.qualityprofile.QualityProfileDao;
 import org.sonar.db.qualityprofile.QualityProfileExportDao;
 import org.sonar.db.report.RegulatoryReportDao;
+import org.sonar.db.report.ReportScheduleDao;
+import org.sonar.db.report.ReportSubscriptionDao;
 import org.sonar.db.rule.RuleDao;
 import org.sonar.db.rule.RuleRepositoryDao;
 import org.sonar.db.scannercache.ScannerAnalysisCacheDao;
@@ -118,6 +120,7 @@ public class DaoModule extends Module {
     ComponentKeyUpdaterDao.class,
     DefaultQProfileDao.class,
     DuplicationDao.class,
+    EntityDao.class,
     EsQueueDao.class,
     EventDao.class,
     EventComponentChangeDao.class,
@@ -145,7 +148,6 @@ public class DaoModule extends Module {
     ProjectBadgeTokenDao.class,
     PortfolioDao.class,
     ProjectLinkDao.class,
-    ProjectMappingsDao.class,
     ProjectQgateAssociationDao.class,
     PropertiesDao.class,
     PurgeDao.class,
@@ -160,6 +162,8 @@ public class DaoModule extends Module {
     QualityProfileDao.class,
     QualityProfileExportDao.class,
     RegulatoryReportDao.class,
+    ReportSubscriptionDao.class,
+    ReportScheduleDao.class,
     RoleDao.class,
     RuleDao.class,
     RuleRepositoryDao.class,

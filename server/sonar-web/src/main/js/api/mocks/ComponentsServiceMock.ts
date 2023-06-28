@@ -17,80 +17,49 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import { cloneDeep, flatMap, map, pick, times } from 'lodash';
-import { mockComponent } from '../../helpers/mocks/component';
-import {
-  mockDuplicatedFile,
-  mockDuplication,
-  mockDuplicationBlock,
-  mockSourceLine,
-  mockSourceViewerFile,
-} from '../../helpers/mocks/sources';
+import { cloneDeep, pick } from 'lodash';
+import { DEFAULT_METRICS } from '../../helpers/mocks/metrics';
 import { HttpStatus, RequestData } from '../../helpers/request';
+import { mockMetric } from '../../helpers/testMocks';
+import { isDefined } from '../../helpers/types';
 import { BranchParameters } from '../../types/branch-like';
-import { ComponentQualifier, TreeComponent, Visibility } from '../../types/component';
+import { TreeComponent, Visibility } from '../../types/component';
 import {
   Component,
   ComponentMeasure,
   Dict,
   DuplicatedFile,
   Duplication,
-  Measure,
   Metric,
   Paging,
-  SourceLine,
-  SourceViewerFile,
 } from '../../types/types';
 import {
+  ComponentRaw,
   GetTreeParams,
   changeKey,
+  getBreadcrumbs,
   getChildren,
   getComponentData,
   getComponentForSourceViewer,
+  getComponentLeaves,
   getComponentTree,
   getDuplications,
   getSources,
   getTree,
+  setApplicationTags,
+  setProjectTags,
 } from '../components';
+import {
+  ComponentTree,
+  SourceFile,
+  mockFullComponentTree,
+  mockFullSourceViewerFileList,
+} from './data/components';
+import { mockIssuesList } from './data/issues';
+import { MeasureRecords, mockFullMeasureData } from './data/measures';
+import { listAllComponent, listChildComponent, listLeavesComponent } from './data/utils';
 
-interface ComponentTree {
-  component: Component;
-  ancestors: Component[];
-  measures?: Measure[];
-  children: ComponentTree[];
-}
-
-interface SourceFile {
-  component: SourceViewerFile;
-  lines: SourceLine[];
-  duplication?: {
-    duplications: Duplication[];
-    files: Dict<DuplicatedFile>;
-  };
-}
-
-function isLeaf(node: ComponentTree) {
-  return node.children.length === 0;
-}
-
-function listChildComponent(node: ComponentTree): Component[] {
-  return map(node.children, (n) => n.component);
-}
-
-function listAllComponent(node: ComponentTree): Component[] {
-  if (isLeaf(node)) {
-    return [node.component];
-  }
-
-  return [node.component, ...flatMap(node.children, listAllComponent)];
-}
-
-function listLeavesComponent(node: ComponentTree): Component[] {
-  if (isLeaf(node)) {
-    return [node.component];
-  }
-  return flatMap(node.children, listLeavesComponent);
-}
+jest.mock('../components');
 
 export default class ComponentsServiceMock {
   failLoadingComponentStatus: HttpStatus | undefined = undefined;
@@ -98,295 +67,23 @@ export default class ComponentsServiceMock {
   components: ComponentTree[];
   defaultSourceFiles: SourceFile[];
   sourceFiles: SourceFile[];
+  defaultMeasures: MeasureRecords;
+  measures: MeasureRecords;
 
-  constructor(components?: ComponentTree[], sourceFiles?: SourceFile[]) {
-    const baseComponent = mockComponent({
-      key: 'foo',
-      name: 'Foo',
-      breadcrumbs: [{ key: 'foo', name: 'Foo', qualifier: ComponentQualifier.Project }],
-    });
-    const folderComponent = mockComponent({
-      key: 'foo:folderA',
-      name: 'folderA',
-      path: 'folderA',
-      qualifier: ComponentQualifier.Directory,
-      breadcrumbs: [
-        ...baseComponent.breadcrumbs,
-        { key: 'foo:folderA', name: 'folderA', qualifier: ComponentQualifier.Directory },
-      ],
-    });
-    this.defaultComponents = components || [
-      {
-        component: baseComponent,
-        ancestors: [],
-        children: [
-          {
-            component: folderComponent,
-            ancestors: [baseComponent],
-            children: [
-              {
-                component: mockComponent({
-                  key: 'foo:folderA/out.tsx',
-                  name: 'out.tsx',
-                  path: 'folderA/out.tsx',
-                  qualifier: ComponentQualifier.File,
-                  breadcrumbs: [
-                    ...folderComponent.breadcrumbs,
-                    {
-                      key: 'foo:folderA/out.tsx',
-                      name: 'out.tsx',
-                      qualifier: ComponentQualifier.File,
-                    },
-                  ],
-                }),
-                ancestors: [baseComponent, folderComponent],
-                children: [],
-              },
-            ],
-          },
-          {
-            component: mockComponent({
-              key: 'foo:index.tsx',
-              name: 'index.tsx',
-              path: 'index.tsx',
-              qualifier: ComponentQualifier.File,
-              breadcrumbs: [
-                ...baseComponent.breadcrumbs,
-                { key: 'foo:index.tsx', name: 'index.tsx', qualifier: ComponentQualifier.File },
-              ],
-            }),
-            ancestors: [baseComponent],
-            children: [],
-          },
-          {
-            component: mockComponent({
-              key: 'foo:test1.js',
-              name: 'test1.js',
-              path: 'test1.js',
-              qualifier: ComponentQualifier.File,
-              breadcrumbs: [
-                ...baseComponent.breadcrumbs,
-                { key: 'foo:test1.js', name: 'test1.js', qualifier: ComponentQualifier.File },
-              ],
-            }),
-            ancestors: [baseComponent],
-            children: [],
-          },
-          {
-            component: mockComponent({
-              key: 'foo:test2.js',
-              name: 'test2.js',
-              path: 'test2.js',
-              qualifier: ComponentQualifier.File,
-              breadcrumbs: [
-                ...baseComponent.breadcrumbs,
-                { key: 'foo:test2.js', name: 'test2.js', qualifier: ComponentQualifier.File },
-              ],
-            }),
-            ancestors: [baseComponent],
-            children: [],
-          },
-          {
-            component: mockComponent({
-              key: 'foo:testSymb.tsx',
-              name: 'testSymb.tsx',
-              path: 'testSymb.tsx',
-              qualifier: ComponentQualifier.File,
-              breadcrumbs: [
-                ...baseComponent.breadcrumbs,
-                {
-                  key: 'foo:testSymb.tsx',
-                  name: 'testSymb.tsx',
-                  qualifier: ComponentQualifier.File,
-                },
-              ],
-            }),
-            ancestors: [baseComponent],
-            children: [],
-          },
-          {
-            component: mockComponent({
-              key: 'foo:empty.js',
-              name: 'empty.js',
-              path: 'empty.js',
-              qualifier: ComponentQualifier.File,
-              breadcrumbs: [
-                ...baseComponent.breadcrumbs,
-                { key: 'foo:empty.js', name: 'empty.js', qualifier: ComponentQualifier.File },
-              ],
-            }),
-            ancestors: [baseComponent],
-            children: [],
-          },
-          {
-            component: mockComponent({
-              key: 'foo:huge.js',
-              name: 'huge.js',
-              path: 'huge.js',
-              qualifier: ComponentQualifier.File,
-              breadcrumbs: [
-                ...baseComponent.breadcrumbs,
-                { key: 'foo:huge.js', name: 'huge.js', qualifier: ComponentQualifier.File },
-              ],
-            }),
-            ancestors: [baseComponent],
-            children: [],
-          },
-        ],
-      },
-    ];
-
-    this.defaultSourceFiles =
-      sourceFiles ||
-      ([
-        {
-          component: mockSourceViewerFile('index.tsx', 'foo'),
-          lines: times(50, (n) =>
-            mockSourceLine({
-              line: n,
-              code: 'function Test() {}',
-            })
-          ),
-        },
-        {
-          component: mockSourceViewerFile('folderA/out.tsx', 'foo'),
-          lines: times(50, (n) =>
-            mockSourceLine({
-              line: n,
-              code: 'function Test() {}',
-            })
-          ),
-        },
-        {
-          component: mockSourceViewerFile('test1.js', 'foo'),
-          lines: [
-            {
-              line: 1,
-              code: '\u003cspan class\u003d"cd"\u003e/*\u003c/span\u003e',
-              scmRevision: 'f09ee6b610528aa37b7b51be395c93524cebae8f',
-              scmAuthor: 'stas.vilchik@sonarsource.com',
-              scmDate: '2018-07-10T20:21:20+0200',
-              duplicated: false,
-              isNew: false,
-              lineHits: 1,
-              coveredConditions: 1,
-            },
-            {
-              line: 2,
-              code: '\u003cspan class\u003d"cd"\u003e * SonarQube\u003c/span\u003e',
-              scmRevision: 'f09ee6b610528aa37b7b51be395c93524cebae8f',
-              scmAuthor: 'stas.vilchik@sonarsource.com',
-              scmDate: '2018-07-10T20:21:20+0200',
-              duplicated: false,
-              isNew: false,
-              lineHits: 0,
-              conditions: 1,
-            },
-            {
-              line: 3,
-              code: '\u003cspan class\u003d"cd"\u003e * Copyright\u003c/span\u003e',
-              scmRevision: '89a3d21bc28f2fa6201b5e8b1185d5358481b3dd',
-              scmAuthor: 'pierre.guillot@sonarsource.com',
-              scmDate: '2022-01-28T21:03:07+0100',
-              duplicated: false,
-              isNew: false,
-              lineHits: 1,
-            },
-            {
-              line: 4,
-              code: '\u003cspan class\u003d"cd"\u003e * mailto:info AT sonarsource DOT com\u003c/span\u003e',
-              scmRevision: 'f09ee6b610528aa37b7b51be395c93524cebae8f',
-              scmAuthor: 'stas.vilchik@sonarsource.com',
-              duplicated: false,
-              isNew: false,
-              lineHits: 1,
-              conditions: 1,
-              coveredConditions: 1,
-            },
-            {
-              line: 5,
-              code: '\u003cspan class\u003d"cd"\u003e * 5\u003c/span\u003e',
-              scmRevision: 'f04ee6b610528aa37b7b51be395c93524cebae8f',
-              duplicated: false,
-              isNew: false,
-              lineHits: 2,
-              conditions: 2,
-              coveredConditions: 1,
-            },
-            {
-              line: 6,
-              code: '\u003cspan class\u003d"cd"\u003e * 6\u003c/span\u003e',
-              scmRevision: 'f04ee6b610528aa37b7b51be395c93524cebae8f',
-              duplicated: false,
-              isNew: false,
-              lineHits: 0,
-            },
-            {
-              line: 7,
-              code: '\u003cspan class\u003d"cd"\u003e * 7\u003c/span\u003e',
-              scmRevision: 'f04ee6b610528aa37b7b51be395c93524cebae8f',
-              duplicated: true,
-              isNew: true,
-            },
-            {
-              code: '\u003cspan class\u003d"cd"\u003e * This program is free software; you can redistribute it and/or\u003c/span\u003e',
-              scmRevision: 'f09ee6b610528aa37b7b51be395c93524cebae8f',
-              scmAuthor: 'stas.vilchik@sonarsource.com',
-              scmDate: '2018-07-10T20:21:20+0200',
-              duplicated: false,
-              isNew: false,
-            },
-          ],
-          duplication: {
-            duplications: [
-              mockDuplication({
-                blocks: [
-                  mockDuplicationBlock({ from: 7, size: 1, _ref: '1' }),
-                  mockDuplicationBlock({ from: 1, size: 1, _ref: '2' }),
-                ],
-              }),
-            ],
-            files: {
-              '1': mockDuplicatedFile({ key: 'foo:test1.js' }),
-              '2': mockDuplicatedFile({ key: 'foo:test2.js' }),
-            },
-          },
-        },
-        {
-          component: mockSourceViewerFile('test2.js', 'foo'),
-          lines: times(50, (n) =>
-            mockSourceLine({
-              line: n,
-              code: `\u003cspan class\u003d"cd"\u003eLine ${n}\u003c/span\u003e`,
-            })
-          ),
-        },
-        {
-          component: mockSourceViewerFile('empty.js', 'foo'),
-          lines: [],
-        },
-        {
-          component: mockSourceViewerFile('huge.js', 'foo'),
-          lines: times(200, (n) =>
-            mockSourceLine({
-              line: n,
-              code: `\u003cspan class\u003d"cd"\u003eLine ${n}\u003c/span\u003e`,
-            })
-          ),
-        },
-        {
-          component: mockSourceViewerFile('testSymb.tsx', 'foo'),
-          lines: times(20, (n) =>
-            mockSourceLine({
-              line: n,
-              code: '  <span class="sym-35 sym">symbole</span>',
-            })
-          ),
-        },
-      ] as SourceFile[]);
+  constructor(components?: ComponentTree[], sourceFiles?: SourceFile[], measures?: MeasureRecords) {
+    this.defaultComponents = components || [mockFullComponentTree()];
+    this.defaultSourceFiles = sourceFiles || mockFullSourceViewerFileList();
+    const issueList = mockIssuesList();
+    this.defaultMeasures =
+      measures ||
+      this.defaultComponents.reduce(
+        (acc, tree) => ({ ...acc, ...mockFullMeasureData(tree, issueList) }),
+        {}
+      );
 
     this.components = cloneDeep(this.defaultComponents);
     this.sourceFiles = cloneDeep(this.defaultSourceFiles);
+    this.measures = cloneDeep(this.defaultMeasures);
 
     jest.mocked(getComponentTree).mockImplementation(this.handleGetComponentTree);
     jest.mocked(getChildren).mockImplementation(this.handleGetChildren);
@@ -398,27 +95,34 @@ export default class ComponentsServiceMock {
     jest.mocked(getDuplications).mockImplementation(this.handleGetDuplications);
     jest.mocked(getSources).mockImplementation(this.handleGetSources);
     jest.mocked(changeKey).mockImplementation(this.handleChangeKey);
+    jest.mocked(getComponentLeaves).mockImplementation(this.handleGetComponentLeaves);
+    jest.mocked(getBreadcrumbs).mockImplementation(this.handleGetBreadcrumbs);
+    jest.mocked(setProjectTags).mockImplementation(this.handleSetProjectTags);
+    jest.mocked(setApplicationTags).mockImplementation(this.handleSetApplicationTags);
   }
 
-  findComponentTree = (key: string, from?: ComponentTree): ComponentTree | undefined => {
-    const recurse = (node: ComponentTree): ComponentTree | undefined => {
+  findComponentTree = (key: string, from?: ComponentTree) => {
+    let tree: ComponentTree | undefined;
+    const recurse = (node: ComponentTree): boolean => {
       if (node.component.key === key) {
-        return node;
+        tree = node;
+        return true;
       }
-      return node.children.find((child) => recurse(child));
+      return node.children.some((child) => recurse(child));
     };
 
-    if (from === undefined) {
-      for (let i = 0, len = this.components.length; i < len; i++) {
-        const tree = recurse(this.components[i]);
-        if (tree) {
-          return tree;
-        }
-      }
-      throw new Error(`Couldn't find component tree for key ${key}`);
+    if (from !== undefined) {
+      recurse(from);
+      return tree;
     }
 
-    return recurse(from);
+    for (let i = 0, len = this.components.length; i < len; i++) {
+      if (recurse(this.components[i])) {
+        return tree;
+      }
+    }
+
+    throw new Error(`Couldn't find component tree for key ${key}`);
   };
 
   findSourceFile = (key: string): SourceFile => {
@@ -438,6 +142,10 @@ export default class ComponentsServiceMock {
       this.components = [];
     }
     this.components.push(componentTree);
+  };
+
+  registerComponentMeasures = (measures: MeasureRecords) => {
+    this.measures = measures;
   };
 
   setFailLoadingComponentStatus = (status: HttpStatus.Forbidden | HttpStatus.NotFound) => {
@@ -499,6 +207,7 @@ export default class ComponentsServiceMock {
   reset = () => {
     this.components = cloneDeep(this.defaultComponents);
     this.sourceFiles = cloneDeep(this.defaultSourceFiles);
+    this.measures = cloneDeep(this.defaultMeasures);
   };
 
   handleGetChildren = (
@@ -517,7 +226,7 @@ export default class ComponentsServiceMock {
   handleGetComponentTree = (
     strategy: string,
     key: string,
-    _metrics: string[] = [],
+    metricKeys: string[] = [],
     { p = 1, ps = 100 }: RequestData = {}
   ): Promise<{
     baseComponent: ComponentMeasure;
@@ -542,7 +251,9 @@ export default class ComponentsServiceMock {
 
     const componentsMeasures: ComponentMeasure[] = components.map((c) => {
       return {
-        measures: this.findComponentTree(c.key, base)?.measures,
+        measures: metricKeys
+          .map((metric) => this.measures[c.key] && this.measures[c.key][metric])
+          .filter(isDefined),
         ...pick(c, ['analysisDate', 'key', 'name', 'qualifier']),
       };
     });
@@ -550,7 +261,7 @@ export default class ComponentsServiceMock {
     return this.reply({
       baseComponent: base.component,
       components: componentsMeasures.slice(ps * (p - 1), ps * (p - 1) + ps),
-      metrics: [],
+      metrics: metricKeys.map((metric) => DEFAULT_METRICS[metric] ?? mockMetric({ key: metric })),
       paging: {
         pageSize: ps,
         pageIndex: p,
@@ -597,7 +308,10 @@ export default class ComponentsServiceMock {
     const tree = this.findComponentTree(data.component);
     if (tree) {
       const { component, ancestors } = tree;
-      return this.reply({ component, ancestors });
+      return this.reply({ component, ancestors } as {
+        component: ComponentRaw;
+        ancestors: ComponentRaw[];
+      });
     }
     throw new Error(`Couldn't find component with key ${data.component}`);
   };
@@ -636,7 +350,48 @@ export default class ComponentsServiceMock {
     return Promise.reject({ status: 404, message: 'Component not found' });
   };
 
-  reply<T>(response: T): Promise<T> {
-    return Promise.resolve(cloneDeep(response));
+  handleGetComponentLeaves = (
+    component: string,
+    metrics: string[] = [],
+    data: RequestData = {}
+  ): Promise<{
+    baseComponent: ComponentMeasure;
+    components: ComponentMeasure[];
+    metrics: Metric[];
+    paging: Paging;
+  }> => {
+    return this.handleGetComponentTree('leaves', component, metrics, data);
+  };
+
+  handleGetBreadcrumbs = ({ component: key }: { component: string } & BranchParameters) => {
+    const base = this.findComponentTree(key);
+    if (base === undefined) {
+      return Promise.reject({
+        errors: [{ msg: `No component has been found for id ${key}` }],
+      });
+    }
+    return this.reply([...(base.ancestors as ComponentRaw[]), base.component as ComponentRaw]);
+  };
+
+  handleSetProjectTags: typeof setProjectTags = ({ project, tags }) => {
+    const base = this.findComponentTree(project);
+    if (base !== undefined) {
+      base.component.tags = tags.split(',');
+    }
+    return this.reply();
+  };
+
+  handleSetApplicationTags: typeof setApplicationTags = ({ application, tags }) => {
+    const base = this.findComponentTree(application);
+    if (base !== undefined) {
+      base.component.tags = tags.split(',');
+    }
+    return this.reply();
+  };
+
+  reply<T>(): Promise<void>;
+  reply<T>(response: T): Promise<T>;
+  reply<T>(response?: T): Promise<T | void> {
+    return Promise.resolve(response ? cloneDeep(response) : undefined);
   }
 }

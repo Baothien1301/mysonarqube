@@ -38,7 +38,14 @@ import GlobalNav from './nav/global/GlobalNav';
 import PromotionNotification from './promotion-notification/PromotionNotification';
 import UpdateNotification from './update-notification/UpdateNotification';
 
-const TEMP_PAGELIST_WITH_NEW_BACKGROUND = ['/dashboard'];
+const TEMP_PAGELIST_WITH_NEW_BACKGROUND = [
+  '/dashboard',
+  '/security_hotspots',
+  '/component_measures',
+  '/project/issues',
+  '/project/activity',
+  '/code',
+];
 
 export default function GlobalContainer() {
   // it is important to pass `location` down to `GlobalNav` to trigger render on url change
@@ -65,7 +72,7 @@ export default function GlobalContainer() {
                           <MetricsContextProvider>
                             <SystemAnnouncement />
                             <IndexationNotification />
-                            <UpdateNotification dismissable={true} />
+                            <UpdateNotification dismissable />
                             <GlobalNav location={location} />
                             <Outlet />
                           </MetricsContextProvider>

@@ -19,7 +19,6 @@
  */
 package org.sonar.db.project;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -30,6 +29,7 @@ import org.sonar.db.DbSession;
 import org.sonar.db.audit.AuditPersister;
 import org.sonar.db.audit.model.ComponentNewValue;
 
+import static java.util.Collections.emptyList;
 import static org.sonar.db.DatabaseUtils.executeLargeInputs;
 
 public class ProjectDao implements Dao {
@@ -70,14 +70,14 @@ public class ProjectDao implements Dao {
 
   public List<ProjectDto> selectProjectsByKeys(DbSession session, Set<String> keys) {
     if (keys.isEmpty()) {
-      return Collections.emptyList();
+      return emptyList();
     }
     return mapper(session).selectProjectsByKeys(keys);
   }
 
   public List<ProjectDto> selectApplicationsByKeys(DbSession session, Set<String> keys) {
     if (keys.isEmpty()) {
-      return Collections.emptyList();
+      return emptyList();
     }
 
     return executeLargeInputs(keys, partition -> mapper(session).selectApplicationsByKeys(partition));
@@ -101,7 +101,7 @@ public class ProjectDao implements Dao {
 
   public List<ProjectDto> selectByUuids(DbSession session, Set<String> uuids) {
     if (uuids.isEmpty()) {
-      return Collections.emptyList();
+      return emptyList();
     }
     return executeLargeInputs(uuids, partition -> mapper(session).selectByUuids(partition));
   }

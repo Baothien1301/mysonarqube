@@ -17,114 +17,396 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-import { screen, within } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { Route } from 'react-router-dom';
-import selectEvent from 'react-select-event';
-import { byDisplayValue, byRole, byTestId, byText } from 'testing-library-selector';
+import CodingRulesServiceMock from '../../../api/mocks/CodingRulesServiceMock';
 import SecurityHotspotServiceMock from '../../../api/mocks/SecurityHotspotServiceMock';
 import { getSecurityHotspots, setSecurityHotspotStatus } from '../../../api/security-hotspots';
 import { searchUsers } from '../../../api/users';
 import { mockBranch, mockMainBranch } from '../../../helpers/mocks/branch-like';
 import { mockComponent } from '../../../helpers/mocks/component';
+import { openHotspot, probeSonarLintServers } from '../../../helpers/sonarlint';
+import { get, save } from '../../../helpers/storage';
 import { mockLoggedInUser } from '../../../helpers/testMocks';
 import { renderAppWithComponentContext } from '../../../helpers/testReactTestingUtils';
+import { byDisplayValue, byRole, byTestId, byText } from '../../../helpers/testSelector';
 import { ComponentContextShape } from '../../../types/component';
 import SecurityHotspotsApp from '../SecurityHotspotsApp';
+import useScrollDownCompress from '../hooks/useScrollDownCompress';
 
 jest.mock('../../../api/measures');
 jest.mock('../../../api/security-hotspots');
-jest.mock('../../../api/rules');
 jest.mock('../../../api/components');
 jest.mock('../../../helpers/security-standard');
 jest.mock('../../../api/users');
 
+jest.mock('../../../api/rules');
+jest.mock('../../../api/quality-profiles');
+jest.mock('../../../api/issues');
+jest.mock('../hooks/useScrollDownCompress');
+jest.mock('../../../helpers/sonarlint', () => ({
+  openHotspot: jest.fn().mockResolvedValue(null),
+  probeSonarLintServers: jest.fn().mockResolvedValue([
+    {
+      port: 1234,
+      ideName: 'VIM',
+      description: 'I use VIM',
+    },
+  ]),
+}));
+jest.mock('.../../../helpers/storage');
+
 const ui = {
-  inputAssignee: byRole('searchbox', { name: 'hotspots.assignee.select_user' }),
-  selectStatusButton: byRole('button', {
-    name: 'hotspots.status.select_status',
-  }),
-  editAssigneeButton: byRole('button', {
-    name: 'hotspots.assignee.change_user',
-  }),
-  filterAssigneeToMe: byRole('button', {
+  inputAssignee: byRole('combobox', { name: 'search.search_for_users' }),
+  filterAssigneeToMe: byRole('checkbox', {
     name: 'hotspot.filters.assignee.assigned_to_me',
   }),
-  filterSeeAll: byRole('button', { name: 'hotspot.filters.assignee.all' }),
+  clearFilters: byRole('menuitem', { name: 'hotspot.filters.clear' }),
+  filterDropdown: byRole('button', { name: 'hotspot.filters.title' }),
+  filterToReview: byRole('radio', { name: 'hotspot.filters.status.to_review' }),
   filterByStatus: byRole('combobox', { name: 'hotspot.filters.status' }),
   filterByPeriod: byRole('combobox', { name: 'hotspot.filters.period' }),
+  filterNewCode: byRole('checkbox', { name: 'hotspot.filters.period.since_leak_period' }),
   noHotspotForFilter: byText('hotspots.no_hotspots_for_filters.title'),
-  selectStatus: byRole('button', { name: 'hotspots.status.select_status' }),
+  reviewButton: byRole('button', { name: 'hotspots.status.review' }),
   toReviewStatus: byText('hotspots.status_option.TO_REVIEW'),
   changeStatus: byRole('button', { name: 'hotspots.status.change_status' }),
   hotspotTitle: (name: string | RegExp) => byRole('heading', { name }),
   hotspotStatus: byRole('heading', { name: 'status: hotspots.status_option.FIXED' }),
-  hotpostListTitle: byRole('heading', { name: 'hotspots.list_title.TO_REVIEW.4' }),
+  hotpostListTitle: byText('hotspots.list_title'),
   hotspotCommentBox: byRole('textbox', { name: 'hotspots.comment.field' }),
   commentSubmitButton: byRole('button', { name: 'hotspots.comment.submit' }),
   commentEditButton: byRole('button', { name: 'issue.comment.edit' }),
   commentDeleteButton: byRole('button', { name: 'issue.comment.delete' }),
   textboxWithText: (value: string) => byDisplayValue(value),
-  activeAssignee: byTestId('assignee-name'),
-  successGlobalMessage: byRole('status'),
+  activeAssignee: byRole('combobox', { name: 'hotspots.assignee.change_user' }),
+  successGlobalMessage: byTestId('global-message__SUCCESS'),
   currentUserSelectionItem: byText('foo'),
   panel: byTestId('security-hotspot-test'),
+  codeTab: byRole('tab', { name: /hotspots.tabs.code/ }),
+  codeContent: byRole('table'),
+  riskTab: byRole('tab', { name: /hotspots.tabs.risk_description/ }),
+  riskContent: byText('Root cause'),
+  vulnerabilityTab: byRole('tab', { name: /hotspots.tabs.vulnerability_description/ }),
+  vulnerabilityContent: byText('Assess'),
+  fixTab: byRole('tab', { name: /hotspots.tabs.fix_recommendations/ }),
+  fixContent: byText('This is how to fix'),
+  showAllHotspotLink: byRole('link', { name: 'hotspot.filters.show_all' }),
+  activityTab: byRole('tab', { name: /hotspots.tabs.activity/ }),
+  addCommentButton: byRole('button', { name: 'hotspots.status.add_comment' }),
+  openInIDEButton: byRole('button', { name: 'hotspots.open_in_ide.open' }),
+  continueReviewingButton: byRole('button', { name: 'hotspots.continue_to_next_hotspot' }),
+  seeStatusHotspots: byRole('button', { name: /hotspots.see_x_hotspots/ }),
+  dontShowSuccessDialogCheckbox: byRole('checkbox', {
+    name: 'hotspots.success_dialog.do_not_show',
+  }),
 };
 
-let handler: SecurityHotspotServiceMock;
+const originalScrollTo = window.scrollTo;
+const hotspotsHandler = new SecurityHotspotServiceMock();
+const rulesHandles = new CodingRulesServiceMock();
+let showDialog = 'true';
+
+jest.mocked(save).mockImplementation((_key: string, value?: string) => {
+  if (value) {
+    showDialog = value;
+  }
+});
+jest.mocked(get).mockImplementation(() => showDialog);
+
+beforeAll(() => {
+  Object.defineProperty(window, 'scrollTo', {
+    writable: true,
+    value: () => {
+      /* noop */
+    },
+  });
+});
+
+afterAll(() => {
+  Object.defineProperty(window, 'scrollTo', {
+    writable: true,
+    value: originalScrollTo,
+  });
+});
 
 beforeEach(() => {
-  handler = new SecurityHotspotServiceMock();
+  jest.mocked(useScrollDownCompress).mockImplementation(() => ({
+    isScrolled: false,
+    isCompressed: false,
+    resetScrollDownCompress: jest.fn(),
+  }));
 });
 
 afterEach(() => {
-  handler.reset();
+  hotspotsHandler.reset();
+  rulesHandles.reset();
 });
 
-it('should navigate when comming from SonarLint', async () => {
-  // On main branch
-  const rtl = renderSecurityHotspotsApp(
-    'security_hotspots?id=guillaume-peoch-sonarsource_benflix_AYGpXq2bd8qy4i0eO9ed&hotspots=test-1'
-  );
+describe('rendering', () => {
+  it('should render code variants correctly', async () => {
+    renderSecurityHotspotsApp(
+      'security_hotspots?id=guillaume-peoch-sonarsource_benflix_AYGpXq2bd8qy4i0eO9ed&hotspots=test-2'
+    );
+    expect(await screen.findAllByText('variant 1, variant 2')).toHaveLength(2);
+  });
 
-  expect(await ui.hotspotTitle(/'3' is a magic number./).find()).toBeInTheDocument();
+  it('should render the simple list when a file is selected', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp(
+      `security_hotspots?id=guillaume-peoch-sonarsource_benflix_AYGpXq2bd8qy4i0eO9ed&files=src%2Findex.js`
+    );
 
-  // On specific branch
-  rtl.unmount();
-  renderSecurityHotspotsApp(
-    'security_hotspots?id=guillaume-peoch-sonarsource_benflix_AYGpXq2bd8qy4i0eO9ed&hotspots=b1-test-1&branch=b1',
-    { branchLike: mockBranch({ name: 'b1' }) }
-  );
+    expect(ui.filterDropdown.query()).not.toBeInTheDocument();
+    expect(ui.filterToReview.query()).not.toBeInTheDocument();
 
-  expect(await ui.hotspotTitle(/'F' is a magic number./).find()).toBeInTheDocument();
+    // Drop selection
+    await user.click(ui.showAllHotspotLink.get());
+
+    expect(ui.filterDropdown.get()).toBeInTheDocument();
+    expect(ui.filterToReview.get()).toBeInTheDocument();
+  });
+
+  it('should render hotspot header in sticky mode', async () => {
+    jest.mocked(useScrollDownCompress).mockImplementation(() => ({
+      isScrolled: true,
+      isCompressed: true,
+      resetScrollDownCompress: jest.fn(),
+    }));
+    renderSecurityHotspotsApp();
+
+    expect(await ui.reviewButton.find()).toBeInTheDocument();
+    expect(ui.activeAssignee.query()).not.toBeInTheDocument();
+  });
 });
 
-it('should be able to self-assign a hotspot', async () => {
+describe('CRUD', () => {
+  it('should be able to self-assign a hotspot', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    expect(await ui.activeAssignee.find()).toHaveTextContent('John Doe');
+
+    await user.click(ui.activeAssignee.get());
+    await user.click(ui.currentUserSelectionItem.get());
+
+    expect(ui.successGlobalMessage.get()).toHaveTextContent(`hotspots.assign.success.foo`);
+    expect(ui.activeAssignee.get()).toHaveTextContent('foo');
+  });
+
+  it('should be able to search for a user on the assignee', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    await user.click(await ui.activeAssignee.find());
+    await user.click(ui.inputAssignee.get());
+
+    await act(async () => {
+      await user.keyboard('User');
+    });
+
+    expect(searchUsers).toHaveBeenLastCalledWith({ q: 'User' });
+    await user.keyboard('{Enter}');
+    expect(ui.successGlobalMessage.get()).toHaveTextContent(`hotspots.assign.success.User John`);
+  });
+
+  it('should be able to change the status of a hotspot', async () => {
+    const user = userEvent.setup();
+    const comment = 'COMMENT-TEXT';
+
+    renderSecurityHotspotsApp();
+
+    expect(await ui.reviewButton.find()).toBeInTheDocument();
+
+    await user.click(ui.reviewButton.get());
+    await user.click(ui.toReviewStatus.get());
+
+    await user.click(screen.getByRole('textbox', { name: 'hotspots.status.add_comment_optional' }));
+    await user.keyboard(comment);
+
+    await act(async () => {
+      await user.click(ui.changeStatus.get());
+    });
+
+    expect(ui.continueReviewingButton.get()).toBeInTheDocument();
+    await user.click(ui.continueReviewingButton.get());
+
+    await user.click(ui.activityTab.get());
+    expect(setSecurityHotspotStatus).toHaveBeenLastCalledWith('test-1', {
+      comment: 'COMMENT-TEXT',
+      resolution: undefined,
+      status: 'TO_REVIEW',
+    });
+
+    expect(ui.hotspotStatus.get()).toBeInTheDocument();
+  });
+
+  it('should not be able to change the status if does not have edit permissions', async () => {
+    hotspotsHandler.setHotspotChangeStatusPermission(false);
+    renderSecurityHotspotsApp();
+    expect(await ui.reviewButton.find()).toBeDisabled();
+  });
+
+  it('should be able to add, edit and remove own comments', async () => {
+    const uiComment = {
+      saveButton: byRole('button', { name: 'hotspots.comment.submit' }),
+      deleteButton: byRole('button', { name: 'delete' }),
+    };
+    const user = userEvent.setup();
+    const comment = 'This is a comment from john doe';
+    renderSecurityHotspotsApp();
+
+    await user.click(await ui.activityTab.find());
+    await user.click(ui.addCommentButton.get());
+
+    const commentSection = ui.hotspotCommentBox.get();
+    const submitButton = ui.commentSubmitButton.get();
+
+    // Add a new comment
+    await user.click(commentSection);
+    await user.keyboard(comment);
+    await user.click(submitButton);
+
+    expect(await screen.findByText(comment)).toBeInTheDocument();
+
+    // Edit the comment
+    await user.click(ui.commentEditButton.get());
+    await user.click(ui.textboxWithText(comment).get());
+    await user.keyboard(' test');
+    await user.click(uiComment.saveButton.get());
+
+    expect(await byText(`${comment} test`).find()).toBeInTheDocument();
+
+    // Delete the comment
+    await user.click(ui.commentDeleteButton.get());
+    await user.click(uiComment.deleteButton.get());
+
+    expect(screen.queryByText(`${comment} test`)).not.toBeInTheDocument();
+  });
+});
+
+describe('navigation', () => {
+  it('should correctly handle tabs', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    await user.click(await ui.riskTab.find());
+    expect(ui.riskContent.get()).toBeInTheDocument();
+
+    await user.click(ui.vulnerabilityTab.get());
+    expect(ui.vulnerabilityContent.get()).toBeInTheDocument();
+
+    await user.click(ui.fixTab.get());
+    expect(ui.fixContent.get()).toBeInTheDocument();
+
+    await user.click(ui.codeTab.get());
+    expect(ui.codeContent.get()).toBeInTheDocument();
+  });
+
+  it('should be able to navigate the hotspot list with keyboard', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    await user.keyboard('{ArrowDown}');
+    expect(await ui.hotspotTitle(/'2' is a magic number./).find()).toBeInTheDocument();
+    await user.keyboard('{ArrowUp}');
+    expect(await ui.hotspotTitle(/'3' is a magic number./).find()).toBeInTheDocument();
+  });
+
+  it('should be able to navigate between tabs with keyboard', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    await act(() => user.keyboard('{ArrowLeft}'));
+    expect(ui.codeContent.get()).toBeInTheDocument();
+
+    await act(() => user.keyboard('{ArrowRight}'));
+    expect(ui.riskContent.get()).toBeInTheDocument();
+
+    await act(() => user.keyboard('{ArrowRight}'));
+    expect(ui.vulnerabilityContent.get()).toBeInTheDocument();
+
+    await act(() => user.keyboard('{ArrowRight}'));
+    expect(ui.fixContent.get()).toBeInTheDocument();
+
+    await act(() => user.keyboard('{ArrowRight}'));
+    expect(ui.addCommentButton.get()).toBeInTheDocument();
+
+    await act(() => user.keyboard('{ArrowRight}'));
+    expect(ui.addCommentButton.get()).toBeInTheDocument();
+  });
+
+  it('should navigate when coming from SonarLint', async () => {
+    // On main branch
+    const rtl = renderSecurityHotspotsApp(
+      'security_hotspots?id=guillaume-peoch-sonarsource_benflix_AYGpXq2bd8qy4i0eO9ed&hotspots=test-1'
+    );
+
+    expect(await ui.hotspotTitle(/'3' is a magic number./).find()).toBeInTheDocument();
+
+    // On specific branch
+    rtl.unmount();
+    renderSecurityHotspotsApp(
+      'security_hotspots?id=guillaume-peoch-sonarsource_benflix_AYGpXq2bd8qy4i0eO9ed&hotspots=b1-test-1&branch=b1',
+      { branchLike: mockBranch({ name: 'b1' }) }
+    );
+
+    expect(await ui.hotspotTitle(/'F' is a magic number./).find()).toBeInTheDocument();
+  });
+
+  it('should allow to open a hotspot in an IDE', async () => {
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    await user.click(await ui.openInIDEButton.find());
+    expect(openHotspot).toHaveBeenCalledWith(1234, 'hotspot-component', 'test-1');
+  });
+
+  it('should allow to choose in which IDE to open a hotspot', async () => {
+    jest.mocked(probeSonarLintServers).mockResolvedValueOnce([
+      {
+        port: 1234,
+        ideName: 'VIM',
+        description: 'I use VIM',
+      },
+      {
+        port: 4567,
+        ideName: 'MS Paint',
+        description: 'I use MS Paint cuz Ima boss',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderSecurityHotspotsApp();
+
+    await user.click(await ui.openInIDEButton.find());
+    await user.click(screen.getByRole('menuitem', { name: /MS Paint/ }));
+    expect(openHotspot).toHaveBeenCalledWith(4567, 'hotspot-component', 'test-1');
+  });
+});
+
+it('after status change, should be able to disable success dialog show', async () => {
   const user = userEvent.setup();
+
   renderSecurityHotspotsApp();
+  await user.click(await ui.reviewButton.find());
+  await user.click(ui.toReviewStatus.get());
+  await act(async () => {
+    await user.click(ui.changeStatus.get());
+  });
 
-  expect(await ui.activeAssignee.find()).toHaveTextContent('John Doe');
+  await user.click(ui.dontShowSuccessDialogCheckbox.get());
+  expect(ui.dontShowSuccessDialogCheckbox.get()).toBeChecked();
+  await user.click(ui.continueReviewingButton.get());
 
-  await user.click(ui.editAssigneeButton.get());
-  await user.click(ui.currentUserSelectionItem.get());
-
-  expect(ui.successGlobalMessage.get()).toHaveTextContent(`hotspots.assign.success.foo`);
-  expect(ui.activeAssignee.get()).toHaveTextContent('foo');
-});
-
-it('should be able to search for a user on the assignee', async () => {
-  const user = userEvent.setup();
-  renderSecurityHotspotsApp();
-
-  await user.click(await ui.editAssigneeButton.find());
-  await user.click(ui.inputAssignee.get());
-
-  await user.keyboard('User');
-
-  expect(searchUsers).toHaveBeenLastCalledWith({ q: 'User' });
-  await user.keyboard('{ArrowDown}{Enter}');
-  expect(ui.successGlobalMessage.get()).toHaveTextContent(`hotspots.assign.success.User John`);
+  // Repeat status change and verify that dialog is not shown
+  await user.click(await ui.reviewButton.find());
+  await user.click(ui.toReviewStatus.get());
+  await act(async () => {
+    await user.click(ui.changeStatus.get());
+  });
+  expect(ui.continueReviewingButton.query()).not.toBeInTheDocument();
 });
 
 it('should be able to filter the hotspot list', async () => {
@@ -133,9 +415,11 @@ it('should be able to filter the hotspot list', async () => {
 
   expect(await ui.hotpostListTitle.find()).toBeInTheDocument();
 
+  await user.click(ui.filterDropdown.get());
   await user.click(ui.filterAssigneeToMe.get());
   expect(ui.noHotspotForFilter.get()).toBeInTheDocument();
-  await selectEvent.select(ui.filterByStatus.get(), ['hotspot.filters.status.to_review']);
+
+  await user.click(ui.filterToReview.get());
 
   expect(getSecurityHotspots).toHaveBeenLastCalledWith({
     inNewCodePeriod: false,
@@ -147,7 +431,8 @@ it('should be able to filter the hotspot list', async () => {
     status: 'TO_REVIEW',
   });
 
-  await selectEvent.select(ui.filterByPeriod.get(), ['hotspot.filters.period.since_leak_period']);
+  await user.click(ui.filterDropdown.get());
+  await user.click(ui.filterNewCode.get());
 
   expect(getSecurityHotspots).toHaveBeenLastCalledWith({
     inNewCodePeriod: true,
@@ -159,106 +444,10 @@ it('should be able to filter the hotspot list', async () => {
     status: 'TO_REVIEW',
   });
 
-  await user.click(ui.filterSeeAll.get());
+  await user.click(ui.filterDropdown.get());
+  await user.click(ui.clearFilters.get());
 
   expect(ui.hotpostListTitle.get()).toBeInTheDocument();
-});
-
-it('should be able to navigate the hotspot list with keyboard', async () => {
-  const user = userEvent.setup();
-  renderSecurityHotspotsApp();
-
-  await user.keyboard('{ArrowDown}');
-  expect(await ui.hotspotTitle(/'2' is a magic number./).find()).toBeInTheDocument();
-  await user.keyboard('{ArrowUp}');
-  expect(await ui.hotspotTitle(/'3' is a magic number./).find()).toBeInTheDocument();
-});
-
-it('should be able to change the status of a hotspot', async () => {
-  const user = userEvent.setup();
-  const comment = 'COMMENT-TEXT';
-
-  renderSecurityHotspotsApp();
-
-  expect(await ui.selectStatus.find()).toBeInTheDocument();
-
-  await user.click(ui.selectStatus.get());
-  await user.click(ui.toReviewStatus.get());
-
-  await user.click(screen.getByRole('textbox', { name: 'hotspots.status.add_comment' }));
-  await user.keyboard(comment);
-
-  await user.click(ui.changeStatus.get());
-
-  expect(setSecurityHotspotStatus).toHaveBeenLastCalledWith('test-1', {
-    comment: 'COMMENT-TEXT',
-    resolution: undefined,
-    status: 'TO_REVIEW',
-  });
-
-  expect(ui.hotspotStatus.get()).toBeInTheDocument();
-});
-
-it('should not be able to change the status if does not have edit permissions', async () => {
-  handler.setHotspotChangeStatusPermission(false);
-  renderSecurityHotspotsApp();
-  expect(await ui.selectStatus.find()).toBeDisabled();
-});
-
-it('should remember the comment when toggling change status panel for the same security hotspot', async () => {
-  const user = userEvent.setup();
-  renderSecurityHotspotsApp();
-
-  await user.click(await ui.selectStatusButton.find());
-
-  const comment = 'This is a comment';
-
-  const commentSection = within(ui.panel.get()).getByRole('textbox');
-  await user.click(commentSection);
-  await user.keyboard(comment);
-
-  // Close the panel
-  await user.keyboard('{Escape}');
-  // Check panel is closed
-  expect(ui.panel.query()).not.toBeInTheDocument();
-
-  await user.click(ui.selectStatusButton.get());
-
-  expect(await screen.findByText(comment)).toBeInTheDocument();
-});
-
-it('should be able to add, edit and remove own comments', async () => {
-  const uiComment = {
-    saveButton: byRole('button', { name: 'save' }),
-    deleteButton: byRole('button', { name: 'delete' }),
-  };
-  const user = userEvent.setup();
-  const comment = 'This is a comment from john doe';
-  renderSecurityHotspotsApp();
-
-  const commentSection = await ui.hotspotCommentBox.find();
-  const submitButton = ui.commentSubmitButton.get();
-
-  // Add a new comment
-  await user.click(commentSection);
-  await user.keyboard(comment);
-  await user.click(submitButton);
-
-  expect(await screen.findByText(comment)).toBeInTheDocument();
-
-  // Edit the comment
-  await user.click(ui.commentEditButton.get());
-  await user.click(ui.textboxWithText(comment).get());
-  await user.keyboard(' test');
-  await user.click(uiComment.saveButton.get());
-
-  expect(await byText(`${comment} test`).find()).toBeInTheDocument();
-
-  // Delete the comment
-  await user.click(ui.commentDeleteButton.get());
-  await user.click(uiComment.deleteButton.get());
-
-  expect(screen.queryByText(`${comment} test`)).not.toBeInTheDocument();
 });
 
 function renderSecurityHotspotsApp(

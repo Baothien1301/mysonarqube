@@ -20,8 +20,8 @@
 package org.sonar.ce.task.projectanalysis.taskprocessor;
 
 import java.util.Optional;
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonar.ce.task.CeTask;
 import org.sonar.ce.task.step.ComputationStep;
 import org.sonar.db.DbClient;
@@ -29,7 +29,7 @@ import org.sonar.db.DbSession;
 import org.sonar.db.component.ComponentDto;
 
 public final class IgnoreOrphanBranchStep implements ComputationStep {
-  private static final Logger LOG = Loggers.get(IgnoreOrphanBranchStep.class);
+  private static final Logger LOG = LoggerFactory.getLogger(IgnoreOrphanBranchStep.class);
   private final CeTask ceTask;
   private final DbClient dbClient;
 
@@ -40,11 +40,11 @@ public final class IgnoreOrphanBranchStep implements ComputationStep {
 
   @Override
   public void execute(Context context) {
-    String mainComponentUuid = ceTask.getMainComponent().orElseThrow(() -> new UnsupportedOperationException("main component not found in task")).getUuid();
+    String entityUuid = ceTask.getEntity().orElseThrow(() -> new UnsupportedOperationException("entity not found in task")).getUuid();
     String componentUuid = ceTask.getComponent().orElseThrow(() -> new UnsupportedOperationException("component not found in task")).getUuid();
 
     try (DbSession dbSession = dbClient.openSession(false)) {
-      Optional<ComponentDto> componentDto = dbClient.componentDao().selectByUuid(dbSession, mainComponentUuid);
+      Optional<ComponentDto> componentDto = dbClient.componentDao().selectByUuid(dbSession, entityUuid);
       if(!componentDto.isPresent()){
         LOG.info("reindexation task has been trigger on an orphan branch. removing any exclude_from_purge flag, and skip the indexation");
         dbClient.branchDao().updateExcludeFromPurge(dbSession, componentUuid, false);

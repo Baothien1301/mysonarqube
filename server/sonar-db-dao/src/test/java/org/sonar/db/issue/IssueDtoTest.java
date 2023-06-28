@@ -19,6 +19,7 @@
  */
 package org.sonar.db.issue;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -47,7 +48,7 @@ public class IssueDtoTest {
     .build();
 
   @Test
-  public void toDefaultIssue_set_issue_fields() {
+  public void toDefaultIssue_ShouldSetIssueFields() throws InvalidProtocolBufferException {
     Date createdAt = DateUtils.addDays(new Date(), -5);
     Date updatedAt = DateUtils.addDays(new Date(), -3);
     Date closedAt = DateUtils.addDays(new Date(), -1);
@@ -78,32 +79,38 @@ public class IssueDtoTest {
       .setIssueCloseDate(closedAt)
       .setRuleDescriptionContextKey(TEST_CONTEXT_KEY);
 
+    DefaultIssue expected = new DefaultIssue()
+      .setKey("100")
+      .setType(RuleType.VULNERABILITY)
+      .setRuleKey(RuleKey.of("java", "AvoidCycle"))
+      .setLanguage("xoo")
+      .setComponentUuid("CDEF")
+      .setProjectUuid("GHIJ")
+      .setComponentKey("org.sonar.sample:Sample")
+      .setProjectKey("org.sonar.sample")
+      .setStatus(Issue.STATUS_CLOSED)
+      .setResolution(Issue.RESOLUTION_FALSE_POSITIVE)
+      .setGap(15.0)
+      .setEffort(Duration.create(10L))
+      .setLine(6)
+      .setSeverity("BLOCKER")
+      .setMessage("message")
+      .setMessageFormattings(DbIssues.MessageFormattings.parseFrom(EXAMPLE_MESSAGE_FORMATTINGS.toByteArray()))
+      .setManualSeverity(true)
+      .setAssigneeUuid("perceval")
+      .setAuthorLogin("pierre")
+      .setCreationDate(DateUtils.truncate(createdAt, Calendar.SECOND))
+      .setUpdateDate(DateUtils.truncate(updatedAt, Calendar.SECOND))
+      .setCloseDate(DateUtils.truncate(closedAt, Calendar.SECOND))
+      .setNew(false)
+      .setIsNewCodeReferenceIssue(false)
+      .setRuleDescriptionContextKey(TEST_CONTEXT_KEY)
+      .setCodeVariants(Set.of())
+      .setTags(Set.of());
+
     DefaultIssue issue = dto.toDefaultIssue();
-    assertThat(issue.key()).isEqualTo("100");
-    assertThat(issue.type()).isEqualTo(RuleType.VULNERABILITY);
-    assertThat(issue.ruleKey()).hasToString("java:AvoidCycle");
-    assertThat(issue.language()).isEqualTo("xoo");
-    assertThat(issue.componentUuid()).isEqualTo("CDEF");
-    assertThat(issue.projectUuid()).isEqualTo("GHIJ");
-    assertThat(issue.componentKey()).isEqualTo("org.sonar.sample:Sample");
-    assertThat(issue.projectKey()).isEqualTo("org.sonar.sample");
-    assertThat(issue.status()).isEqualTo(Issue.STATUS_CLOSED);
-    assertThat(issue.resolution()).isEqualTo(Issue.RESOLUTION_FALSE_POSITIVE);
-    assertThat(issue.gap()).isEqualTo(15.0);
-    assertThat(issue.effort()).isEqualTo(Duration.create(10L));
-    assertThat(issue.line()).isEqualTo(6);
-    assertThat(issue.severity()).isEqualTo("BLOCKER");
-    assertThat(issue.message()).isEqualTo("message");
-    assertThat((DbIssues.MessageFormattings) issue.getMessageFormattings()).isEqualTo(EXAMPLE_MESSAGE_FORMATTINGS);
-    assertThat(issue.manualSeverity()).isTrue();
-    assertThat(issue.assignee()).isEqualTo("perceval");
-    assertThat(issue.authorLogin()).isEqualTo("pierre");
-    assertThat(issue.creationDate()).isEqualTo(DateUtils.truncate(createdAt, Calendar.SECOND));
-    assertThat(issue.updateDate()).isEqualTo(DateUtils.truncate(updatedAt, Calendar.SECOND));
-    assertThat(issue.closeDate()).isEqualTo(DateUtils.truncate(closedAt, Calendar.SECOND));
-    assertThat(issue.isNew()).isFalse();
-    assertThat(issue.isNewCodeReferenceIssue()).isFalse();
-    assertThat(issue.getRuleDescriptionContextKey()).contains(TEST_CONTEXT_KEY);
+
+    assertThat(issue).usingRecursiveComparison().isEqualTo(expected);
   }
 
   @Test
@@ -145,6 +152,39 @@ public class IssueDtoTest {
   }
 
   @Test
+  public void setCodeVariants_shouldReturnCodeVariants() {
+    IssueDto dto = new IssueDto();
+    assertThat(dto.getCodeVariants()).isEmpty();
+    assertThat(dto.getCodeVariantsString()).isNull();
+
+    dto.setCodeVariants(Arrays.asList("variant1", "variant2", "variant3"));
+    assertThat(dto.getCodeVariants()).containsOnly("variant1", "variant2", "variant3");
+    assertThat(dto.getCodeVariantsString()).isEqualTo("variant1,variant2,variant3");
+
+    dto.setCodeVariants(null);
+    assertThat(dto.getCodeVariants()).isEmpty();
+    assertThat(dto.getCodeVariantsString()).isNull();
+
+    dto.setCodeVariants(List.of());
+    assertThat(dto.getCodeVariants()).isEmpty();
+    assertThat(dto.getCodeVariantsString()).isNull();
+  }
+
+  @Test
+  public void setCodeVariantsString_shouldReturnCodeVariants() {
+    IssueDto dto = new IssueDto();
+
+    dto.setCodeVariantsString("variant1, variant2 ,,variant4");
+    assertThat(dto.getCodeVariants()).containsOnly("variant1", "variant2", "variant4");
+
+    dto.setCodeVariantsString(null);
+    assertThat(dto.getCodeVariants()).isEmpty();
+
+    dto.setCodeVariantsString("");
+    assertThat(dto.getCodeVariants()).isEmpty();
+  }
+
+  @Test
   public void toDtoForComputationInsert_givenDefaultIssueWithAllFields_returnFullIssueDto() {
     long now = System.currentTimeMillis();
     Date dateNow = Date.from(new Date(now).toInstant().truncatedTo(ChronoUnit.SECONDS));
@@ -162,8 +202,8 @@ public class IssueDtoTest {
       IssueDto::getGap, IssueDto::getEffort, IssueDto::getResolution, IssueDto::getStatus, IssueDto::getSeverity)
       .containsExactly(1, "message", 1.0, 1L, Issue.RESOLUTION_FALSE_POSITIVE, Issue.STATUS_CLOSED, "BLOCKER");
 
-    assertThat(issueDto).extracting(IssueDto::getTags, IssueDto::getAuthorLogin)
-      .containsExactly(Set.of("todo"), "admin");
+    assertThat(issueDto).extracting(IssueDto::getTags, IssueDto::getCodeVariants, IssueDto::getAuthorLogin)
+      .containsExactly(Set.of("todo"), Set.of("variant1", "variant2"), "admin");
 
     assertThat(issueDto).extracting(IssueDto::isManualSeverity, IssueDto::getChecksum, IssueDto::getAssigneeUuid,
       IssueDto::isExternal, IssueDto::getComponentUuid, IssueDto::getComponentKey,
@@ -193,8 +233,8 @@ public class IssueDtoTest {
       IssueDto::getGap, IssueDto::getEffort, IssueDto::getResolution, IssueDto::getStatus, IssueDto::getSeverity)
       .containsExactly(1, "message", 1.0, 1L, Issue.RESOLUTION_FALSE_POSITIVE, Issue.STATUS_CLOSED, "BLOCKER");
 
-    assertThat(issueDto).extracting(IssueDto::getTags, IssueDto::getAuthorLogin)
-      .containsExactly(Set.of("todo"), "admin");
+    assertThat(issueDto).extracting(IssueDto::getTags, IssueDto::getCodeVariants, IssueDto::getAuthorLogin)
+      .containsExactly(Set.of("todo"), Set.of("variant1", "variant2"), "admin");
 
     assertThat(issueDto).extracting(IssueDto::isManualSeverity, IssueDto::getChecksum, IssueDto::getAssigneeUuid,
       IssueDto::isExternal, IssueDto::getComponentUuid, IssueDto::getComponentKey, IssueDto::getProjectUuid, IssueDto::getProjectKey)
@@ -233,7 +273,8 @@ public class IssueDtoTest {
       .setSelectedAt(dateNow.getTime())
       .setQuickFixAvailable(true)
       .setIsNewCodeReferenceIssue(true)
-      .setRuleDescriptionContextKey(TEST_CONTEXT_KEY);
+      .setRuleDescriptionContextKey(TEST_CONTEXT_KEY)
+      .setCodeVariants(List.of("variant1", "variant2"));
     return defaultIssue;
   }
 }

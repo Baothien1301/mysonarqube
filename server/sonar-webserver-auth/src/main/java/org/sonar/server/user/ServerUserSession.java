@@ -41,8 +41,8 @@ import org.sonar.db.component.BranchDto;
 import org.sonar.db.component.ComponentDto;
 import org.sonar.db.component.ComponentTreeQuery;
 import org.sonar.db.component.ComponentTreeQuery.Strategy;
+import org.sonar.db.entity.EntityDto;
 import org.sonar.db.permission.GlobalPermission;
-import org.sonar.db.project.ProjectDto;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDto;
 
@@ -64,8 +64,8 @@ public class ServerUserSession extends AbstractUserSession {
   @CheckForNull
   private final UserDto userDto;
   private final DbClient dbClient;
-  private final Map<String, String> projectUuidByComponentUuid = new HashMap<>();
-  private final Map<String, Set<String>> permissionsByProjectUuid = new HashMap<>();
+  private final Map<String, String> entityUuidByComponentUuid = new HashMap<>();
+  private final Map<String, Set<String>> permissionsByEntityUuid = new HashMap<>();
 
   private Collection<GroupDto> groups;
   private Boolean isSystemAdministrator;
@@ -146,10 +146,10 @@ public class ServerUserSession extends AbstractUserSession {
   }
 
   @Override
-  protected Optional<String> componentUuidToProjectUuid(String componentUuid) {
-    String projectUuid = projectUuidByComponentUuid.get(componentUuid);
-    if (projectUuid != null) {
-      return of(projectUuid);
+  protected Optional<String> componentUuidToEntityUuid(String componentUuid) {
+    String entityUuid = entityUuidByComponentUuid.get(componentUuid);
+    if (entityUuid != null) {
+      return of(entityUuid);
     }
     try (DbSession dbSession = dbClient.openSession(false)) {
       Optional<ComponentDto> component = dbClient.componentDao().selectByUuid(dbSession, componentUuid);
@@ -157,21 +157,21 @@ public class ServerUserSession extends AbstractUserSession {
         return Optional.empty();
       }
       // permissions must be checked on the project
-      projectUuid = getProjectUuid(dbSession, component.get());
-      projectUuidByComponentUuid.put(componentUuid, projectUuid);
-      return of(projectUuid);
+      entityUuid = getEntityUuid(dbSession, component.get());
+      entityUuidByComponentUuid.put(componentUuid, entityUuid);
+      return of(entityUuid);
     }
   }
 
   @Override
-  protected boolean hasProjectUuidPermission(String permission, String projectUuid) {
-    return hasPermission(permission, projectUuid);
+  protected boolean hasEntityUuidPermission(String permission, String entityUuid) {
+    return hasPermission(permission, entityUuid);
   }
 
   @Override
   protected boolean hasChildProjectsPermission(String permission, String applicationUuid) {
     Set<String> childProjectUuids = loadChildProjectUuids(applicationUuid);
-    Set<String> projectsWithPermission = keepProjectsUuidsByPermission(permission, childProjectUuids);
+    Set<String> projectsWithPermission = keepEntitiesUuidsByPermission(permission, childProjectUuids);
     return projectsWithPermission.containsAll(childProjectUuids);
   }
 
@@ -181,24 +181,25 @@ public class ServerUserSession extends AbstractUserSession {
     Set<String> branchUuids = findBranchUuids(portfolioHierarchyComponents);
     Set<String> projectUuids = findProjectUuids(branchUuids);
 
-    Set<String> projectsWithPermission = keepProjectsUuidsByPermission(permission, projectUuids);
+    Set<String> projectsWithPermission = keepEntitiesUuidsByPermission(permission, projectUuids);
     return projectsWithPermission.containsAll(projectUuids);
   }
 
   @Override
-  public List<ProjectDto> keepAuthorizedProjects(String permission, Collection<ProjectDto> projects) {
-    Set<String> projectsUuids = projects.stream().map(ProjectDto::getUuid).collect(Collectors.toSet());
-    Set<String> authorizedProjectsUuids = keepProjectsUuidsByPermission(permission, projectsUuids);
+  public <T extends EntityDto> List<T> keepAuthorizedEntities(String permission, Collection<T> entities) {
+    Set<String> projectsUuids = entities.stream().map(EntityDto::getUuid).collect(Collectors.toSet());
+    // TODO in SONAR-19445
+    Set<String> authorizedEntitiesUuids = keepEntitiesUuidsByPermission(permission, projectsUuids);
 
-    return projects.stream()
-      .filter(project -> authorizedProjectsUuids.contains(project.getUuid()))
+    return entities.stream()
+      .filter(project -> authorizedEntitiesUuids.contains(project.getUuid()))
       .toList();
   }
 
-  private Set<String> keepProjectsUuidsByPermission(String permission, Collection<String> projectsUuids) {
+  private Set<String> keepEntitiesUuidsByPermission(String permission, Collection<String> entityUuids) {
     try (DbSession dbSession = dbClient.openSession(false)) {
       String userUuid = userDto == null ? null : userDto.getUuid();
-      return dbClient.authorizationDao().keepAuthorizedProjectUuids(dbSession, projectsUuids, userUuid, permission);
+      return dbClient.authorizationDao().keepAuthorizedEntityUuids(dbSession, entityUuids, userUuid, permission);
     }
   }
 
@@ -215,7 +216,7 @@ public class ServerUserSession extends AbstractUserSession {
     }
   }
 
-  private String getProjectUuid(DbSession dbSession, ComponentDto componentDto) {
+  private String getEntityUuid(DbSession dbSession, ComponentDto componentDto) {
     // Portfolio & subPortfolio don't have branch, so branchUuid represents the portfolio uuid.
     // technical project store root portfolio uuid in branchUuid
     if (isPortfolioOrSubPortfolio(componentDto) || isTechnicalProject(componentDto)) {
@@ -253,41 +254,45 @@ public class ServerUserSession extends AbstractUserSession {
     return !Objects.isNull(componentDto.qualifier()) && QUALIFIERS.contains(componentDto.qualifier());
   }
 
-  private boolean hasPermission(String permission, String projectUuid) {
-    Set<String> projectPermissions = permissionsByProjectUuid.computeIfAbsent(projectUuid, this::loadProjectPermissions);
-    return projectPermissions.contains(permission);
+  private boolean hasPermission(String permission, String entityUuid) {
+    Set<String> entityPermissions = permissionsByEntityUuid.computeIfAbsent(entityUuid, this::loadEntityPermissions);
+    return entityPermissions.contains(permission);
   }
 
-  /**
-   * Also applies to views
-   */
-  private Set<String> loadProjectPermissions(String projectUuid) {
+  private Set<String> loadEntityPermissions(String entityUuid) {
     try (DbSession dbSession = dbClient.openSession(false)) {
-      Optional<ComponentDto> component = dbClient.componentDao().selectByUuid(dbSession, projectUuid);
-      if (component.isEmpty()) {
+      Optional<EntityDto> entity = dbClient.entityDao().selectByUuid(dbSession, entityUuid);
+      if (entity.isEmpty()) {
         return Collections.emptySet();
       }
-      if (component.get().isPrivate()) {
-        return loadDbPermissions(dbSession, projectUuid);
+      if (entity.get().isPrivate()) {
+        return loadDbPermissions(dbSession, entityUuid);
       }
       Set<String> projectPermissions = new HashSet<>();
       projectPermissions.addAll(PUBLIC_PERMISSIONS);
-      projectPermissions.addAll(loadDbPermissions(dbSession, projectUuid));
+      projectPermissions.addAll(loadDbPermissions(dbSession, entityUuid));
       return Collections.unmodifiableSet(projectPermissions);
     }
   }
 
   private Set<String> loadChildProjectUuids(String applicationUuid) {
     try (DbSession dbSession = dbClient.openSession(false)) {
-      return dbClient.componentDao()
+      BranchDto branchDto = dbClient.branchDao().selectMainBranchByProjectUuid(dbSession, applicationUuid)
+        .orElseThrow();
+      Set<String> projectBranchesUuid = dbClient.componentDao()
         .selectDescendants(dbSession, ComponentTreeQuery.builder()
-          .setBaseUuid(applicationUuid)
+          .setBaseUuid(branchDto.getUuid())
           .setQualifiers(singleton(Qualifiers.PROJECT))
           .setScopes(singleton(Scopes.FILE))
           .setStrategy(Strategy.CHILDREN).build())
         .stream()
         .map(ComponentDto::getCopyComponentUuid)
         .collect(toSet());
+
+      return dbClient.branchDao().selectByUuids(dbSession, projectBranchesUuid).stream()
+        .map(BranchDto::getProjectUuid)
+        .collect(toSet());
+
     }
   }
 
@@ -338,11 +343,11 @@ public class ServerUserSession extends AbstractUserSession {
       .collect(MoreCollectors.toSet(permissionKeys.size()));
   }
 
-  private Set<String> loadDbPermissions(DbSession dbSession, String projectUuid) {
+  private Set<String> loadDbPermissions(DbSession dbSession, String entityUuid) {
     if (userDto != null && userDto.getUuid() != null) {
-      return dbClient.authorizationDao().selectProjectPermissions(dbSession, projectUuid, userDto.getUuid());
+      return dbClient.authorizationDao().selectEntityPermissions(dbSession, entityUuid, userDto.getUuid());
     }
-    return dbClient.authorizationDao().selectProjectPermissionsOfAnonymous(dbSession, projectUuid);
+    return dbClient.authorizationDao().selectEntityPermissionsOfAnonymous(dbSession, entityUuid);
   }
 
   @Override
@@ -358,17 +363,17 @@ public class ServerUserSession extends AbstractUserSession {
       Set<String> allProjectUuids = new HashSet<>(projectUuids);
       allProjectUuids.addAll(originalComponentsProjectUuids);
 
-      Set<String> authorizedProjectUuids = dbClient.authorizationDao().keepAuthorizedProjectUuids(dbSession, allProjectUuids, getUuid(), permission);
+      Set<String> authorizedProjectUuids = dbClient.authorizationDao().keepAuthorizedEntityUuids(dbSession, allProjectUuids, getUuid(), permission);
 
       return components.stream()
         .filter(c -> {
           if (c.getCopyComponentUuid() != null) {
             var componentDto = originalComponents.get(c.getCopyComponentUuid());
-            return componentDto != null && authorizedProjectUuids.contains(getProjectUuid(dbSession, componentDto));
+            return componentDto != null && authorizedProjectUuids.contains(getEntityUuid(dbSession, componentDto));
           }
 
           return authorizedProjectUuids.contains(c.branchUuid()) || authorizedProjectUuids.contains(
-            getProjectUuid(dbSession, c));
+            getEntityUuid(dbSession, c));
         })
         .collect(MoreCollectors.toList(components.size()));
     }

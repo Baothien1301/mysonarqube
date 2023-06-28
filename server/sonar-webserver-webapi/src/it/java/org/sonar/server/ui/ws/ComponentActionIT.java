@@ -49,6 +49,7 @@ import org.sonar.db.component.BranchDto;
 import org.sonar.db.component.BranchType;
 import org.sonar.db.component.ComponentDbTester;
 import org.sonar.db.component.ComponentDto;
+import org.sonar.db.component.ProjectData;
 import org.sonar.db.component.SnapshotDto;
 import org.sonar.db.metric.MetricDto;
 import org.sonar.db.permission.GlobalPermission;
@@ -156,7 +157,7 @@ public class ComponentActionIT {
   public void return_component_info_with_favourite() {
     ComponentDto project = insertProject();
     UserDto user = db.users().insertUser("obiwan");
-    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setComponentUuid(project.uuid()).setUserUuid(user.getUuid()),
+    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setEntityUuid(project.uuid()).setUserUuid(user.getUuid()),
       project.getKey(), project.name(), project.qualifier(), user.getLogin());
     userSession.logIn(user).addProjectPermission(UserRole.USER, project);
     init();
@@ -170,7 +171,7 @@ public class ComponentActionIT {
     String branchName = "feature1";
     ComponentDto branch = componentDbTester.insertProjectBranch(project, b -> b.setKey(branchName).setUuid("xyz"));
     UserDto user = db.users().insertUser("obiwan");
-    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setComponentUuid(project.uuid()).setUserUuid(user.getUuid()),
+    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setEntityUuid(project.uuid()).setUserUuid(user.getUuid()),
       project.getKey(), project.name(), project.qualifier(), user.getLogin());
     userSession.logIn(user).addProjectPermission(UserRole.USER, project)
       .addProjectBranchMapping(project.uuid(), branch);
@@ -200,7 +201,7 @@ public class ComponentActionIT {
     UserDto user = db.users().insertUser("obiwan");
 
     // set favourite for sub portfolio
-    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setComponentUuid(subportfolio.uuid()).setUserUuid(user.getUuid()),
+    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setEntityUuid(subportfolio.uuid()).setUserUuid(user.getUuid()),
       subportfolio.getKey(), subportfolio.name(), subportfolio.qualifier(), user.getLogin());
 
     userSession.logIn(user).addProjectPermission(UserRole.USER, portfolio)
@@ -228,7 +229,7 @@ public class ComponentActionIT {
     UserDto user = db.users().insertUser("obiwan");
 
     // set favourite for sub portfolio
-    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setComponentUuid(portfolio.uuid()).setUserUuid(user.getUuid()),
+    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setEntityUuid(portfolio.uuid()).setUserUuid(user.getUuid()),
       subportfolio.getKey(), portfolio.name(), portfolio.qualifier(), user.getLogin());
 
     userSession.logIn(user).addProjectPermission(UserRole.USER, portfolio);
@@ -444,10 +445,11 @@ public class ComponentActionIT {
       .setScope(COMPONENT)
       .setComponentQualifiers(Qualifier.VIEW, Qualifier.APP)
       .build();
-    ComponentDto application = componentDbTester.insertPublicApplication().getMainBranchComponent();
+    ProjectData projectData = componentDbTester.insertPublicApplication();
+    ComponentDto application = projectData.getMainBranchComponent();
     QualityGateDto qualityGateDto = db.qualityGates().insertQualityGate(qg -> qg.setName("Sonar way"));
     db.qualityGates().associateProjectToQualityGate(project, qualityGateDto);
-    userSession.registerComponents(application);
+    userSession.registerProjects(projectData.getProjectDto());
     init(page);
 
     String result = ws.newRequest()
@@ -720,7 +722,7 @@ public class ComponentActionIT {
     componentDbTester.insertSnapshot(analysis);
     when(resourceTypes.get(project.qualifier())).thenReturn(DefaultResourceTypes.get().getRootType());
     UserDto user = db.users().insertUser("obiwan");
-    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setComponentUuid(project.uuid()).setUserUuid(user.getUuid()),
+    propertyDbTester.insertProperty(new PropertyDto().setKey("favourite").setEntityUuid(project.uuid()).setUserUuid(user.getUuid()),
       project.getKey(), project.name(), project.qualifier(), user.getLogin());
     addQualityProfiles(project,
       createQProfile("qp1", "Sonar Way Java", "java"),

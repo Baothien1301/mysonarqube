@@ -57,6 +57,12 @@ module.exports = plugin(({ addUtilities, theme }) => {
       'line-height': theme('fontSize').sm[1],
       'font-weight': theme('fontWeight.regular'),
     },
+    '.body-xs': {
+      'font-family': theme('fontFamily.sans'),
+      'font-size': theme('fontSize.xs'),
+      'line-height': theme('fontSize').xs[1],
+      'font-weight': theme('fontWeight.regular'),
+    },
     '.body-sm-highlight': {
       'font-family': theme('fontFamily.sans'),
       'font-size': theme('fontSize.sm'),
@@ -66,19 +72,19 @@ module.exports = plugin(({ addUtilities, theme }) => {
     '.code': {
       'font-family': theme('fontFamily.mono'),
       'font-size': theme('fontSize.sm'),
-      'line-height': theme('fontSize').sm[1],
+      'line-height': theme('fontSize').code[1],
       'font-weight': theme('fontWeight.regular'),
     },
     '.code-highlight': {
       'font-family': theme('fontFamily.mono'),
       'font-size': theme('fontSize.sm'),
-      'line-height': theme('fontSize').sm[1],
+      'line-height': theme('fontSize').code[1],
       'font-weight': theme('fontWeight.bold'),
     },
     '.code-comment': {
       'font-family': theme('fontFamily.mono'),
       'font-size': theme('fontSize.sm'),
-      'line-height': theme('fontSize').sm[1],
+      'line-height': theme('fontSize').code[1],
       'font-style': 'italic',
     },
   };

@@ -22,12 +22,17 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { act } from 'react-dom/test-utils';
-import { byRole, byText } from 'testing-library-selector';
+import AuthenticationServiceMock from '../../../api/mocks/AuthenticationServiceMock';
 import GroupsServiceMock from '../../../api/mocks/GroupsServiceMock';
+import { Provider } from '../../../components/hooks/useManageProvider';
 import { renderApp } from '../../../helpers/testReactTestingUtils';
-import App from '../GroupsApp';
+import { byRole, byText } from '../../../helpers/testSelector';
+import { Feature } from '../../../types/features';
+import { TaskStatuses } from '../../../types/tasks';
+import GroupsApp from '../GroupsApp';
 
 const handler = new GroupsServiceMock();
+const authenticationHandler = new AuthenticationServiceMock();
 
 const ui = {
   createGroupButton: byRole('button', { name: 'groups.create_group' }),
@@ -59,6 +64,7 @@ const ui = {
   getMembers: () => within(ui.membersDialog.get()).getAllByRole('checkbox'),
 
   managedGroupRow: byRole('row', { name: 'managed-group 1' }),
+  githubManagedGroupRow: byRole('row', { name: 'managed-group github 1' }),
   managedGroupEditMembersButton: byRole('button', { name: 'groups.users.edit.managed-group' }),
   managedGroupViewMembersButton: byRole('button', { name: 'groups.users.view.managed-group' }),
 
@@ -76,10 +82,16 @@ const ui = {
   localGroupRowWithLocalBadge: byRole('row', {
     name: 'local-group local 1',
   }),
+
+  githubProvisioningPending: byText(/synchronization_pending/),
+  githubProvisioningInProgress: byText(/synchronization_in_progress/),
+  githubProvisioningSuccess: byText(/synchronization_successful/),
+  githubProvisioningAlert: byText(/synchronization_failed_short/),
 };
 
 beforeEach(() => {
   handler.reset();
+  authenticationHandler.reset();
 });
 
 describe('in non managed mode', () => {
@@ -313,8 +325,81 @@ describe('in manage mode', () => {
     expect(ui.localGroupRowWithLocalBadge.get()).toBeInTheDocument();
     expect(ui.managedGroupRow.query()).not.toBeInTheDocument();
   });
+
+  describe('Github Provisioning', () => {
+    beforeEach(() => {
+      authenticationHandler.handleActivateGithubProvisioning();
+      handler.setProvider(Provider.Github);
+    });
+
+    it('should display a success status when the synchronisation is a success', async () => {
+      authenticationHandler.addProvisioningTask({
+        status: TaskStatuses.Success,
+        executedAt: '2022-02-03T11:45:35+0200',
+      });
+      renderGroupsApp([Feature.GithubProvisioning]);
+      await act(async () => expect(await ui.githubProvisioningSuccess.find()).toBeInTheDocument());
+    });
+
+    it('should display a success status even when another task is pending', async () => {
+      authenticationHandler.addProvisioningTask({
+        status: TaskStatuses.Pending,
+        executedAt: '2022-02-03T11:55:35+0200',
+      });
+      authenticationHandler.addProvisioningTask({
+        status: TaskStatuses.Success,
+        executedAt: '2022-02-03T11:45:35+0200',
+      });
+      renderGroupsApp([Feature.GithubProvisioning]);
+      await act(async () => expect(await ui.githubProvisioningSuccess.find()).toBeInTheDocument());
+      expect(ui.githubProvisioningPending.query()).not.toBeInTheDocument();
+    });
+
+    it('should display an error alert when the synchronisation failed', async () => {
+      authenticationHandler.addProvisioningTask({
+        status: TaskStatuses.Failed,
+        executedAt: '2022-02-03T11:45:35+0200',
+        errorMessage: "T'es mauvais Jacques",
+      });
+      renderGroupsApp([Feature.GithubProvisioning]);
+      await act(async () => expect(await ui.githubProvisioningAlert.find()).toBeInTheDocument());
+      expect(screen.queryByText("T'es mauvais Jacques")).not.toBeInTheDocument();
+      expect(ui.githubProvisioningSuccess.query()).not.toBeInTheDocument();
+    });
+
+    it('should display an error alert even when another task is in progress', async () => {
+      authenticationHandler.addProvisioningTask({
+        status: TaskStatuses.InProgress,
+        executedAt: '2022-02-03T11:55:35+0200',
+      });
+      authenticationHandler.addProvisioningTask({
+        status: TaskStatuses.Failed,
+        executedAt: '2022-02-03T11:45:35+0200',
+        errorMessage: "T'es mauvais Jacques",
+      });
+      renderGroupsApp([Feature.GithubProvisioning]);
+      await act(async () => expect(await ui.githubProvisioningAlert.find()).toBeInTheDocument());
+      expect(screen.queryByText("T'es mauvais Jacques")).not.toBeInTheDocument();
+      expect(ui.githubProvisioningSuccess.query()).not.toBeInTheDocument();
+      expect(ui.githubProvisioningInProgress.query()).not.toBeInTheDocument();
+    });
+
+    it('should render a github icon for github groups', async () => {
+      handler.setProvider(Provider.Github);
+      const user = userEvent.setup();
+      renderGroupsApp();
+
+      await act(async () => {
+        await user.click(await ui.managedFilter.find());
+      });
+
+      expect(
+        within(ui.githubManagedGroupRow.get()).getByRole('img', { name: 'github' })
+      ).toBeInTheDocument();
+    });
+  });
 });
 
-function renderGroupsApp() {
-  return renderApp('admin/groups', <App />);
+function renderGroupsApp(featureList: Feature[] = []) {
+  return renderApp('admin/groups', <GroupsApp />, { featureList });
 }

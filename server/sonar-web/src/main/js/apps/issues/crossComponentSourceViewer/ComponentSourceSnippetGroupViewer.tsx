@@ -17,13 +17,14 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+import styled from '@emotion/styled';
+import classNames from 'classnames';
+import { FlagMessage, IssueMessageHighlighting, LineFinding, themeColor } from 'design-system';
 import * as React from 'react';
 import { FormattedMessage } from 'react-intl';
 import { getSources } from '../../../api/components';
 import getCoverageStatus from '../../../components/SourceViewer/helpers/getCoverageStatus';
 import { locationsByLine } from '../../../components/SourceViewer/helpers/indexing';
-import IssueMessageBox from '../../../components/issue/IssueMessageBox';
-import { Alert } from '../../../components/ui/Alert';
 import { getBranchLikeQuery } from '../../../helpers/branch-like';
 import { translate } from '../../../helpers/l10n';
 import { BranchLike } from '../../../types/branch-like';
@@ -61,7 +62,6 @@ interface Props {
   isLastOccurenceOfPrimaryComponent: boolean;
   issue: TypeIssue;
   issuesByLine: IssuesByLine;
-  lastSnippetGroup: boolean;
   loadDuplications: (component: string, line: SourceLine) => void;
   locations: FlowLocation[];
   onIssueSelect: (issueKey: string) => void;
@@ -239,11 +239,18 @@ export default class ComponentSourceSnippetGroupViewer extends React.PureCompone
             return (
               <IssueSourceViewerScrollContext.Consumer key={issueToDisplay.key}>
                 {(ctx) => (
-                  <IssueMessageBox
+                  <LineFinding
+                    issueType={issueToDisplay.type}
+                    issueKey={issueToDisplay.key}
+                    message={
+                      <IssueMessageHighlighting
+                        message={issueToDisplay.message}
+                        messageFormattings={issueToDisplay.messageFormattings}
+                      />
+                    }
                     selected={isSelectedIssue}
-                    issue={issueToDisplay}
-                    onClick={this.props.onIssueSelect}
                     ref={isSelectedIssue ? ctx?.registerPrimaryLocationRef : undefined}
+                    onIssueSelect={this.props.onIssueSelect}
                   />
                 )}
               </IssueSourceViewerScrollContext.Consumer>
@@ -255,8 +262,7 @@ export default class ComponentSourceSnippetGroupViewer extends React.PureCompone
   };
 
   render() {
-    const { branchLike, isLastOccurenceOfPrimaryComponent, issue, lastSnippetGroup, snippetGroup } =
-      this.props;
+    const { branchLike, isLastOccurenceOfPrimaryComponent, issue, snippetGroup } = this.props;
     const { additionalLines, loading, snippets } = this.state;
 
     const snippetLines = linesForSnippets(snippets, {
@@ -270,23 +276,27 @@ export default class ComponentSourceSnippetGroupViewer extends React.PureCompone
       ? 'issue.closed.file_level'
       : 'issue.closed.project_level';
 
+    const hideLocationIndex = issue.secondaryLocations.length !== 0;
+
     return (
       <>
         {issueIsClosed && (
-          <Alert variant="success">
-            <FormattedMessage
-              id={closedIssueMessageKey}
-              defaultMessage={translate(closedIssueMessageKey)}
-              values={{
-                status: (
-                  <strong>
-                    {translate('issue.status', issue.status)} (
-                    {issue.resolution ? translate('issue.resolution', issue.resolution) : '-'})
-                  </strong>
-                ),
-              }}
-            />
-          </Alert>
+          <FlagMessage className="sw-mb-2 sw-flex" variant="success">
+            <div className="sw-block">
+              <FormattedMessage
+                id={closedIssueMessageKey}
+                defaultMessage={translate(closedIssueMessageKey)}
+                values={{
+                  status: (
+                    <strong>
+                      {translate('issue.status', issue.status)} (
+                      {issue.resolution ? translate('issue.resolution', issue.resolution) : '-'})
+                    </strong>
+                  ),
+                }}
+              />
+            </div>
+          </FlagMessage>
         )}
 
         <IssueSourceViewerHeader
@@ -301,19 +311,29 @@ export default class ComponentSourceSnippetGroupViewer extends React.PureCompone
         {issue.component === snippetGroup.component.key &&
           issue.textRange === undefined &&
           !issueIsClosed && (
-            <IssueSourceViewerScrollContext.Consumer>
-              {(ctx) => (
-                <IssueMessageBox
-                  selected={true}
-                  issue={issue}
-                  onClick={this.props.onIssueSelect}
-                  ref={ctx?.registerPrimaryLocationRef}
-                />
-              )}
-            </IssueSourceViewerScrollContext.Consumer>
+            <FileLevelIssueStyle className="sw-py-2">
+              <IssueSourceViewerScrollContext.Consumer>
+                {(ctx) => (
+                  <LineFinding
+                    issueType={issue.type}
+                    issueKey={issue.key}
+                    message={
+                      <IssueMessageHighlighting
+                        message={issue.message}
+                        messageFormattings={issue.messageFormattings}
+                      />
+                    }
+                    selected
+                    ref={ctx?.registerPrimaryLocationRef}
+                    onIssueSelect={this.props.onIssueSelect}
+                    className="sw-m-0 sw-cursor-default"
+                  />
+                )}
+              </IssueSourceViewerScrollContext.Consumer>
+            </FileLevelIssueStyle>
           )}
 
-        {snippetLines.map((snippet, index) => (
+        {snippetLines.map(({ snippet, sourcesMap }, index) => (
           <SnippetViewer
             key={snippets[index].index}
             renderAdditionalChildInLine={this.renderIssuesList}
@@ -325,8 +345,6 @@ export default class ComponentSourceSnippetGroupViewer extends React.PureCompone
             highlightedLocationMessage={this.props.highlightedLocationMessage}
             highlightedSymbols={this.state.highlightedSymbols}
             index={snippets[index].index}
-            issue={this.props.issue}
-            lastSnippetOfLastGroup={lastSnippetGroup && index === snippets.length - 1}
             loadDuplications={this.loadDuplications}
             locations={this.props.locations}
             locationsByLine={getLocationsByLine(
@@ -337,6 +355,9 @@ export default class ComponentSourceSnippetGroupViewer extends React.PureCompone
             onLocationSelect={this.props.onLocationSelect}
             renderDuplicationPopup={this.renderDuplicationPopup}
             snippet={snippet}
+            className={classNames({ 'sw-mt-2': index !== 0 })}
+            snippetSourcesMap={sourcesMap}
+            hideLocationIndex={hideLocationIndex}
           />
         ))}
       </>
@@ -368,3 +389,7 @@ function isExpandable(snippets: Snippet[], snippetGroup: SnippetGroup) {
 
   return !fullyShown && isFile(snippetGroup.component.q);
 }
+
+const FileLevelIssueStyle = styled.div`
+  border: 1px solid ${themeColor('codeLineBorder')};
+`;
